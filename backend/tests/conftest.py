@@ -52,6 +52,20 @@ def other_user(db):
 
 
 @pytest.fixture()
+def client(db):
+    """Unauthenticated TestClient with in-memory DB — used for auth endpoint tests."""
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as c:
+        yield c
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture()
 def auth_client(db, user):
     """TestClient authenticated as `user` with in-memory DB."""
     def override_get_db():
