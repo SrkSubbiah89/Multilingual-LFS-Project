@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: lfs_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lfs_db
+      POSTGRES_USER: lfs_user
+      POSTGRES_PASSWORD: lfs_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: lfs_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: lfs_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:

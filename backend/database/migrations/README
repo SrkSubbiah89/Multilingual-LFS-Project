@@ -1,0 +1,18 @@
+Alembic database migrations for the LFS Conversational AI project.
+
+Common commands (run from project root):
+
+  # Auto-generate a migration from model changes
+  alembic revision --autogenerate -m "describe your change"
+
+  # Apply all pending migrations
+  alembic upgrade head
+
+  # Roll back the last migration
+  alembic downgrade -1
+
+  # View current revision
+  alembic current
+
+  # View migration history
+  alembic history
