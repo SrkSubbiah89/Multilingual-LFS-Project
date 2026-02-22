@@ -43,7 +43,7 @@ class SurveySession(Base):
     completed_at = Column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="survey_sessions")
-    responses = relationship("SurveyResponse", back_populates="session")
+    responses = relationship("SurveyResponse", back_populates="session", cascade="all, delete-orphan")
 
 
 class SurveyResponse(Base):
