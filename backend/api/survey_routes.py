@@ -9,9 +9,39 @@ from pydantic import BaseModel
 from backend.database.connection import get_db
 from backend.database.models import SurveyResponse, SurveySession, User
 from backend.auth.jwt_handler import verify_access_token
+from backend.agents.conversation_manager import ConversationContext, ConversationManager, ConversationState
+from backend.agents.language_processor import LanguageProcessor
+from backend.agents.isco_classifier import ISCOClassifier
 
 router = APIRouter(prefix="/survey", tags=["survey"])
 bearer_scheme = HTTPBearer()
+
+
+# ---------------------------------------------------------------------------
+# Agent singletons (lazy-initialised on first /message request)
+# ---------------------------------------------------------------------------
+# Agents are expensive to construct (model loading, API client setup).
+# We keep one instance per server process rather than rebuilding per request.
+#
+# NOTE: ConversationContext lives in _contexts (in-memory), so conversation
+# state is lost on server restart.  Replace with Redis-backed storage for
+# multi-process or persistent deployments.
+
+_conversation_manager: Optional[ConversationManager] = None
+_language_processor:   Optional[LanguageProcessor]   = None
+_isco_classifier:      Optional[ISCOClassifier]       = None
+
+# { session_id: ConversationContext }
+_contexts: dict[int, ConversationContext] = {}
+
+
+def _get_agents() -> tuple[ConversationManager, LanguageProcessor, ISCOClassifier]:
+    global _conversation_manager, _language_processor, _isco_classifier
+    if _conversation_manager is None:
+        _conversation_manager = ConversationManager()
+        _language_processor   = LanguageProcessor()
+        _isco_classifier      = ISCOClassifier()
+    return _conversation_manager, _language_processor, _isco_classifier
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +107,35 @@ class SurveyResponseOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MessageBody(BaseModel):
+    message: str
+
+
+class EntityOut(BaseModel):
+    text: str
+    label: str
+    language: str
+
+
+class ISCOResult(BaseModel):
+    job_title: str
+    primary_code: str
+    primary_title_en: str
+    primary_title_ar: str
+    confidence: float
+    method: str
+
+
+class MessageOut(BaseModel):
+    reply: str
+    state: str
+    detected_language: str
+    is_code_switched: bool
+    entities: list[EntityOut]
+    isco_classifications: list[ISCOResult]
+    session_completed: bool
 
 
 class MessageResponse(BaseModel):
@@ -184,7 +243,110 @@ def delete_session(
 
 
 # ---------------------------------------------------------------------------
-# Response endpoints
+# Conversational message endpoint
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/sessions/{session_id}/message",
+    response_model=MessageOut,
+    summary="Send a message and advance the survey conversation",
+    description=(
+        "Processes one conversational turn:\n"
+        "1. **LanguageProcessor** — detects language, identifies code-switching, "
+        "extracts LFS-relevant entities (job titles, organisations, locations, …).\n"
+        "2. **ConversationManager** — advances the FSM and generates the next "
+        "interviewer reply.\n"
+        "3. **ISCOClassifier** — for every JOB_TITLE entity found, runs a "
+        "two-stage semantic + LLM classification and stores the result.\n\n"
+        "When the conversation reaches the *completing* state the session is "
+        "automatically marked as completed and all collected survey fields are "
+        "persisted."
+    ),
+)
+def send_message(
+    session_id: int,
+    body: MessageBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _get_owned_session(db, session_id, current_user.id)
+
+    if session.status == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Session is already completed.",
+        )
+
+    conv_mgr, lang_proc, isco_clf = _get_agents()
+
+    # ── Stage 1: language detection + NER ───────────────────────────────────
+    lp_result = lang_proc.process(body.message)
+
+    # ── Stage 2: update context language if detector is confident ───────────
+    ctx = _get_or_create_context(conv_mgr, session_id, session.language)
+    if lp_result.detected_language in ("en", "ar"):
+        ctx.language = lp_result.detected_language
+        session.language = lp_result.detected_language
+
+    # ── Stage 3: conversation turn ───────────────────────────────────────────
+    reply = conv_mgr.process_message(ctx, body.message)
+
+    # ── Stage 4: ISCO classification for every JOB_TITLE entity ─────────────
+    job_title_entities = [e for e in lp_result.entities if e.label == "JOB_TITLE"]
+    isco_results: list[ISCOResult] = []
+
+    for entity in job_title_entities:
+        try:
+            clf = isco_clf.classify(
+                entity.text,
+                context=f"language={lp_result.detected_language}",
+            )
+            # Persist to DB
+            db.add(SurveyResponse(
+                session_id=session_id,
+                question_id="job_title",
+                answer=entity.text,
+                isco_code=clf.primary.code or None,
+                confidence_score=clf.primary.confidence,
+            ))
+            isco_results.append(ISCOResult(
+                job_title=entity.text,
+                primary_code=clf.primary.code,
+                primary_title_en=clf.primary.title_en,
+                primary_title_ar=clf.primary.title_ar,
+                confidence=clf.primary.confidence,
+                method=clf.method,
+            ))
+        except Exception:
+            # ISCO classification is enrichment — don't fail the turn on error
+            pass
+
+    # ── Stage 5: session completion ──────────────────────────────────────────
+    session_completed = ctx.state == ConversationState.COMPLETING
+    if session_completed:
+        _persist_collected_data(db, session_id, ctx.collected_data)
+        session.status = "completed"
+        session.completed_at = datetime.utcnow()
+        _contexts.pop(session_id, None)
+
+    db.commit()
+
+    return MessageOut(
+        reply=reply,
+        state=ctx.state.value,
+        detected_language=lp_result.detected_language,
+        is_code_switched=lp_result.is_code_switched,
+        entities=[
+            EntityOut(text=e.text, label=e.label, language=e.language)
+            for e in lp_result.entities
+        ],
+        isco_classifications=isco_results,
+        session_completed=session_completed,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Raw response endpoints  (kept for manual overrides / testing)
 # ---------------------------------------------------------------------------
 
 @router.post(
@@ -287,3 +449,37 @@ def _get_owned_session(db: Session, session_id: int, user_id: int) -> SurveySess
             detail="Session not found.",
         )
     return session
+
+
+def _get_or_create_context(
+    mgr: ConversationManager,
+    session_id: int,
+    language: str,
+) -> ConversationContext:
+    """Return the cached ConversationContext for this session, creating one if absent."""
+    if session_id not in _contexts:
+        _contexts[session_id] = mgr.new_context(session_id, language)
+    return _contexts[session_id]
+
+
+def _persist_collected_data(
+    db: Session,
+    session_id: int,
+    collected_data: dict,
+) -> None:
+    """
+    Save all ConversationManager-collected fields to SurveyResponse rows.
+
+    Fields: employment_status, job_title, industry, hours_per_week,
+            employment_type (and any others the FSM extracted).
+    job_title rows are written here without an ISCO code; the real-time
+    ISCO classification written during /message takes precedence.
+    """
+    for field, value in collected_data.items():
+        if not value:
+            continue
+        db.add(SurveyResponse(
+            session_id=session_id,
+            question_id=field,
+            answer=str(value),
+        ))
