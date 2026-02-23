@@ -18,16 +18,14 @@ LLM: GPT-4o-mini (OpenAI)
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-from crewai import Agent, Crew, LLM, Task
-from dotenv import load_dotenv
+from crewai import Agent, Crew, Task
 
-load_dotenv()
+from backend.llm import TaskType, get_llm
 
 
 # ---------------------------------------------------------------------------
@@ -198,11 +196,7 @@ class ConversationManager:
     """
 
     def __init__(self) -> None:
-        self._llm = LLM(
-            model="gpt-4o-mini",
-            temperature=0.3,    # low temperature for consistent, on-task interviewing
-            api_key=os.getenv("OPENAI_API_KEY"),
-        )
+        self._llm = get_llm(TaskType.GENERAL)
         self._agent = Agent(
             role="Conversation Manager",
             goal=(

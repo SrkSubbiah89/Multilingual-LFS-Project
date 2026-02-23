@@ -23,16 +23,14 @@ LLM              : GPT-4o-mini via CrewAI
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import Optional
 
-from crewai import Agent, Crew, LLM, Task
-from dotenv import load_dotenv
+from crewai import Agent, Crew, Task
 from langdetect import DetectorFactory, LangDetectException, detect_langs
 from pydantic import BaseModel, Field
 
-load_dotenv()
+from backend.llm import TaskType, get_llm
 
 # Make langdetect deterministic across runs
 DetectorFactory.seed = 0
@@ -149,11 +147,7 @@ class LanguageProcessor:
     """
 
     def __init__(self) -> None:
-        self._llm = LLM(
-            model="gpt-4o-mini",
-            temperature=0.0,        # deterministic for consistent entity extraction
-            api_key=os.getenv("OPENAI_API_KEY"),
-        )
+        self._llm = get_llm(TaskType.CRITICAL)
         self._agent = Agent(
             role="Multilingual NER Specialist",
             goal=(
