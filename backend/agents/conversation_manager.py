@@ -169,8 +169,9 @@ _REQUIRED_FIELDS = frozenset({
 # Words/phrases that signal confirmation in each language
 _CONFIRMATIONS = {
     "en": frozenset({
-        "yes", "correct", "right", "confirm", "that's right", "looks good",
-        "all good", "perfect", "exactly", "yep", "yup", "sure", "absolutely",
+        "yes", "right", "confirm", "that's right", "that's correct",
+        "looks good", "all good", "perfect", "exactly", "yep", "yup",
+        "sure", "absolutely",
     }),
     "ar": frozenset({
         "نعم", "صحيح", "موافق", "تأكيد", "هذا صحيح", "كل شيء صحيح", "ممتاز",
@@ -336,12 +337,13 @@ class ConversationManager:
         lower = text.lower()
         data = ctx.collected_data
 
-        # Employment status
+        # Employment status — check more specific terms first to avoid substring collisions
+        # ("employed" is a substring of "unemployed", so check "unemployed" first)
         if "employment_status" not in data:
-            if any(w in lower for w in ("employed", "working", "موظف", "أعمل", "أنا أعمل")):
-                data["employment_status"] = "employed"
-            elif any(w in lower for w in ("unemployed", "looking for work", "عاطل", "أبحث عن عمل")):
+            if any(w in lower for w in ("unemployed", "looking for work", "عاطل", "أبحث عن عمل")):
                 data["employment_status"] = "unemployed"
+            elif any(w in lower for w in ("employed", "working", "موظف", "أعمل", "أنا أعمل")):
+                data["employment_status"] = "employed"
             elif any(w in lower for w in ("retired", "student", "housewife", "متقاعد", "طالب", "ربة منزل")):
                 data["employment_status"] = "not_in_labour_force"
 
@@ -411,7 +413,11 @@ class ConversationManager:
     def _is_confirmed(text: str, language: str) -> bool:
         """Return True if the text expresses confirmation of the validation summary."""
         lower = text.lower().strip()
-        return any(c in lower for c in _CONFIRMATIONS.get(language, _CONFIRMATIONS["en"]))
+        confirmations = _CONFIRMATIONS.get(language, _CONFIRMATIONS["en"])
+        return any(
+            re.search(r"\b" + re.escape(c) + r"\b", lower)
+            for c in confirmations
+        )
 
     @staticmethod
     def _format_history(history: list[dict], lang: str) -> str:

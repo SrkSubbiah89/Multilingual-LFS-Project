@@ -2,10 +2,11 @@
 Tests for backend/agents/isco_classifier.py
 
 Pure logic (_detect_script, _parse_llm_response) is tested without mocking.
-classify() tests patch the VectorStore and Crew.kickoff to avoid external deps.
+classify() tests patch the VectorStore and Agent/Crew at the module level to
+avoid external deps and bypass CrewAI's Pydantic LLM validation entirely.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -37,6 +38,13 @@ def make_match(code="2512", title_en="Software Developers",
 
 
 # ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_LLM_RESPONSE = '{"selected_code": "2512", "reasoning": "Best match."}'
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -49,7 +57,23 @@ def mock_store():
 
 
 @pytest.fixture
-def clf(monkeypatch, mock_store):
+def mock_crew(monkeypatch):
+    """
+    Patches Agent and Crew inside isco_classifier.
+    Returns the Crew *instance* mock so tests can control kickoff() return values.
+    """
+    crew_instance = MagicMock()
+    crew_instance.kickoff.return_value = _LLM_RESPONSE
+    crew_class = MagicMock(return_value=crew_instance)
+
+    monkeypatch.setattr("backend.agents.isco_classifier.Agent", MagicMock())
+    monkeypatch.setattr("backend.agents.isco_classifier.Crew", crew_class)
+    monkeypatch.setattr("backend.agents.isco_classifier.Task", MagicMock())
+    return crew_instance
+
+
+@pytest.fixture
+def clf(monkeypatch, mock_store, mock_crew):
     """ISCOClassifier with LLM and VectorStore patched out."""
     monkeypatch.setattr(
         "backend.agents.isco_classifier.get_llm",
@@ -178,13 +202,12 @@ class TestClassifyFastPath:
         result = clf.classify("software developer")
         assert result.method == "semantic"
 
-    def test_high_confidence_does_not_call_llm(self, clf, mock_store):
+    def test_high_confidence_does_not_call_llm(self, clf, mock_store, mock_crew):
         mock_store.search.return_value = [
             make_match(confidence=_HIGH_CONFIDENCE_THRESHOLD + 0.01)
         ]
-        with patch("crewai.Crew.kickoff") as mock_kickoff:
-            clf.classify("software developer")
-        mock_kickoff.assert_not_called()
+        clf.classify("software developer")
+        mock_crew.kickoff.assert_not_called()
 
     def test_high_confidence_primary_is_top_candidate(self, clf, mock_store):
         top = make_match(code="2512", confidence=_HIGH_CONFIDENCE_THRESHOLD + 0.01)
@@ -197,14 +220,10 @@ class TestClassifyFastPath:
 # classify — LLM re-ranking path (low confidence)
 # ---------------------------------------------------------------------------
 
-_LLM_RESPONSE = '{"selected_code": "2512", "reasoning": "Best match."}'
-
-
 class TestClassifyLlmPath:
     def test_low_confidence_uses_llm_ranked_method(self, clf, mock_store):
         mock_store.search.return_value = [make_match(confidence=0.70)]
-        with patch("crewai.Crew.kickoff", return_value=_LLM_RESPONSE):
-            result = clf.classify("software developer")
+        result = clf.classify("software developer")
         assert result.method == "llm_ranked"
 
     def test_llm_selected_code_is_primary(self, clf, mock_store):
@@ -212,20 +231,18 @@ class TestClassifyLlmPath:
             make_match(code="2512", confidence=0.75),
             make_match(code="2511", confidence=0.70),
         ]
-        with patch("crewai.Crew.kickoff", return_value=_LLM_RESPONSE):
-            result = clf.classify("software developer")
+        result = clf.classify("software developer")
         assert result.primary.code == "2512"
 
     def test_all_candidates_included_in_result(self, clf, mock_store, sample_candidates):
         mock_store.search.return_value = sample_candidates
-        with patch("crewai.Crew.kickoff", return_value=_LLM_RESPONSE):
-            result = clf.classify("developer")
+        result = clf.classify("developer")
         assert len(result.candidates) == len(sample_candidates)
 
-    def test_llm_failure_falls_back_to_top_semantic(self, clf, mock_store):
+    def test_llm_failure_falls_back_to_top_semantic(self, clf, mock_store, mock_crew):
         mock_store.search.return_value = [make_match(code="2512", confidence=0.70)]
-        with patch("crewai.Crew.kickoff", return_value="not json"):
-            result = clf.classify("software developer")
+        mock_crew.kickoff.return_value = "not json"
+        result = clf.classify("software developer")
         assert result.primary.code == "2512"
 
 
@@ -235,17 +252,15 @@ class TestClassifyLlmPath:
 
 class TestClassifyLanguage:
     def test_arabic_input_detected_as_ar(self, clf, mock_store):
-        with patch("crewai.Crew.kickoff", return_value=_LLM_RESPONSE):
-            result = clf.classify("مهندس برمجيات")
+        result = clf.classify("مهندس برمجيات")
         assert result.language == "ar"
 
     def test_english_input_detected_as_en(self, clf, mock_store):
-        result = clf.classify("software engineer",)
+        result = clf.classify("software engineer")
         assert result.language == "en"
 
     def test_mixed_input_detected_as_mixed(self, clf, mock_store):
-        with patch("crewai.Crew.kickoff", return_value=_LLM_RESPONSE):
-            result = clf.classify("أنا software engineer")
+        result = clf.classify("أنا software engineer")
         assert result.language == "mixed"
 
 
@@ -255,19 +270,16 @@ class TestClassifyLanguage:
 
 class TestClassifyResultShape:
     def test_result_is_isco_classification(self, clf, mock_store):
-        with patch("crewai.Crew.kickoff", return_value=_LLM_RESPONSE):
-            result = clf.classify("nurse")
+        result = clf.classify("nurse")
         assert isinstance(result, ISCOClassification)
 
     def test_reasoning_is_non_empty_string(self, clf, mock_store):
-        with patch("crewai.Crew.kickoff", return_value=_LLM_RESPONSE):
-            result = clf.classify("nurse")
+        result = clf.classify("nurse")
         assert isinstance(result.reasoning, str)
         assert len(result.reasoning) > 0
 
     def test_context_passed_to_store_search(self, clf, mock_store):
-        with patch("crewai.Crew.kickoff", return_value=_LLM_RESPONSE):
-            clf.classify("nurse", context="healthcare sector", top_k=3)
+        clf.classify("nurse", context="healthcare sector", top_k=3)
         mock_store.search.assert_called_once_with("nurse", top_k=3)
 
     def test_min_usable_confidence_constant_exposed(self):

@@ -3,10 +3,11 @@ Tests for backend/agents/conversation_manager.py
 
 Pure logic (field extraction, ambiguity detection, confirmation detection,
 FSM transitions) is tested without any mocking.  The full process_message()
-turn patches Crew.kickoff to avoid real LLM calls.
+turn patches Agent and Crew at the module level so CrewAI's Pydantic LLM
+validation is bypassed entirely.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,11 +20,34 @@ from backend.agents.conversation_manager import (
 
 
 # ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_MOCK_REPLY = "Thank you! Can you tell me how many hours you work per week?"
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def mgr(monkeypatch):
+def mock_crew(monkeypatch):
+    """
+    Patches Agent and Crew inside conversation_manager.
+    Returns the Crew *instance* mock so tests can control kickoff() return values.
+    """
+    crew_instance = MagicMock()
+    crew_instance.kickoff.return_value = _MOCK_REPLY
+    crew_class = MagicMock(return_value=crew_instance)
+
+    monkeypatch.setattr("backend.agents.conversation_manager.Agent", MagicMock())
+    monkeypatch.setattr("backend.agents.conversation_manager.Crew", crew_class)
+    monkeypatch.setattr("backend.agents.conversation_manager.Task", MagicMock())
+    return crew_instance
+
+
+@pytest.fixture
+def mgr(monkeypatch, mock_crew):
     """ConversationManager with LLM construction patched out."""
     monkeypatch.setattr(
         "backend.agents.conversation_manager.get_llm",
@@ -330,36 +354,28 @@ class TestTransition:
 # Full turn — process_message
 # ---------------------------------------------------------------------------
 
-_MOCK_REPLY = "Thank you! Can you tell me how many hours you work per week?"
-
-
 class TestProcessMessage:
     def test_returns_string_reply(self, mgr, ctx):
-        with patch("crewai.Crew.kickoff", return_value=_MOCK_REPLY):
-            reply = mgr.process_message(ctx, "I am a software engineer")
+        reply = mgr.process_message(ctx, "I am a software engineer")
         assert isinstance(reply, str)
         assert len(reply) > 0
 
     def test_user_message_appended_to_history(self, mgr, ctx):
-        with patch("crewai.Crew.kickoff", return_value=_MOCK_REPLY):
-            mgr.process_message(ctx, "I am a nurse")
+        mgr.process_message(ctx, "I am a nurse")
         user_msgs = [m for m in ctx.history if m["role"] == "user"]
         assert any("nurse" in m["content"] for m in user_msgs)
 
     def test_assistant_reply_appended_to_history(self, mgr, ctx):
-        with patch("crewai.Crew.kickoff", return_value=_MOCK_REPLY):
-            mgr.process_message(ctx, "Hello")
+        mgr.process_message(ctx, "Hello")
         assistant_msgs = [m for m in ctx.history if m["role"] == "assistant"]
         assert len(assistant_msgs) == 1
 
     def test_state_transitions_after_turn(self, mgr, ctx):
-        with patch("crewai.Crew.kickoff", return_value=_MOCK_REPLY):
-            mgr.process_message(ctx, "Hello")
+        mgr.process_message(ctx, "Hello")
         # Greeting → Collecting after first turn
         assert ctx.state == ConversationState.COLLECTING_INFO
 
     def test_history_grows_with_each_turn(self, mgr, ctx):
-        with patch("crewai.Crew.kickoff", return_value=_MOCK_REPLY):
-            mgr.process_message(ctx, "Hello")
-            mgr.process_message(ctx, "I am a nurse")
+        mgr.process_message(ctx, "Hello")
+        mgr.process_message(ctx, "I am a nurse")
         assert len(ctx.history) == 4  # 2 user + 2 assistant
