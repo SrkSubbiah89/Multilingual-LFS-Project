@@ -1,6 +1,26 @@
 version: "3.9"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Multilingual LFS Conversational AI — full stack
+#
+# Services
+# --------
+#   postgres   PostgreSQL 15          → localhost:5432
+#   redis      Redis 7                → localhost:6379
+#   qdrant     Qdrant vector DB       → localhost:6333
+#   backend    FastAPI                → localhost:8000
+#   frontend   Next.js 14             → localhost:3000
+#
+# Usage
+# -----
+#   cp .env.example .env   # fill in API keys (from repo root)
+#   docker compose -f docker/docker-compose.yml up --build
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:15
     container_name: lfs_postgres
@@ -13,6 +33,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lfs_user -d lfs_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7
@@ -22,6 +47,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -32,8 +62,67 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Application ─────────────────────────────────────────────────────────────
+
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: lfs_backend
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      # Override localhost addresses with Docker service names
+      DATABASE_URL: postgresql://lfs_user:lfs_password@postgres:5432/lfs_db
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Cache the downloaded sentence-transformer model across restarts (~2 GB)
+      - model_cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        # Browser calls the backend directly; use the host-accessible address
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: lfs_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:
   redis_data:
   qdrant_data:
+  model_cache:
