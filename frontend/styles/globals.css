@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600&display=swap');
+
+/* RTL utility applied at the html/body level when lang=ar */
+[dir="rtl"] {
+  font-family: "Noto Sans Arabic", "Segoe UI", sans-serif;
+}
+
+/* Smooth direction transitions */
+* {
+  transition-property: none;
+}
+
+/* Chat bubble max widths */
+.bubble-user {
+  @apply max-w-[75%] self-end;
+}
+
+.bubble-assistant {
+  @apply max-w-[75%] self-start;
+}
