@@ -5,22 +5,29 @@ Shared LLM client factory for the LFS project.
 
 Task types
 ----------
-"general"  → GPT-4o-mini (OpenAI)
-             Fast and cost-effective; used by conversational agents
-             (ConversationManager, LanguageProcessor NER).
+"general"  → Ollama / Llama 3.1 (local, free)
+             Fast, privacy-preserving; used by conversational agents
+             (ConversationManager, LanguageProcessor NER, EmotionalIntelligence).
+             Requires Ollama running locally (default: http://localhost:11434).
 
 "critical" → Claude 3.5 Sonnet (Anthropic)
              High-accuracy; used for tasks where correctness is essential:
              employment-status classification, answer validation,
-             code-switch disambiguation.
+             audit reporting, HITL quality assessment.
 
 Usage
 -----
 from backend.llm.llm_client import get_llm, TaskType
 
-llm = get_llm(TaskType.GENERAL)          # GPT-4o-mini, temp 0.3
+llm = get_llm(TaskType.GENERAL)          # Llama 3.1 via Ollama, temp 0.3
 llm = get_llm(TaskType.CRITICAL)         # Claude 3.5 Sonnet, temp 0.0
 llm = get_llm("general", temperature=0)  # override temperature
+
+Environment variables
+---------------------
+OLLAMA_BASE_URL   Base URL of the Ollama server (default: http://localhost:11434)
+OLLAMA_MODEL      Override the Ollama model name   (default: llama3.1)
+ANTHROPIC_API_KEY Required only for TaskType.CRITICAL
 """
 
 from __future__ import annotations
@@ -40,16 +47,21 @@ load_dotenv()
 
 class TaskType(str, Enum):
     """Semantic task category that determines which model is selected."""
-    GENERAL  = "general"   # GPT-4o-mini  — conversational agents, NER
-    CRITICAL = "critical"  # Claude 3.5 Sonnet — classification, validation
+    GENERAL  = "general"   # Llama 3.1 via Ollama — conversational agents, NER
+    CRITICAL = "critical"  # Claude 3.5 Sonnet   — classification, validation
 
 
 # ---------------------------------------------------------------------------
 # Model identifiers (LiteLLM routing strings used by CrewAI)
 # ---------------------------------------------------------------------------
 
-MODEL_GENERAL  = "gpt-4o-mini"
+# Ollama: model name as registered in `ollama list`; override via env var
+_OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL", "llama3.1")
+MODEL_GENERAL  = f"ollama/{_OLLAMA_MODEL_NAME}"
 MODEL_CRITICAL = "anthropic/claude-3-5-sonnet-20241022"
+
+# Ollama server base URL (no auth required for local Ollama)
+_OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # Default temperatures per task type
 _TEMP_GENERAL  = 0.3   # slight variation keeps conversation natural
@@ -70,8 +82,8 @@ def get_llm(
     Parameters
     ----------
     task_type : TaskType | str
-        "general"  → GPT-4o-mini (OPENAI_API_KEY)
-        "critical" → Claude 3.5 Sonnet (ANTHROPIC_API_KEY)
+        "general"  → Llama 3.1 via Ollama (no API key required)
+        "critical" → Claude 3.5 Sonnet (ANTHROPIC_API_KEY required)
     temperature : float | None
         Override the default temperature for this task type.
         If None, uses the task-appropriate default (0.3 general / 0.0 critical).
@@ -86,7 +98,7 @@ def get_llm(
     ValueError
         If task_type is not a recognised TaskType value.
     EnvironmentError
-        If the required API key environment variable is not set.
+        If ANTHROPIC_API_KEY is not set when using TaskType.CRITICAL.
     """
     try:
         task = TaskType(task_type)
@@ -97,16 +109,11 @@ def get_llm(
         )
 
     if task == TaskType.GENERAL:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise EnvironmentError(
-                "OPENAI_API_KEY is not set. "
-                "Add it to your .env file (see .env.example)."
-            )
+        # Ollama runs locally — no API key needed
         return LLM(
             model=MODEL_GENERAL,
             temperature=temperature if temperature is not None else _TEMP_GENERAL,
-            api_key=api_key,
+            base_url=_OLLAMA_BASE_URL,
         )
 
     # CRITICAL — Claude 3.5 Sonnet via Anthropic

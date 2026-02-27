@@ -1,6 +1,45 @@
 from .isco_classifier import ISCOClassification, ISCOClassifier
 from .language_processor import LanguageProcessor, LanguageProcessorResult
 from .conversation_manager import ConversationManager, ConversationContext
+from .rag_expert import RAGExpert, RAGExpertResult, OccupationCandidate, HierarchyInfo
+from .validation_agent import ValidationAgent, ValidationResult, RuleViolation
+from .context_memory import (
+    ContextMemory,
+    ContextSummary,
+    TurnRecord,
+    SessionMemory,
+    get_context_memory,
+)
+from .audit_logger import (
+    AuditLogger,
+    AuditEntry,
+    DataAccessEntry,
+    AgentDecisionEntry,
+    AuditReport,
+    PurgeResult,
+    EventType,
+    AccessType,
+    AgentDecisionType,
+    get_audit_logger,
+)
+from .emotional_intelligence import (
+    EmotionalIntelligence,
+    EmotionalAnalysis,
+    EmotionalSignal,
+    EmotionalState,
+    SurveyAction,
+    get_emotional_intelligence,
+)
+from .hitl_quality_manager import (
+    HITLQualityManager,
+    QualityReport,
+    QualityMetrics,
+    FlaggedItem,
+    PendingReview,
+    ReviewStatus,
+    FlagReason,
+    get_hitl_quality_manager,
+)
 
 __all__ = [
     "ISCOClassifier",
@@ -9,4 +48,40 @@ __all__ = [
     "LanguageProcessorResult",
     "ConversationManager",
     "ConversationContext",
+    "RAGExpert",
+    "RAGExpertResult",
+    "OccupationCandidate",
+    "HierarchyInfo",
+    "ValidationAgent",
+    "ValidationResult",
+    "RuleViolation",
+    "ContextMemory",
+    "ContextSummary",
+    "TurnRecord",
+    "SessionMemory",
+    "get_context_memory",
+    "AuditLogger",
+    "AuditEntry",
+    "DataAccessEntry",
+    "AgentDecisionEntry",
+    "AuditReport",
+    "PurgeResult",
+    "EventType",
+    "AccessType",
+    "AgentDecisionType",
+    "get_audit_logger",
+    "EmotionalIntelligence",
+    "EmotionalAnalysis",
+    "EmotionalSignal",
+    "EmotionalState",
+    "SurveyAction",
+    "get_emotional_intelligence",
+    "HITLQualityManager",
+    "QualityReport",
+    "QualityMetrics",
+    "FlaggedItem",
+    "PendingReview",
+    "ReviewStatus",
+    "FlagReason",
+    "get_hitl_quality_manager",
 ]

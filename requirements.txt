@@ -18,5 +18,5 @@ pytest
 pytest-asyncio
 python-dotenv
 httpx
-pydantic
+pydantic[email]
 alembic

@@ -181,7 +181,7 @@ def list_sessions(
     return (
         db.query(SurveySession)
         .filter(SurveySession.user_id == current_user.id)
-        .order_by(SurveySession.started_at.desc())
+        .order_by(SurveySession.started_at.desc(), SurveySession.id.desc())
         .all()
     )
 
