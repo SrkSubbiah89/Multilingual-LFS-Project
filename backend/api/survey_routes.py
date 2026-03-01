@@ -12,6 +12,7 @@ from backend.auth.jwt_handler import verify_access_token
 from backend.agents.conversation_manager import ConversationContext, ConversationManager, ConversationState
 from backend.agents.language_processor import LanguageProcessor
 from backend.agents.isco_classifier import ISCOClassifier
+from backend.agents.report_generator import SurveyReport, get_report_generator
 
 router = APIRouter(prefix="/survey", tags=["survey"])
 bearer_scheme = HTTPBearer()
@@ -357,6 +358,54 @@ def send_message(
         isco_classifications=isco_results,
         session_completed=session_completed,
     )
+
+
+# ---------------------------------------------------------------------------
+# Report endpoint
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/sessions/{session_id}/report",
+    response_model=SurveyReport,
+    summary="Get the bilingual employment report for a completed session",
+    description=(
+        "Returns the cached report if one already exists, otherwise generates "
+        "a new bilingual (EN + AR) report using the ReportGenerator agent.\n\n"
+        "Add `?regenerate=true` to force a fresh LLM run even if a report "
+        "already exists."
+    ),
+)
+def get_report(
+    session_id: int,
+    regenerate: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _get_owned_session(db, session_id, current_user.id)
+
+    if session.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Report is only available for completed sessions.",
+        )
+
+    try:
+        report = get_report_generator().generate(
+            session_id=session_id,
+            regenerate=regenerate,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Report generation failed: {exc}",
+        )
+
+    return report
 
 
 # ---------------------------------------------------------------------------

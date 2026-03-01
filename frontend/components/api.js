@@ -52,3 +52,10 @@ export function sendMessage(token, sessionId, message) {
     body: JSON.stringify({ message }),
   });
 }
+
+export function getReport(token, sessionId, regenerate = false) {
+  const qs = regenerate ? "?regenerate=true" : "";
+  return request(`/survey/sessions/${sessionId}/report${qs}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

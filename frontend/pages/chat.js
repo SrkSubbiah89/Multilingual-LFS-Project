@@ -163,6 +163,7 @@ export default function ChatPage() {
 
         if (res.session_completed) {
           setCompleted(true);
+          setTimeout(() => router.push(`/report?session=${sessionId}`), 2500);
         }
       } catch {
         // Remove the optimistic user message on failure
