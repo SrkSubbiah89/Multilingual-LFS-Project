@@ -14,6 +14,10 @@ SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL")
 OTP_EXPIRY_MINUTES = 10
 
+# When false (default), OTP is delivered by email only (SendGrid).
+# Set to true only if Twilio SMS is fully configured — not supported for dev/demo.
+_USE_SMS_OTP = os.getenv("USE_SMS_OTP", "false").lower() == "true"
+
 
 def generate_otp() -> str:
     """Generate a cryptographically secure 6-digit OTP."""
@@ -90,7 +94,17 @@ def verify_otp(db: Session, user_id: int, code: str) -> bool:
 
 
 def generate_and_send_otp(db: Session, user: User) -> bool:
-    """Convenience function: generate, store, and email an OTP in one call."""
+    """Generate, store, and deliver an OTP.
+
+    Delivery channel is controlled by the USE_SMS_OTP environment variable:
+      false (default) — email via SendGrid (development / thesis demo)
+      true            — SMS via Twilio (not implemented; raises RuntimeError)
+    """
+    if _USE_SMS_OTP:
+        raise RuntimeError(
+            "USE_SMS_OTP=true but Twilio SMS is not implemented. "
+            "Set USE_SMS_OTP=false in .env to use email OTP via SendGrid."
+        )
     code = generate_otp()
     store_otp(db, user.id, code)
     return send_otp_email(user.email, code)
