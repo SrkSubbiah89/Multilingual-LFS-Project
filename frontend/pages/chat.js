@@ -94,9 +94,23 @@ export default function ChatPage() {
     createSession(storedToken, storedLang)
       .then((session) => {
         setSessionId(session.id);
-        setInitialising(false);
-        // Focus input after session is ready
-        setTimeout(() => inputRef.current?.focus(), 100);
+        // Auto-send a hidden trigger to get the bot's opening greeting
+        return sendMessage(storedToken, session.id, "hello").then((res) => {
+          setMessages([{
+            role: "assistant",
+            text: res.reply,
+            meta: {
+              state: res.state,
+              detectedLang: res.detected_language,
+              isCodeSwitched: res.is_code_switched,
+              entities: res.entities || [],
+              isco: res.isco_classifications || [],
+            },
+          }]);
+          if (res.session_completed) setCompleted(true);
+          setInitialising(false);
+          setTimeout(() => inputRef.current?.focus(), 100);
+        });
       })
       .catch(() => {
         setPageError(T[storedLang].sessionError);

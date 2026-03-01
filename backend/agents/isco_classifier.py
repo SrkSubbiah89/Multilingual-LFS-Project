@@ -36,6 +36,7 @@ print(result.method)              # "semantic" | "llm_ranked"
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from crewai import Agent, Crew, Task
@@ -43,6 +44,8 @@ from pydantic import BaseModel
 
 from backend.llm import TaskType, get_llm
 from backend.rag import OccupationMatch, get_vector_store
+
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -91,26 +94,36 @@ class ISCOClassifier:
     MIN_USABLE_CONFIDENCE = MIN_USABLE_CONFIDENCE
 
     def __init__(self) -> None:
-        self._store = get_vector_store()
-        self._llm   = get_llm(TaskType.CRITICAL)   # Claude 3.5 Sonnet, temp 0.0
-        self._agent = Agent(
-            role="ISCO-08 Occupation Classification Specialist",
-            goal=(
-                "Select the single most accurate ISCO-08 occupation code for a "
-                "given job title from a shortlist of semantic search candidates. "
-                "Prefer the most specific (unit-group) code the title clearly supports."
-            ),
-            backstory=(
-                "You are an expert in the International Standard Classification "
-                "of Occupations (ISCO-08) and have classified thousands of job "
-                "titles for national statistics offices. You understand formal and "
-                "informal job descriptions in both English and Arabic, including "
-                "code-switched text common in the Arab world's labour market."
-            ),
-            llm=self._llm,
-            verbose=False,
-            allow_delegation=False,
-        )
+        self._agent_available = False
+        self._store = None
+        try:
+            self._store = get_vector_store()
+            self._llm   = get_llm(TaskType.CRITICAL)   # Claude 3.5 Sonnet, temp 0.0
+            self._agent = Agent(
+                role="ISCO-08 Occupation Classification Specialist",
+                goal=(
+                    "Select the single most accurate ISCO-08 occupation code for a "
+                    "given job title from a shortlist of semantic search candidates. "
+                    "Prefer the most specific (unit-group) code the title clearly supports."
+                ),
+                backstory=(
+                    "You are an expert in the International Standard Classification "
+                    "of Occupations (ISCO-08) and have classified thousands of job "
+                    "titles for national statistics offices. You understand formal and "
+                    "informal job descriptions in both English and Arabic, including "
+                    "code-switched text common in the Arab world's labour market."
+                ),
+                llm=self._llm,
+                verbose=False,
+                allow_delegation=False,
+            )
+            self._agent_available = True
+        except Exception as exc:
+            _logger.warning(
+                "ISCOClassifier: initialisation failed (%s). "
+                "ISCO classification will be skipped until dependencies are available.",
+                exc,
+            )
 
     # ------------------------------------------------------------------
     # Public API
@@ -144,6 +157,9 @@ class ISCOClassifier:
         job_title = job_title.strip()
         if not job_title:
             return self._empty_result(job_title)
+
+        if not self._agent_available or self._store is None:
+            raise RuntimeError("ISCOClassifier is not initialised (no LLM or vector store).")
 
         lang       = _detect_script(job_title)
         candidates = self._store.search(job_title, top_k=top_k)
@@ -221,10 +237,13 @@ class ISCOClassifier:
             agent=self._agent,
         )
 
-        crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
-        raw  = str(crew.kickoff()).strip()
-
-        return self._parse_llm_response(raw, candidates)
+        try:
+            crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
+            raw  = str(crew.kickoff()).strip()
+            return self._parse_llm_response(raw, candidates)
+        except Exception as exc:
+            _logger.warning("ISCO LLM re-ranking failed: %s. Using top semantic match.", exc)
+            return candidates[0], "Fallback to top semantic match (LLM unavailable)."
 
     # ------------------------------------------------------------------
     # Response parsing

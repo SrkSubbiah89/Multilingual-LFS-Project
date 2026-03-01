@@ -637,6 +637,19 @@ class VectorStore:
         _host = host or os.getenv("QDRANT_HOST", "localhost")
         _port = int(port or os.getenv("QDRANT_PORT", 6333))
 
+        # Probe Qdrant before loading the heavy ML model.
+        # Loading the 1.3 GB SentenceTransformer when Qdrant is unreachable
+        # would block every first request for several minutes to no benefit.
+        import socket as _socket
+        try:
+            with _socket.create_connection((_host, _port), timeout=2):
+                pass
+        except OSError:
+            raise ConnectionRefusedError(
+                f"Qdrant is not reachable at {_host}:{_port}. "
+                "Start Qdrant to enable ISCO semantic search."
+            )
+
         self._client = QdrantClient(host=_host, port=_port)
         self._model  = SentenceTransformer(MODEL_NAME)
 

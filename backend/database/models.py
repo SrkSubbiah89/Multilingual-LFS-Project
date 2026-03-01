@@ -139,3 +139,32 @@ class QualityReview(Base):
     reviewed_by        = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at         = Column(DateTime, nullable=False, index=True)
     reviewed_at        = Column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Survey report table
+# ---------------------------------------------------------------------------
+
+class SurveyReportRecord(Base):
+    """
+    Persisted output of ReportGenerator.generate().
+
+    One row per generation run.  Multiple rows may exist for the same
+    session if generate(regenerate=True) is called; callers should use
+    the most recent row (ORDER BY generated_at DESC).
+    """
+
+    __tablename__ = "survey_report_records"
+
+    id                 = Column(Integer, primary_key=True, index=True)
+    session_id         = Column(Integer, ForeignKey("survey_sessions.id"), nullable=False, index=True)
+    language           = Column(String,  nullable=False)
+    profile_json       = Column(Text,    nullable=False)     # JSON of EmploymentProfile
+    quality_score      = Column(Float,   nullable=True)
+    quality_status     = Column(String,  nullable=True)
+    flagged_count      = Column(Integer, nullable=False, default=0)
+    report_en          = Column(Text,    nullable=False)
+    report_ar          = Column(Text,    nullable=False)
+    recommendations_en = Column(Text,    nullable=False)
+    recommendations_ar = Column(Text,    nullable=False)
+    generated_at       = Column(DateTime, nullable=False, index=True)

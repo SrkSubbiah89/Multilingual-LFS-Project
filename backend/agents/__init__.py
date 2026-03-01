@@ -46,6 +46,12 @@ from .survey_orchestrator import (
     ISCOMatch,
     get_survey_orchestrator,
 )
+from .report_generator import (
+    ReportGenerator,
+    SurveyReport,
+    EmploymentProfile,
+    get_report_generator,
+)
 
 __all__ = [
     "ISCOClassifier",
@@ -94,4 +100,8 @@ __all__ = [
     "TurnResult",
     "ISCOMatch",
     "get_survey_orchestrator",
+    "ReportGenerator",
+    "SurveyReport",
+    "EmploymentProfile",
+    "get_report_generator",
 ]

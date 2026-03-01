@@ -35,13 +35,27 @@ _isco_classifier:      Optional[ISCOClassifier]       = None
 _contexts: dict[int, ConversationContext] = {}
 
 
-def _get_agents() -> tuple[ConversationManager, LanguageProcessor, ISCOClassifier]:
-    global _conversation_manager, _language_processor, _isco_classifier
+def _get_agents() -> tuple[ConversationManager, LanguageProcessor]:
+    """Return the conversation and language agents (lightweight — initialises fast)."""
+    global _conversation_manager, _language_processor
     if _conversation_manager is None:
         _conversation_manager = ConversationManager()
         _language_processor   = LanguageProcessor()
-        _isco_classifier      = ISCOClassifier()
-    return _conversation_manager, _language_processor, _isco_classifier
+    return _conversation_manager, _language_processor
+
+
+def _get_isco_classifier() -> ISCOClassifier:
+    """Return the ISCO classifier, initialising it lazily on first call.
+
+    Separated from _get_agents() because ISCOClassifier loads a 1.3 GB
+    SentenceTransformer model and populates Qdrant on first use, which
+    can take 30–120 s.  We only pay that cost when the first JOB_TITLE
+    entity is detected, not on every first /message call.
+    """
+    global _isco_classifier
+    if _isco_classifier is None:
+        _isco_classifier = ISCOClassifier()
+    return _isco_classifier
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +291,7 @@ def send_message(
             detail="Session is already completed.",
         )
 
-    conv_mgr, lang_proc, isco_clf = _get_agents()
+    conv_mgr, lang_proc = _get_agents()
 
     # ── Stage 1: language detection + NER ───────────────────────────────────
     lp_result = lang_proc.process(body.message)
@@ -297,7 +311,7 @@ def send_message(
 
     for entity in job_title_entities:
         try:
-            clf = isco_clf.classify(
+            clf = _get_isco_classifier().classify(
                 entity.text,
                 context=f"language={lp_result.detected_language}",
             )
@@ -472,11 +486,26 @@ def _persist_collected_data(
 
     Fields: employment_status, job_title, industry, hours_per_week,
             employment_type (and any others the FSM extracted).
-    job_title rows are written here without an ISCO code; the real-time
-    ISCO classification written during /message takes precedence.
+
+    job_title is skipped if the ISCO classification loop already wrote a row
+    for it (those rows carry the ISCO code and are more complete).  If no
+    ISCO row exists yet — because NER missed the entity — we fall back to
+    writing the raw FSM-extracted value.
     """
+    existing_job_title = (
+        db.query(SurveyResponse)
+        .filter(
+            SurveyResponse.session_id == session_id,
+            SurveyResponse.question_id == "job_title",
+        )
+        .first()
+    ) is not None
+
     for field, value in collected_data.items():
         if not value:
+            continue
+        # Avoid duplicate: ISCO loop already wrote job_title with code + confidence
+        if field == "job_title" and existing_job_title:
             continue
         db.add(SurveyResponse(
             session_id=session_id,

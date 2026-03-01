@@ -13,11 +13,13 @@ validating      → read back and confirm collected answers
 completing      → thank respondent and close the session
 
 Supported languages: English ("en"), Arabic ("ar")
-LLM: GPT-4o-mini (OpenAI)
+LLM: Llama 3.2 via Ollama (with Claude 3.5 Sonnet fallback)
 """
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -26,6 +28,9 @@ from typing import Optional
 from crewai import Agent, Crew, Task
 
 from backend.llm import TaskType, get_llm
+
+_logger = logging.getLogger(__name__)
+_APP_ENV = os.getenv("APP_ENV", "development").lower()
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +184,17 @@ _CONFIRMATIONS = {
     }),
 }
 
+# Words/phrases that signal the respondent wants to correct something
+_CORRECTIONS = {
+    "en": frozenset({
+        "wrong", "incorrect", "change", "fix", "update", "mistake", "error",
+        "no", "not right", "not correct", "actually", "wait",
+    }),
+    "ar": frozenset({
+        "خطأ", "غلط", "تغيير", "تعديل", "تصحيح", "لا", "ليس صحيحًا", "في الواقع", "انتظر",
+    }),
+}
+
 
 # ---------------------------------------------------------------------------
 # ConversationManager
@@ -197,25 +213,38 @@ class ConversationManager:
     """
 
     def __init__(self) -> None:
-        self._llm = get_llm(TaskType.GENERAL)
-        self._agent = Agent(
-            role="Conversation Manager",
-            goal=(
-                "Guide respondents through the Labour Force Survey accurately "
-                "and empathetically, collecting complete and unambiguous "
-                "employment data in English or Arabic."
-            ),
-            backstory=(
-                "You are a seasoned LFS survey interviewer trained by a national "
-                "statistics office. You understand that precise employment data "
-                "drives government policy and you are skilled at keeping "
-                "conversations focused, natural, and culturally sensitive "
-                "across both English and Arabic-speaking respondents."
-            ),
-            llm=self._llm,
-            verbose=False,
-            allow_delegation=False,
-        )
+        self._agent_available = False
+        try:
+            self._llm = get_llm(TaskType.GENERAL)
+            self._agent = Agent(
+                role="Conversation Manager",
+                goal=(
+                    "Guide respondents through the Labour Force Survey accurately "
+                    "and empathetically, collecting complete and unambiguous "
+                    "employment data in English or Arabic."
+                ),
+                backstory=(
+                    "You are a seasoned LFS survey interviewer trained by a national "
+                    "statistics office. You understand that precise employment data "
+                    "drives government policy and you are skilled at keeping "
+                    "conversations focused, natural, and culturally sensitive "
+                    "across both English and Arabic-speaking respondents."
+                ),
+                llm=self._llm,
+                verbose=False,
+                allow_delegation=False,
+            )
+            self._agent_available = True
+        except Exception as exc:
+            if _APP_ENV == "development":
+                _logger.warning(
+                    "ConversationManager: no LLM available (%s). "
+                    "Falling back to rule-based dev stub. "
+                    "Start Ollama or set a valid ANTHROPIC_API_KEY to use AI responses.",
+                    exc,
+                )
+            else:
+                raise
 
     # ------------------------------------------------------------------
     # Public API
@@ -243,15 +272,121 @@ class ConversationManager:
         """
         ctx.history.append({"role": "user", "content": user_message})
 
-        task = self._build_task(ctx)
-        crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
-        result = crew.kickoff()
-        response = str(result).strip()
+        if not self._agent_available:
+            response = self._dev_stub_response(ctx)
+        else:
+            try:
+                task = self._build_task(ctx)
+                crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
+                result = crew.kickoff()
+                response = str(result).strip()
+            except Exception as exc:
+                _logger.warning("LLM call failed: %s. Using dev stub response.", exc)
+                response = self._dev_stub_response(ctx)
 
         ctx.history.append({"role": "assistant", "content": response})
+        prev_state = ctx.state
         self._transition(ctx, user_message, response)
 
+        # When we just transitioned to COMPLETING, generate the farewell in the same
+        # turn so the respondent sees a proper closing message rather than the
+        # VALIDATING-state confirmation prompt.
+        if ctx.state == ConversationState.COMPLETING and prev_state != ConversationState.COMPLETING:
+            if not self._agent_available:
+                farewell = self._dev_stub_response(ctx)
+            else:
+                try:
+                    farewell_task = self._build_task(ctx)
+                    farewell_crew = Crew(agents=[self._agent], tasks=[farewell_task], verbose=False)
+                    farewell = str(farewell_crew.kickoff()).strip()
+                except Exception:
+                    farewell = self._dev_stub_response(ctx)
+            ctx.history.append({"role": "assistant", "content": farewell})
+            return farewell
+
         return response
+
+    # ------------------------------------------------------------------
+    # Dev stub (used when no LLM is available in development mode)
+    # ------------------------------------------------------------------
+
+    _DEV_QUESTIONS_EN = [
+        "What is your current employment status? (employed / unemployed / not in the labour force)",
+        "What is your job title and what are your main duties?",
+        "Which industry or sector do you work in?",
+        "How many hours do you usually work per week?",
+        "What is your employment type? (full-time / part-time / self-employed)",
+    ]
+    _DEV_QUESTIONS_AR = [
+        "ما هي حالة توظيفك الحالية؟ (موظف / عاطل عن العمل / خارج سوق العمل)",
+        "ما هو مسماك الوظيفي وما هي مهامك الرئيسية؟",
+        "في أي قطاع أو صناعة تعمل؟",
+        "كم ساعة تعمل عادةً في الأسبوع؟",
+        "ما نوع توظيفك؟ (دوام كامل / دوام جزئي / عمل حر)",
+    ]
+
+    def _dev_stub_response(self, ctx: ConversationContext) -> str:
+        """Rule-based fallback used when no LLM is configured (dev mode only)."""
+        lang = ctx.language
+        state = ctx.state
+        is_ar = lang == "ar"
+
+        if state == ConversationState.GREETING:
+            if is_ar:
+                return (
+                    "مرحبًا! أنا مساعد مسح القوى العاملة. "
+                    "سأطرح عليك بعض الأسئلة حول وضعك الوظيفي. "
+                    "هل أنت مستعد للبدء؟"
+                )
+            return (
+                "Hello! I'm your Labour Force Survey assistant. "
+                "I'll ask you a few questions about your employment situation. "
+                "Are you ready to begin?"
+            )
+
+        if state == ConversationState.COLLECTING_INFO:
+            answered = set(ctx.collected_data.keys())
+            questions = self._DEV_QUESTIONS_AR if is_ar else self._DEV_QUESTIONS_EN
+            field_order = [
+                "employment_status", "job_title", "industry",
+                "hours_per_week", "employment_type",
+            ]
+            for field, question in zip(field_order, questions):
+                if field not in answered:
+                    return question
+            # All collected — nudge transition
+            if is_ar:
+                return "شكرًا! دعني أراجع إجاباتك."
+            return "Thank you! Let me review your answers."
+
+        if state == ConversationState.CLARIFYING:
+            if is_ar:
+                return "هل يمكنك توضيح إجابتك السابقة بمزيد من التفاصيل؟"
+            return "Could you please clarify your previous answer with a bit more detail?"
+
+        if state == ConversationState.VALIDATING:
+            lines = []
+            for k, v in ctx.collected_data.items():
+                lines.append(f"  • {k.replace('_', ' ').title()}: {v}")
+            summary = "\n".join(lines) if lines else ("(no data)" if not is_ar else "(لا بيانات)")
+            if is_ar:
+                return f"إليك ملخص ما جمعناه:\n{summary}\nهل كل شيء صحيح؟"
+            return f"Here's a summary of what I've collected:\n{summary}\nIs everything correct?"
+
+        if state == ConversationState.COMPLETING:
+            if is_ar:
+                return (
+                    "شكرًا جزيلًا على وقتك ومشاركتك! "
+                    "إجاباتك ستساهم في أبحاث سوق العمل المهمة. "
+                    "نتمنى لك يومًا سعيدًا!"
+                )
+            return (
+                "Thank you so much for your time and participation! "
+                "Your responses will contribute to important labour market research. "
+                "Have a wonderful day!"
+            )
+
+        return "Thank you for your response." if not is_ar else "شكرًا على إجابتك."
 
     # ------------------------------------------------------------------
     # Task construction
@@ -319,9 +454,10 @@ class ConversationManager:
         elif state == ConversationState.VALIDATING:
             if self._is_confirmed(user_message, ctx.language):
                 ctx.state = ConversationState.COMPLETING
-            else:
-                # Respondent wants corrections — return to collecting
+            elif self._wants_correction(user_message, ctx.language):
+                # Respondent explicitly wants to correct something
                 ctx.state = ConversationState.COLLECTING_INFO
+            # else: stay in VALIDATING — respondent is still reviewing the summary
 
         # COMPLETING is terminal
 
@@ -417,6 +553,16 @@ class ConversationManager:
         return any(
             re.search(r"\b" + re.escape(c) + r"\b", lower)
             for c in confirmations
+        )
+
+    @staticmethod
+    def _wants_correction(text: str, language: str) -> bool:
+        """Return True if the text indicates the respondent wants to correct something."""
+        lower = text.lower().strip()
+        corrections = _CORRECTIONS.get(language, _CORRECTIONS["en"])
+        return any(
+            re.search(r"\b" + re.escape(c) + r"\b", lower)
+            for c in corrections
         )
 
     @staticmethod

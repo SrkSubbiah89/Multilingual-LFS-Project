@@ -23,6 +23,8 @@ LLM              : GPT-4o-mini via CrewAI
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
 from typing import Optional
 
@@ -31,6 +33,9 @@ from langdetect import DetectorFactory, LangDetectException, detect_langs
 from pydantic import BaseModel, Field
 
 from backend.llm import TaskType, get_llm
+
+_logger = logging.getLogger(__name__)
+_APP_ENV = os.getenv("APP_ENV", "development").lower()
 
 # Make langdetect deterministic across runs
 DetectorFactory.seed = 0
@@ -147,25 +152,34 @@ class LanguageProcessor:
     """
 
     def __init__(self) -> None:
-        self._llm = get_llm(TaskType.CRITICAL)
-        self._agent = Agent(
-            role="Multilingual NER Specialist",
-            goal=(
-                "Extract all LFS-relevant named entities from survey messages "
-                "written in English, Arabic, or a mixture of both. "
-                "Return results as a precise, parseable JSON array."
-            ),
-            backstory=(
-                "You are a computational linguist with deep expertise in Arabic "
-                "and English NLP. You have processed thousands of Labour Force "
-                "Survey responses and excel at identifying employment-related "
-                "entities — job titles, organisations, industries, locations — "
-                "across both scripts, including code-switched messages."
-            ),
-            llm=self._llm,
-            verbose=False,
-            allow_delegation=False,
-        )
+        self._agent_available = False
+        try:
+            self._llm = get_llm(TaskType.CRITICAL)
+            self._agent = Agent(
+                role="Multilingual NER Specialist",
+                goal=(
+                    "Extract all LFS-relevant named entities from survey messages "
+                    "written in English, Arabic, or a mixture of both. "
+                    "Return results as a precise, parseable JSON array."
+                ),
+                backstory=(
+                    "You are a computational linguist with deep expertise in Arabic "
+                    "and English NLP. You have processed thousands of Labour Force "
+                    "Survey responses and excel at identifying employment-related "
+                    "entities — job titles, organisations, industries, locations — "
+                    "across both scripts, including code-switched messages."
+                ),
+                llm=self._llm,
+                verbose=False,
+                allow_delegation=False,
+            )
+            self._agent_available = True
+        except Exception as exc:
+            _logger.warning(
+                "LanguageProcessor: no LLM available for NER (%s). "
+                "Language detection will still work; NER will return empty entities.",
+                exc,
+            )
 
     # ------------------------------------------------------------------
     # Public API
@@ -364,7 +378,11 @@ class LanguageProcessor:
     ) -> list[Entity]:
         """
         Ask the CrewAI NER agent to extract entities and return parsed results.
+        Returns an empty list if the agent is unavailable or the call fails.
         """
+        if not self._agent_available:
+            return []
+
         if is_code_switched:
             lang_ctx = "The message contains both Arabic and English (code-switched)."
         elif language == "ar":
@@ -386,10 +404,13 @@ class LanguageProcessor:
             agent=self._agent,
         )
 
-        crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
-        raw = str(crew.kickoff()).strip()
-
-        return self._parse_entities(raw, text)
+        try:
+            crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
+            raw = str(crew.kickoff()).strip()
+            return self._parse_entities(raw, text)
+        except Exception as exc:
+            _logger.warning("NER agent call failed: %s. Returning empty entities.", exc)
+            return []
 
     def _parse_entities(self, raw: str, original_text: str) -> list[Entity]:
         """

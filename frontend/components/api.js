@@ -6,9 +6,10 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function request(path, options = {}) {
+  const { headers: extraHeaders, ...rest } = options;
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...options.headers },
-    ...options,
+    headers: { "Content-Type": "application/json", ...extraHeaders },
+    ...rest,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
