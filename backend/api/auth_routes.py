@@ -1,3 +1,6 @@
+import os
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -30,6 +33,7 @@ class TokenResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+    dev_otp: Optional[str] = None  # only populated when APP_ENV=development
 
 
 # ---------------------------------------------------------------------------
@@ -61,14 +65,18 @@ def request_otp(body: OTPRequestBody, db: Session = Depends(get_db)):
             detail="This account has been deactivated.",
         )
 
-    sent = generate_and_send_otp(db, user)
+    sent, code = generate_and_send_otp(db, user)
     if not sent:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to send OTP email. Please try again later.",
         )
 
-    return {"message": "OTP sent. Please check your email."}
+    is_dev = os.getenv("APP_ENV", "development").lower() == "development"
+    return {
+        "message": "OTP sent. Please check your email.",
+        "dev_otp": code if is_dev else None,
+    }
 
 
 @router.post(

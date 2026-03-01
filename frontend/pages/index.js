@@ -79,7 +79,8 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await requestOtp(email.trim());
+      const data = await requestOtp(email.trim());
+      if (data.dev_otp) setOtp(data.dev_otp);
       setStep("otp");
     } catch (err) {
       setError(err.message || t.errorGeneric);
@@ -108,7 +109,8 @@ export default function LoginPage() {
     setResendMsg("");
     setError("");
     try {
-      await requestOtp(email.trim());
+      const data = await requestOtp(email.trim());
+      if (data.dev_otp) setOtp(data.dev_otp);
       setResendMsg(t.resendOk);
       setTimeout(() => setResendMsg(""), 4000);
     } catch (err) {
@@ -200,6 +202,13 @@ export default function LoginPage() {
                 <p className="text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded-lg">
                   {t.otpSent(email)}
                 </p>
+
+                {/* Dev-mode banner — shown only when backend returns dev_otp */}
+                {otp && process.env.NODE_ENV !== "production" && (
+                  <p className="text-sm font-mono font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg text-center">
+                    🛠 Dev mode — code auto-filled: {otp}
+                  </p>
+                )}
 
                 <div>
                   <label

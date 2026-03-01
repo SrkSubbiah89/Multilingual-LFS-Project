@@ -197,8 +197,13 @@ def verify_otp(db: Session, user_id: int, code: str) -> bool:
     return True
 
 
-def generate_and_send_otp(db: Session, user: User) -> bool:
+def generate_and_send_otp(db: Session, user: User) -> tuple[bool, str]:
     """Generate, store, and deliver an OTP.
+
+    Returns (sent, code) where:
+      sent — True if email was delivered (or dev-mode fallback succeeded)
+      code — the generated OTP string (exposed so dev routes can surface it
+             directly in the API response without requiring email delivery)
 
     Delivery channel is controlled by the USE_SMS_OTP environment variable:
       false (default) — email (Gmail SMTP or SendGrid)
@@ -211,4 +216,4 @@ def generate_and_send_otp(db: Session, user: User) -> bool:
         )
     code = generate_otp()
     store_otp(db, user.id, code)
-    return send_otp_email(user.email, code)
+    return send_otp_email(user.email, code), code

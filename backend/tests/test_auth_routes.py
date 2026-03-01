@@ -68,7 +68,7 @@ class TestRequestOtp:
     def test_returns_success_message(self, client):
         with patch("backend.auth.email_otp.send_otp_email", return_value=True):
             resp = client.post("/auth/request-otp", json={"email": "new@test.com"})
-        assert resp.json() == {"message": "OTP sent. Please check your email."}
+        assert resp.json()["message"] == "OTP sent. Please check your email."
 
     def test_deactivated_user_returns_403(self, client, db):
         u = User(email="inactive@test.com", is_active=False)
@@ -171,4 +171,4 @@ class TestLogout:
 
     def test_returns_correct_message(self, client):
         resp = client.post("/auth/logout")
-        assert resp.json() == {"message": "Logged out successfully. Please discard your token."}
+        assert resp.json()["message"] == "Logged out successfully. Please discard your token."
