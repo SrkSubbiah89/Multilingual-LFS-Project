@@ -27,3 +27,10 @@ Thumbs.db
 
 # Runtime logs
 logs/
+
+# Large local installers/binaries -- never belong in git history
+# (Software/OllamaSetup.exe, 1.2GB, was accidentally committed and had to be
+# stripped from history on 2026-08-05 to unblock pushing to GitHub, which
+# hard-rejects any file over 100MB)
+Software/
+*.exe
