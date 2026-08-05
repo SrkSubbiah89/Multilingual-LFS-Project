@@ -15,6 +15,7 @@ sendgrid
 twilio
 langdetect
 sentence-transformers
+scikit-learn==1.6.1
 pytest
 pytest-asyncio
 python-dotenv
