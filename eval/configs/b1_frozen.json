@@ -1,0 +1,63 @@
+{
+  "_description": "Frozen B1 configuration that produced the 54/130 confirmation result on eval/test_set_full130.csv (top-1 = 41.5%). Every field below except reranker_candidates_reference/config_hash/provenance is loaded and asserted by eval/dev_sweep.py and eval/pre_run_check.py before any B2 case runs -- reranker_candidates (K) is the only parameter B2 is permitted to vary. See eval/dev_sweep.py's module docstring, 'Baseline config' section, for exactly how each field is sourced/checked.",
+  "_source_csv": "eval/results/raw_runs/20260805T055741Z_full130_leafvote_beam3_llama3b_pooled.csv",
+  "_source_top1_accuracy": "54/130",
+  "_verified_on": "2026-08-05",
+
+  "reranker_model": "ollama/llama3.2:latest",
+  "beam": 3,
+  "stage1_mode": "leaf_vote",
+  "keyword_map_enabled": false,
+  "branch_collapse": false,
+  "llm_temperature": 0.0,
+  "timeout_s": 120,
+
+  "reranker_candidates_reference": 5,
+  "config_hash": "bf899c49996b",
+
+  "beam_evidence": {
+    "status": "inferred",
+    "source": "B1 CSV filename (eval/results/raw_runs/20260805T055741Z_full130_leafvote_beam3_llama3b_pooled.csv) and full130_3b_analysis.txt's paired-comparison note",
+    "detail": "Not independently logged as a per-row config field, saved CLI invocation, or reproducibility manifest. full130_3b_analysis.txt's 'PAIRED COMPARISON' section states 'three variables changed simultaneously vs full130_kw_on (keyword_map disabled, stage1_mode=leaf_vote, beam 2->3)' for the sibling run eval/results/raw_runs/20260805T000543Z_full130_leafvote_beam3_llama3b.csv (identical filename stem, differs from this file's _source_csv only by the '_pooled' suffix denoting the branch_collapse=False pooling fix -- i.e. same beam, only branch_collapse changed between the two). This corroborates but does NOT independently confirm beam=3, because the analysis note may itself be restating the filename's encoded value rather than citing an independently recorded source (e.g. a saved CLI invocation, config file, or JSON manifest capturing --beam at the time it ran). Treated as UNCONFIRMED. eval/dev_sweep.py and eval/pre_run_check.py refuse to run by default while status='inferred'; pass --confirm-inferred-beam 3 (exact value required) after verifying beam=3 from your own run history to proceed, and the override is recorded prominently in the report/JSONL."
+  },
+
+  "ollama_model_identity": {
+    "status": "confirmed",
+    "tag": "llama3.2:latest",
+    "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+    "parameter_size": "3.2B",
+    "quantization_level": "Q4_K_M",
+    "family": "llama",
+    "size_bytes": 2019393189,
+    "ollama_version_at_verification": "0.32.1",
+    "resolved_via": "GET http://localhost:11434/api/tags (metadata only -- no /api/generate or /api/chat call, no inference performed)",
+    "resolved_on": "2026-08-05"
+  },
+
+  "implementation_fingerprint": {
+    "components": {
+      "HierarchicalISCOStore._hierarchical_search": "1639033691e9aaad",
+      "ISCOClassifier._llm_select_from_candidates": "68aa62419b290d25",
+      "ISCOClassifier._parse_llm_response": "4de7e1ea3584ece4"
+    },
+    "composite_sha256": "61a57d32625eaef68eca00d94d7d1975f87f459a1242636683cc116fb49acd53"
+  },
+
+  "provenance": {
+    "b1_result_csv": "eval/results/raw_runs/20260805T055741Z_full130_leafvote_beam3_llama3b_pooled.csv",
+    "b1_result_csv_sha256": "540b8d7d048f941a01f672bfafa3ac6ba9177b5f79f6ec2d75d32ca57df7b4fb",
+    "b1_baseline_git_commit": null
+  },
+
+  "_notes": [
+    "reranker_model=ollama/llama3.2:latest -- verified directly from the reranker_model column of the source CSV (all 130 rows agree). NOT ollama/llama3.2:1b -- that string appears elsewhere in this repo only as a free/local smoke-test example, never as the model that produced the 54/130 B1 result.",
+    "beam=3: see beam_evidence above -- status is 'inferred', not 'confirmed'. Both eval/dev_sweep.py and eval/pre_run_check.py refuse to run by default until this is resolved with --confirm-inferred-beam 3.",
+    "stage1_mode=leaf_vote and keyword_map_enabled=false and branch_collapse=false are all read directly from the source CSV's stage1_source/keyword_map_enabled/branch_collapse_enabled columns (stage1_source == 'leaf_vote' for all 130 rows).",
+    "reranker_candidates_reference=5 is read directly from the source CSV: every row's reranker_input_candidates list has length 5 (pool sizes were always >=35, so no truncation ambiguity). This matches eval/dev_sweep.py's DEFAULT_REFERENCE_K -- not a coincidence, it's why K=5 is the sweep's reference point.",
+    "llm_temperature=0.0 and timeout_s=120 are not run_eval.py CLI flags -- they are hardcoded in run_eval.build_system() (temperature) and backend/llm/llm_client.py's _OLLAMA_INFERENCE_TIMEOUT constant (timeout). Recorded here so eval/dev_sweep.py/pre_run_check.py can assert the CURRENT codebase still matches them.",
+    "config_hash=bf899c49996b is the exact run_eval.py config_hash column value from the source CSV -- it bakes in reranker_candidates=5, so it will NOT reproduce for any other K. Recorded for provenance/traceability of the specific B1 confirmation run this file describes, not as a target every K's own (differently-K'd) hash should match.",
+    "implementation_fingerprint replaces the older single-function prompt_fingerprint field. Component list is exactly HierarchicalISCOStore._hierarchical_search, ISCOClassifier._llm_select_from_candidates, ISCOClassifier._parse_llm_response -- for the B1 hierarchical code path, candidate pooling/dedup and UnitCandidate serialization-before-the-reranker both happen INLINE inside _hierarchical_search() (verified by reading the source: UnitCandidate() is constructed at hierarchical_store.py's line ~617, inside _hierarchical_search(), not in a separate helper). backend/rag/candidate_pool.py exists but is NOT called by the B1 code path (see that module's own docstring) and is deliberately excluded -- including it would create false-positive drift signals for B3-Sort-only changes that never affect B1/B2 comparability. Component names are sorted before hashing (case-sensitive ASCII order) so composite_sha256 is stable regardless of dict insertion order.",
+    "provenance.b1_baseline_git_commit is null because eval/ (and the isco_classifier.py/hierarchical_store.py versions that actually ran B1) were not committed to git until after B1 already ran -- the commit that eventually captured this code (825a6e5, later rewritten to a00d973) also contains substantial LATER work (B2 infrastructure), so no single git commit corresponds to the exact code state at B1-run-time. implementation_fingerprint is the actual authoritative drift detector regardless -- it hashes live source directly and does not depend on git commit boundaries.",
+    "provenance.b1_result_csv_sha256 is the sha256 of the RESULTS file (eval/results/raw_runs/...pooled.csv), which was produced BY running B1 against eval/test_set_full130.csv -- hashing this results file does not read or use eval/test_set_full130.csv itself. The held-out test set is a separate file, never opened by any pre-run/baseline check."
+  ]
+}
