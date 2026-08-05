@@ -1,0 +1,822 @@
+{
+  "duplicate_column_headers": {
+    "it_IT": 2
+  },
+  "n_data_rows_codeset": 4745,
+  "n_locale_columns": 231,
+  "n_distinct_base_languages": 61,
+  "locales_by_base_language": {
+    "am": [
+      "am_ET"
+    ],
+    "ar": [
+      "ar_AE",
+      "ar_BH",
+      "ar_DJ",
+      "ar_DZ",
+      "ar_EG",
+      "ar_ER",
+      "ar_IQ",
+      "ar_JO",
+      "ar_KM",
+      "ar_KW",
+      "ar_LB",
+      "ar_LY",
+      "ar_MA",
+      "ar_MR",
+      "ar_OM",
+      "ar_PS",
+      "ar_QA",
+      "ar_SA",
+      "ar_SD",
+      "ar_SY",
+      "ar_TN",
+      "ar_YE"
+    ],
+    "az": [
+      "az_AZ"
+    ],
+    "ba": [
+      "ba_ID"
+    ],
+    "bg": [
+      "bg_BG"
+    ],
+    "bn": [
+      "bn_BD"
+    ],
+    "bs": [
+      "bs_BA"
+    ],
+    "cs": [
+      "cs_CZ"
+    ],
+    "da": [
+      "da_DK"
+    ],
+    "de": [
+      "de_AT",
+      "de_CH",
+      "de_DE",
+      "de_LI",
+      "de_LU"
+    ],
+    "dz": [
+      "dz_BT"
+    ],
+    "el": [
+      "el_CY",
+      "el_GR"
+    ],
+    "en": [
+      "en_AD",
+      "en_AG",
+      "en_AU",
+      "en_BB",
+      "en_BD",
+      "en_BS",
+      "en_BW",
+      "en_BZ",
+      "en_CA",
+      "en_CK",
+      "en_DM",
+      "en_ET",
+      "en_FJ",
+      "en_FM",
+      "en_GB",
+      "en_GD",
+      "en_GH",
+      "en_GM",
+      "en_GY",
+      "en_ID",
+      "en_IE",
+      "en_IN",
+      "en_JM",
+      "en_KE",
+      "en_KH",
+      "en_KI",
+      "en_KN",
+      "en_KY",
+      "en_LC",
+      "en_LK",
+      "en_LR",
+      "en_LS",
+      "en_MH",
+      "en_MT",
+      "en_MU",
+      "en_MV",
+      "en_MW",
+      "en_NA",
+      "en_NG",
+      "en_NR",
+      "en_NZ",
+      "en_PG",
+      "en_PH",
+      "en_PK",
+      "en_PW",
+      "en_RW",
+      "en_SB",
+      "en_SC",
+      "en_SG",
+      "en_SL",
+      "en_SR",
+      "en_SS",
+      "en_SZ",
+      "en_TO",
+      "en_TT",
+      "en_TV",
+      "en_TZ",
+      "en_UG",
+      "en_US",
+      "en_VC",
+      "en_VU",
+      "en_WS",
+      "en_ZA",
+      "en_ZM",
+      "en_ZW"
+    ],
+    "es": [
+      "es_AD",
+      "es_AR",
+      "es_BO",
+      "es_CL",
+      "es_CO",
+      "es_CQ",
+      "es_CR",
+      "es_CU",
+      "es_DO",
+      "es_EC",
+      "es_ES",
+      "es_GQ",
+      "es_GT",
+      "es_HN",
+      "es_MX",
+      "es_NI",
+      "es_PA",
+      "es_PE",
+      "es_PR",
+      "es_PY",
+      "es_SV",
+      "es_US",
+      "es_UY",
+      "es_VE"
+    ],
+    "et": [
+      "et_EE"
+    ],
+    "fa": [
+      "fa_AF",
+      "fa_IR"
+    ],
+    "fi": [
+      "fi_FI"
+    ],
+    "fr": [
+      "fr_BE",
+      "fr_BF",
+      "fr_BI",
+      "fr_BJ",
+      "fr_CA",
+      "fr_CD",
+      "fr_CF",
+      "fr_CG",
+      "fr_CH",
+      "fr_CI",
+      "fr_CM",
+      "fr_FR",
+      "fr_GA",
+      "fr_GN",
+      "fr_HT",
+      "fr_LU",
+      "fr_MC",
+      "fr_MG",
+      "fr_ML",
+      "fr_MU",
+      "fr_NC",
+      "fr_NE",
+      "fr_RE",
+      "fr_RW",
+      "fr_SN",
+      "fr_TD",
+      "fr_TG",
+      "fr_TN"
+    ],
+    "he": [
+      "he_IL"
+    ],
+    "hi": [
+      "hi_IN"
+    ],
+    "hr": [
+      "hr_BA",
+      "hr_HR"
+    ],
+    "hu": [
+      "hu_HU"
+    ],
+    "hy": [
+      "hy_AM"
+    ],
+    "is": [
+      "is_IS"
+    ],
+    "it": [
+      "it_IT",
+      "it_IT"
+    ],
+    "ja": [
+      "ja_JP"
+    ],
+    "ka": [
+      "ka_GE"
+    ],
+    "kk": [
+      "kk_KZ"
+    ],
+    "km": [
+      "km_KH"
+    ],
+    "ko": [
+      "ko_KP",
+      "ko_KR"
+    ],
+    "lo": [
+      "lo_LA"
+    ],
+    "lt": [
+      "lt_LT"
+    ],
+    "lv": [
+      "lv_LV"
+    ],
+    "mk": [
+      "mk_MK"
+    ],
+    "mn": [
+      "mn_MN"
+    ],
+    "ms": [
+      "ms_BN",
+      "ms_MY"
+    ],
+    "my": [
+      "my_MM"
+    ],
+    "ne": [
+      "ne_NP"
+    ],
+    "nl": [
+      "nl_AW",
+      "nl_BE",
+      "nl_NL",
+      "nl_SR"
+    ],
+    "no": [
+      "no_NO"
+    ],
+    "pl": [
+      "pl_PL"
+    ],
+    "pt": [
+      "pt_AO",
+      "pt_BR",
+      "pt_CV",
+      "pt_GW",
+      "pt_MZ",
+      "pt_PT",
+      "pt_ST",
+      "pt_TL"
+    ],
+    "ro": [
+      "ro_MD",
+      "ro_RO"
+    ],
+    "ru": [
+      "ru_AZ",
+      "ru_BY",
+      "ru_KG",
+      "ru_KZ",
+      "ru_RU",
+      "ru_TJ",
+      "ru_UA"
+    ],
+    "si": [
+      "si_LK"
+    ],
+    "sk": [
+      "sk_SK"
+    ],
+    "sl": [
+      "sl_SI"
+    ],
+    "so": [
+      "so_SO"
+    ],
+    "sq": [
+      "sq_AL",
+      "sq_MK",
+      "sq_XK"
+    ],
+    "sr": [
+      "sr_ME",
+      "sr_RS"
+    ],
+    "sv": [
+      "sv_SE"
+    ],
+    "sw": [
+      "sw_BI",
+      "sw_TZ"
+    ],
+    "th": [
+      "th_TH"
+    ],
+    "tk": [
+      "tk_TM"
+    ],
+    "tl": [
+      "tl_PH"
+    ],
+    "tr": [
+      "tr_TR"
+    ],
+    "uk": [
+      "uk_UA"
+    ],
+    "ur": [
+      "ur_PK"
+    ],
+    "uz": [
+      "uz_TM",
+      "uz_UZ"
+    ],
+    "vi": [
+      "vi_VN"
+    ],
+    "zh": [
+      "zh_CN",
+      "zh_HK",
+      "zh_SG",
+      "zh_TW"
+    ]
+  },
+  "target_language_locale_counts": {
+    "en": 65,
+    "ar": 22,
+    "ur": 1,
+    "hi": 1,
+    "tl": 1
+  },
+  "key_col_non_null": 4562,
+  "master_label_non_null": 4562,
+  "fill_counts_target_locales": {
+    "en_AD": 4554,
+    "en_AG": 4523,
+    "en_AU": 4523,
+    "en_BB": 4523,
+    "en_BD": 4523,
+    "en_BS": 4523,
+    "en_BW": 4555,
+    "en_BZ": 4523,
+    "en_CA": 4523,
+    "en_CK": 4523,
+    "en_DM": 4523,
+    "en_ET": 4555,
+    "en_FJ": 4523,
+    "en_FM": 4523,
+    "en_GB": 4523,
+    "en_GD": 4523,
+    "en_GH": 4523,
+    "en_GM": 4523,
+    "en_GY": 4523,
+    "en_ID": 4556,
+    "en_IE": 4523,
+    "en_IN": 4554,
+    "en_JM": 4523,
+    "en_KE": 4523,
+    "en_KH": 4523,
+    "en_KI": 4523,
+    "en_KN": 4523,
+    "en_KY": 4554,
+    "en_LC": 4523,
+    "en_LK": 4523,
+    "en_LR": 4523,
+    "en_LS": 4523,
+    "en_MH": 4523,
+    "en_MT": 4554,
+    "en_MU": 4523,
+    "en_MV": 4523,
+    "en_MW": 4523,
+    "en_NA": 4523,
+    "en_NG": 4523,
+    "en_NR": 4523,
+    "en_NZ": 4523,
+    "en_PG": 4523,
+    "en_PH": 4523,
+    "en_PK": 4523,
+    "en_PW": 4523,
+    "en_RW": 4523,
+    "en_SB": 4523,
+    "en_SC": 4523,
+    "en_SG": 4523,
+    "en_SL": 4523,
+    "en_SR": 4523,
+    "en_SS": 4523,
+    "en_SZ": 4523,
+    "en_TO": 4523,
+    "en_TT": 4523,
+    "en_TV": 4523,
+    "en_TZ": 4523,
+    "en_UG": 4523,
+    "en_US": 4523,
+    "en_VC": 4523,
+    "en_VU": 4523,
+    "en_WS": 4523,
+    "en_ZA": 4523,
+    "en_ZM": 4523,
+    "en_ZW": 4523,
+    "ar_AE": 4459,
+    "ar_BH": 4459,
+    "ar_DJ": 4459,
+    "ar_DZ": 4459,
+    "ar_EG": 4459,
+    "ar_ER": 4459,
+    "ar_IQ": 4459,
+    "ar_JO": 4459,
+    "ar_KM": 4459,
+    "ar_KW": 4459,
+    "ar_LB": 4459,
+    "ar_LY": 4459,
+    "ar_MA": 4459,
+    "ar_MR": 4459,
+    "ar_OM": 4459,
+    "ar_PS": 4459,
+    "ar_QA": 4459,
+    "ar_SA": 4459,
+    "ar_SD": 4459,
+    "ar_SY": 4459,
+    "ar_TN": 4459,
+    "ar_YE": 4459,
+    "ur_PK": 4276,
+    "hi_IN": 4494,
+    "tl_PH": 4464
+  },
+  "duplicate_keys_in_codeset": {
+    "count": 7,
+    "examples": {
+      "7.23306063601713e+16": 2,
+      "-20317": 2,
+      "-20192": 2,
+      "-20112": 2,
+      "-20111": 2
+    }
+  },
+  "arabic_locale_distinctness_vs_ar_AE": {
+    "ar_BH": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_DJ": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_DZ": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_EG": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_ER": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_IQ": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_JO": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_KM": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_KW": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_LB": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_LY": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_MA": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_MR": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_OM": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_PS": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_QA": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_SA": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_SD": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_SY": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_TN": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    },
+    "ar_YE": {
+      "both_present": 4459,
+      "differ_from_ar_AE": 0,
+      "pct_differ": 0.0
+    }
+  },
+  "arabic_locales_are_msa_duplicates": true,
+  "sample_rows_codeset": [
+    {
+      "key": 110000100018,
+      "master_label": "Air force captain",
+      "en_US": "Air force captain",
+      "ar_AE": "قائد سلاح الجو",
+      "ur_PK": "کپتان فضائیہ",
+      "hi_IN": "वायु सेना कप्तान",
+      "tl_PH": "Kapitan ng hukbong panghimpapawid"
+    },
+    {
+      "key": 110000200018,
+      "master_label": "Air force marshal",
+      "en_US": "Air force marshal",
+      "ar_AE": "مارشال سلاح الجو",
+      "ur_PK": "مارشل فضائیہ",
+      "hi_IN": "वायु सेना मार्शल",
+      "tl_PH": "Marshal ng hukbong panghimpapawid"
+    },
+    {
+      "key": 110000300018,
+      "master_label": "Air force pilot",
+      "en_US": "Air force pilot",
+      "ar_AE": "طيار سلاح الجو",
+      "ur_PK": "پائلٹ فضائیہ",
+      "hi_IN": "वायु सेना पायलट",
+      "tl_PH": "Piloto ng hukbong panghimpapawid"
+    },
+    {
+      "key": 110000400018,
+      "master_label": "Army captain",
+      "en_US": "Army captain",
+      "ar_AE": "قائد الجيش",
+      "ur_PK": "فوجی کپتان",
+      "hi_IN": "सेना कप्तान",
+      "tl_PH": "Kapitan ng hukbo"
+    },
+    {
+      "key": 110000500018,
+      "master_label": "Army colonel",
+      "en_US": "Army colonel",
+      "ar_AE": "عقيد الجيش",
+      "ur_PK": "فوجی کرنل",
+      "hi_IN": "सेना कर्नल",
+      "tl_PH": "Koronel ng hukbo"
+    },
+    {
+      "key": 110000600018,
+      "master_label": "Army major",
+      "en_US": "Army major",
+      "ar_AE": "رائد الجيش",
+      "ur_PK": "فوجی میجر",
+      "hi_IN": "सेना प्रमुख",
+      "tl_PH": "Komandante ng hukbo"
+    },
+    {
+      "key": 110000700018,
+      "master_label": "Army officer",
+      "en_US": "Army officer",
+      "ar_AE": "ضابط الجيش",
+      "ur_PK": "فوجی افسر",
+      "hi_IN": "सेना के अधिकारी",
+      "tl_PH": "Opisyal ng hukbo"
+    },
+    {
+      "key": 110000800018,
+      "master_label": "Navy captain",
+      "en_US": "Navy captain",
+      "ar_AE": "قائد القوات البحريه",
+      "ur_PK": "",
+      "hi_IN": "नौसेना कप्तान",
+      "tl_PH": ""
+    }
+  ],
+  "mappings_header": [
+    "occupai3_API_13dgt",
+    "occupai3_API_17dgt",
+    "ISCO0804",
+    "ISCO0803",
+    "ISCO0802",
+    "ISCO0801",
+    "ISCO08lv",
+    "ISCOISEI",
+    "NACE2.0"
+  ],
+  "isco4_value_types": {
+    "int": 4469
+  },
+  "isco4_sample": [
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    210,
+    210,
+    210,
+    210
+  ],
+  "isco4_string_lengths": {
+    "3": 41,
+    "4": 4428
+  },
+  "isco4_leading_zero_examples": [],
+  "mappings_duplicate_keys": {
+    "count": 61,
+    "examples": {
+      "110010000000": 2,
+      "110020000000": 2,
+      "210010000000": 2,
+      "310020000000": 2,
+      "310030000000": 2
+    }
+  },
+  "orphans_codeset_only_count": 318,
+  "orphans_mappings_only_count": 125,
+  "orphans_codeset_only_examples": [
+    "4.22206000000082e+16",
+    "6.12107000000001e+16",
+    "-20340",
+    "-20339",
+    "-20338"
+  ],
+  "orphans_mappings_only_examples": [
+    "1120030336017",
+    "7233060736017",
+    "7543110336017",
+    "9211040000020",
+    "8219080000021"
+  ],
+  "isco08lv_non_null": 4469,
+  "isco08lv_distribution": {
+    "2": 2149,
+    "3": 1073,
+    "4": 986,
+    "1": 261
+  },
+  "nace2_0_rows_with_value": 745,
+  "nace2_0_total_rows": 4469,
+  "nace2_0_fill_rate": 0.1667,
+  "nace2_0_value_lengths": {
+    "4": 591,
+    "3": 154
+  },
+  "nace2_0_distinct_values": 54,
+  "occ_industry_rows": 4232,
+  "occ_industry_nace_cols": 33,
+  "occ_industry_fill_rate_all_cells": 0.2851,
+  "occ_industry_rows_with_ge1_real_value": 4232,
+  "occ_industry_row_coverage_pct": 100.0,
+  "occ_industry_distinct_cell_values": {
+    "2800": 379,
+    "3000": 369,
+    "2900": 354,
+    "140": 351,
+    "8532": 349,
+    "8541": 349,
+    "2500": 344,
+    "8542": 344,
+    "8610": 335,
+    "4221": 331
+  },
+  "nace_comparison": {
+    "nace2_0_value_found_in_crosstab_pct": 26.1,
+    "checked": 686,
+    "matched": 179,
+    "mismatch_examples": [
+      {
+        "key": "110000100018",
+        "nace2_0": 8420,
+        "crosstab_nace2004": [
+          8422,
+          8424,
+          8010,
+          8020,
+          8030
+        ]
+      },
+      {
+        "key": "110000200018",
+        "nace2_0": 8420,
+        "crosstab_nace2004": [
+          8422,
+          8424,
+          8010,
+          8020,
+          8030
+        ]
+      },
+      {
+        "key": "110000300018",
+        "nace2_0": 8420,
+        "crosstab_nace2004": [
+          8422,
+          8424,
+          8010,
+          8020,
+          8030
+        ]
+      },
+      {
+        "key": "110000400018",
+        "nace2_0": 8420,
+        "crosstab_nace2004": [
+          8422,
+          8424,
+          8010,
+          8020,
+          8030
+        ]
+      },
+      {
+        "key": "110000500018",
+        "nace2_0": 8420,
+        "crosstab_nace2004": [
+          8422,
+          8424,
+          8010,
+          8020,
+          8030
+        ]
+      }
+    ]
+  },
+  "labelset_header": [
+    "DATASET TYPE",
+    "VARNAME",
+    "VALUE of VAR",
+    "DATA LABEL"
+  ],
+  "labelset_dataset_types": {
+    "VARIABLE": 7,
+    "value": 945
+  }
+}

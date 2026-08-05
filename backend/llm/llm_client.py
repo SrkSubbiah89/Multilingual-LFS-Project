@@ -35,8 +35,10 @@ ANTHROPIC_API_KEY Required for TaskType.CRITICAL; also used as GENERAL fallback
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import time
 import urllib.error
 import urllib.request
 from enum import Enum
@@ -78,6 +80,18 @@ _TEMP_CRITICAL = 0.0   # fully deterministic for classification / validation
 # Timeout (seconds) for the Ollama health-check probe
 _OLLAMA_HEALTH_TIMEOUT = 2
 
+# Timeout (seconds) for a single Ollama inference call.
+# Set high enough for slow local hardware; the health-check cache prevents
+# cascading socket exhaustion if Ollama goes down between requests.
+_OLLAMA_INFERENCE_TIMEOUT = 120
+
+# After a failed health-check, skip re-probing for this many seconds so we
+# don't spam connection attempts on every request when Ollama is down.
+_OLLAMA_DOWN_COOLDOWN = 30
+
+# Module-level health-check cache: (result: bool, checked_at: float)
+_ollama_cache: tuple[bool, float] = (False, 0.0)
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -87,16 +101,26 @@ def _ollama_is_running() -> bool:
     """
     Return True if the Ollama server responds to a quick health-check.
 
-    Uses the /api/tags endpoint which is always available in Ollama ≥ 0.1.
-    Times out after _OLLAMA_HEALTH_TIMEOUT seconds to keep startup fast.
+    Result is cached for _OLLAMA_DOWN_COOLDOWN seconds after a *failure* so
+    that a flapping or absent Ollama doesn't open a new socket on every call.
+    A successful check is re-verified on the next call (no stale "up" cache).
     """
+    global _ollama_cache
+    cached_result, checked_at = _ollama_cache
+
+    # If last check was a failure and the cooldown hasn't expired, skip probe
+    if not cached_result and (time.monotonic() - checked_at) < _OLLAMA_DOWN_COOLDOWN:
+        return False
+
     try:
         with urllib.request.urlopen(
             f"{_OLLAMA_BASE_URL}/api/tags",
             timeout=_OLLAMA_HEALTH_TIMEOUT,
         ):
+            _ollama_cache = (True, time.monotonic())
             return True
     except (urllib.error.URLError, OSError, TimeoutError):
+        _ollama_cache = (False, time.monotonic())
         return False
 
 
@@ -163,14 +187,17 @@ def get_llm(
     if task == TaskType.GENERAL:
         temp = temperature if temperature is not None else _TEMP_GENERAL
 
+        # Ollama is the primary provider for GENERAL tasks (local, free).
+        # Only fall back to Claude when Ollama is not reachable.
         if _ollama_is_running():
             return LLM(
                 model=MODEL_GENERAL,
                 temperature=temp,
                 base_url=_OLLAMA_BASE_URL,
+                timeout=_OLLAMA_INFERENCE_TIMEOUT,
             )
 
-        # Ollama is not available — attempt graceful fallback
+        # Ollama is down — fall back to Claude if API key is available
         _logger.warning(
             "Ollama is not reachable at %s (model: %s). "
             "Falling back to Claude 3.5 Sonnet for GENERAL tasks. "
@@ -195,4 +222,85 @@ def get_llm(
     # CRITICAL — Claude 3.5 Sonnet via Anthropic
     return _get_claude_llm(
         temperature=temperature if temperature is not None else _TEMP_CRITICAL,
+    )
+
+
+def get_llm_strict(model: str, temperature: float) -> LLM:
+    """
+    Return an LLM pinned to exactly *model*, with NO provider fallback.
+
+    get_llm() will silently substitute Claude for GENERAL tasks when Ollama
+    is unreachable -- correct behaviour for a conversational agent, wrong
+    behaviour for an evaluation run where every case must be answered by
+    the same model or the run's per-case latency/cost/accuracy numbers
+    describe a system that was never actually run end-to-end. This raises
+    RuntimeError immediately instead, so callers (the eval harness) abort
+    before any case runs rather than discovering the substitution later
+    from a config-hash string that doesn't distinguish which model
+    actually answered.
+
+    Parameters
+    ----------
+    model : str
+        Fully-qualified LiteLLM routing string, e.g. "ollama/llama3.2:1b"
+        or "anthropic/claude-3-5-sonnet-20241022". No other providers are
+        recognised.
+    temperature : float
+        Passed straight through to the LLM constructor.
+
+    Raises
+    ------
+    RuntimeError
+        If the pinned provider/model is not reachable or not configured.
+    ValueError
+        If *model* does not start with a recognised provider prefix.
+    """
+    if model.startswith("ollama/"):
+        if not _ollama_is_running():
+            raise RuntimeError(
+                f"Pinned reranker model {model!r} requires Ollama at "
+                f"{_OLLAMA_BASE_URL}, but it is not reachable. Aborting "
+                "rather than silently substituting a different model."
+            )
+        ollama_model_name = model.split("/", 1)[1]
+        try:
+            with urllib.request.urlopen(
+                f"{_OLLAMA_BASE_URL}/api/tags", timeout=_OLLAMA_HEALTH_TIMEOUT
+            ) as resp:
+                tags = json.loads(resp.read())
+            pulled = {m.get("name", "") for m in tags.get("models", [])}
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not verify pinned reranker model {model!r} is pulled "
+                f"in Ollama: {exc}"
+            ) from exc
+        if ollama_model_name not in pulled and not any(
+            p == ollama_model_name or p.startswith(ollama_model_name + ":")
+            for p in pulled
+        ):
+            raise RuntimeError(
+                f"Pinned reranker model {model!r} is not pulled in Ollama "
+                f"(available: {sorted(pulled)}). Run `ollama pull "
+                f"{ollama_model_name}` or choose a different model."
+            )
+        return LLM(
+            model=model,
+            temperature=temperature,
+            base_url=_OLLAMA_BASE_URL,
+            timeout=_OLLAMA_INFERENCE_TIMEOUT,
+        )
+
+    if model.startswith("anthropic/"):
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                f"Pinned reranker model {model!r} requires ANTHROPIC_API_KEY, "
+                "which is not set. Aborting rather than silently substituting "
+                "a different model."
+            )
+        return LLM(model=model, temperature=temperature, api_key=api_key)
+
+    raise ValueError(
+        f"get_llm_strict: unrecognised provider prefix in {model!r} "
+        "(expected 'ollama/...' or 'anthropic/...')"
     )

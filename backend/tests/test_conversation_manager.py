@@ -15,7 +15,6 @@ from backend.agents.conversation_manager import (
     ConversationContext,
     ConversationManager,
     ConversationState,
-    _REQUIRED_FIELDS,
 )
 
 
@@ -64,14 +63,35 @@ def ctx(mgr):
 
 @pytest.fixture
 def full_ctx(mgr):
-    """Context with all required fields already collected."""
+    """Context with all required fields already collected (employed path)."""
     c = mgr.new_context(session_id=2, language="en")
     c.collected_data = {
-        "employment_status": "employed",
-        "job_title":         "software engineer",
-        "industry":          "technology",
-        "hours_per_week":    "40",
-        "employment_type":   "full_time",
+        # Core (B)
+        "employment_status":  "employed",
+        "education_level":    "bachelor",
+        # Demographics (B)
+        "gender":             "male",
+        "nationality":        "uae_national",
+        "marital_status":     "married",
+        "emirate":            "dubai",
+        # Employed path (C/D/E)
+        "employment_nature":  "paid_employee",
+        "employment_sector":  "private",
+        "job_title":          "software engineer",
+        "job_duties":         "writes code and reviews pull requests",
+        "industry":           "technology",
+        "hours_per_week":     "40",
+        "employment_type":    "full_time",
+        "monthly_wage_range": "10001_20000",
+        # Skills & digital (H/I)
+        "main_skills":        "programming",
+        "platform_work":      "no",
+        # Quality of work (J)
+        "job_satisfaction":   "satisfied",
+        # Feedback (K)
+        "question_clarity":   "very_clear",
+        "ai_preference":      "prefer_ai",
+        "data_confidence":    "very_confident",
     }
     c.state = ConversationState.COLLECTING_INFO
     return c
@@ -202,16 +222,33 @@ class TestExtractFieldsEmploymentType:
 # _extract_fields — job title
 # ---------------------------------------------------------------------------
 
+_PRE_JOB_TITLE_DATA = {
+    "employment_status":      "employed",
+    "education_level":        "diploma",  # no field_of_study branch
+    "gender":                 "male",
+    "nationality":            "uae_national",
+    "marital_status":         "married",
+    "emirate":                "dubai",
+    "uae_residence_duration": "5_to_10",
+    "vocational_training":    "no",
+    "employment_nature":      "paid_employee",
+    "employment_sector":      "private",
+}
+
+
 class TestExtractFieldsJobTitle:
     def test_engineer_keyword_captures_raw_text(self, mgr, ctx):
+        ctx.collected_data = dict(_PRE_JOB_TITLE_DATA)
         mgr._extract_fields(ctx, "I am a civil engineer")
         assert ctx.collected_data.get("job_title") is not None
 
     def test_doctor_keyword_captured(self, mgr, ctx):
+        ctx.collected_data = dict(_PRE_JOB_TITLE_DATA)
         mgr._extract_fields(ctx, "I work as a doctor in a clinic")
         assert ctx.collected_data.get("job_title") is not None
 
     def test_arabic_doctor_keyword_captured(self, mgr, ctx):
+        ctx.collected_data = dict(_PRE_JOB_TITLE_DATA)
         mgr._extract_fields(ctx, "أنا طبيب في عيادة خاصة")
         assert ctx.collected_data.get("job_title") is not None
 
@@ -318,9 +355,10 @@ class TestTransition:
         assert ctx.state in (ConversationState.COLLECTING_INFO, ConversationState.CLARIFYING)
 
     def test_collecting_advances_to_validating_when_all_fields_present(self, mgr, full_ctx):
+        # All required fields are already present in full_ctx — any input should
+        # trigger a VALIDATING transition since required fields are complete.
         full_ctx.state = ConversationState.COLLECTING_INFO
-        # Use non-ambiguous input (len > 5 and not a vague keyword)
-        mgr._transition(full_ctx, "I work full time 40 hours a week in technology", "")
+        mgr._transition(full_ctx, "That is all my information", "")
         assert full_ctx.state == ConversationState.VALIDATING
 
     def test_collecting_moves_to_clarifying_on_ambiguous_input(self, mgr, ctx):
@@ -331,7 +369,8 @@ class TestTransition:
 
     def test_clarifying_returns_to_collecting(self, mgr, ctx):
         ctx.state = ConversationState.CLARIFYING
-        mgr._transition(ctx, "I meant I work as a nurse", "Thank you!")
+        ctx.clarification_target = "employment_status"
+        mgr._transition(ctx, "I am employed full time", "Thank you!")
         assert ctx.state == ConversationState.COLLECTING_INFO
 
     def test_validating_moves_to_completing_on_confirmation(self, mgr, ctx):
@@ -339,10 +378,57 @@ class TestTransition:
         mgr._transition(ctx, "yes, that's correct", "")
         assert ctx.state == ConversationState.COMPLETING
 
-    def test_validating_returns_to_collecting_on_non_confirmation(self, mgr, ctx):
+    def test_validating_correction_opening_new_field_path_returns_to_collecting(self, mgr, ctx):
+        # A correction that changes employment_status opens a whole new set of
+        # required fields (e.g. job_search_active for the unemployed path) that
+        # aren't in collected_data yet, so VALIDATING must drop back to
+        # COLLECTING_INFO to gather them.
         ctx.state = ConversationState.VALIDATING
-        mgr._transition(ctx, "actually my industry is healthcare not tech", "")
+        ctx.collected_data["employment_status"] = "employed"
+        mgr._transition(ctx, "change the employment status to unemployed", "")
         assert ctx.state == ConversationState.COLLECTING_INFO
+        assert ctx.collected_data["employment_status"] == "unemployed"
+
+    def test_validating_unrecognised_non_confirmation_stays_validating(self, mgr, ctx, monkeypatch):
+        # Regression test: `correction_applied` (and any state transition) must
+        # only fire when a correction was actually understood and applied.
+        # Previously this branch transitioned unconditionally, so a message
+        # that wasn't a confirmation AND wasn't a parseable correction would
+        # still make the system claim "I've updated that for you" with
+        # nothing having changed. Mock the LLM fallback so this test is
+        # deterministic regardless of whether Ollama/Anthropic are reachable.
+        monkeypatch.setattr(mgr, "_llm_extract_correction", lambda ctx, text: False)
+        ctx.state = ConversationState.VALIDATING
+        mgr._transition(ctx, "wait, that's not it", "")
+        assert ctx.state == ConversationState.VALIDATING
+        assert ctx.correction_applied is False
+
+    def test_validating_correction_updates_field(self, mgr, ctx):
+        ctx.state = ConversationState.VALIDATING
+        ctx.collected_data["nationality"] = "uae_national"
+        mgr._transition(ctx, "change the nationality to Indian", "")
+        assert ctx.state == ConversationState.COLLECTING_INFO
+        assert ctx.collected_data["nationality"] == "Indian"
+
+    def test_validating_correction_arabic(self, mgr, ctx):
+        ctx.state = ConversationState.VALIDATING
+        ctx.collected_data["nationality"] = "uae_national"
+        ctx.language = "ar"
+        mgr._transition(ctx, "غير الجنسية إلى هندي", "")
+        assert ctx.state == ConversationState.COLLECTING_INFO
+        assert ctx.collected_data["nationality"] == "هندي"
+
+    def test_validating_correction_unknown_field_stays_validating(self, mgr, ctx, monkeypatch):
+        # "something" doesn't match any known field alias, so _extract_correction
+        # (regex) finds nothing. Mock the LLM fallback to also find nothing —
+        # deterministic regardless of live Ollama/Anthropic availability. Since
+        # no field was actually corrected, the state must stay VALIDATING and
+        # correction_applied must stay False, not silently claim success.
+        monkeypatch.setattr(mgr, "_llm_extract_correction", lambda ctx, text: False)
+        ctx.state = ConversationState.VALIDATING
+        mgr._transition(ctx, "change something to value", "")
+        assert ctx.state == ConversationState.VALIDATING
+        assert ctx.correction_applied is False
 
     def test_completing_is_terminal(self, mgr, ctx):
         ctx.state = ConversationState.COMPLETING

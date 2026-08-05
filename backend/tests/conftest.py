@@ -10,6 +10,32 @@ from backend.main import app
 from backend.api.survey_routes import get_current_user
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Clear rate-limiter state (in-process + Redis) before/after every test.
+
+    Without this, tests that call /auth/request-otp share the same 'testclient'
+    IP bucket and hit the 5-requests/10-min ceiling after a few tests.
+    The Redis flush handles the distributed rate limiter when Docker Redis is up.
+    """
+    from backend.auth.email_otp import _rl_windows, _get_rl_redis
+
+    def _clear_all():
+        _rl_windows.clear()
+        try:
+            r = _get_rl_redis()
+            if r:
+                keys = list(r.scan_iter("lfs:rl:*"))
+                if keys:
+                    r.delete(*keys)
+        except Exception:
+            pass
+
+    _clear_all()
+    yield
+    _clear_all()
+
+
 @pytest.fixture()
 def db():
     """Isolated in-memory SQLite database per test.

@@ -474,20 +474,28 @@ class HITLQualityManager:
     # Private — quality computation
     # ------------------------------------------------------------------
 
+    # Question IDs that are expected to carry an ISCO classification.
+    # All other fields (employment_status, industry, hours_per_week, …)
+    # hold free-text answers that are never ISCO-coded, so they must not
+    # be flagged as MISSING_ISCO.
+    _ISCO_QUESTION_IDS: frozenset[str] = frozenset({"job_title", "last_job_title"})
+
     def _flag_items(self, responses: list) -> list[FlaggedItem]:
         """
         Inspect each response and return items that need human attention.
 
         Flagging rules
         --------------
-        * No ISCO code               → ``FlagReason.MISSING_ISCO``
-        * Confidence < threshold     → ``FlagReason.LOW_CONFIDENCE_ISCO``
-        * ISCO code present but no confidence score → not flagged
+        * ISCO-classification field with no code  → ``FlagReason.MISSING_ISCO``
+        * ISCO code present but confidence < threshold → ``FlagReason.LOW_CONFIDENCE_ISCO``
+        * Non-ISCO fields (employment_status, industry, …) → never flagged
         """
         flagged: list[FlaggedItem] = []
         for r in responses:
             has_isco = bool(r.isco_code and str(r.isco_code).strip())
-            if not has_isco:
+            is_isco_field = r.question_id in self._ISCO_QUESTION_IDS
+
+            if is_isco_field and not has_isco:
                 flagged.append(FlaggedItem(
                     response_id=r.id,
                     question_id=r.question_id,
@@ -497,7 +505,7 @@ class HITLQualityManager:
                     ),
                     confidence=r.confidence_score,
                 ))
-            elif (
+            elif has_isco and (
                 r.confidence_score is not None
                 and r.confidence_score < self._low_conf_thresh
             ):
@@ -530,9 +538,15 @@ class HITLQualityManager:
             if r.confidence_score is not None
         ]
         avg_conf  = sum(scores) / len(scores) if scores else 0.0
-        isco_cov  = with_isco / total if total > 0 else 0.0
+        # Coverage = fraction of ISCO-classification fields that were coded.
+        # Only job_title / last_job_title are expected to carry ISCO codes.
+        isco_expected = sum(
+            1 for r in responses
+            if r.question_id in self._ISCO_QUESTION_IDS
+        )
+        isco_cov  = with_isco / isco_expected if isco_expected > 0 else 0.0
         low_conf  = sum(1 for s in scores if s < self._low_conf_thresh)
-        missing   = total - with_isco
+        missing   = max(0, isco_expected - with_isco)
 
         return QualityMetrics(
             session_id=session_id,

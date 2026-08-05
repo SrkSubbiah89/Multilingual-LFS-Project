@@ -1,0 +1,93 @@
+{
+  "total_codeset_rows": 4315,
+  "codeset_excluded_category_rows": 246,
+  "codeset_recovered_float_precision_keys": 71,
+  "codeset_duplicate_keys_last_wins": 1,
+  "total_mappings_rows": 4469,
+  "mappings_duplicate_keys_last_wins": 107,
+  "records_written": 4232,
+  "quarantined_bad_codes": 8,
+  "orphans_title_without_code": 78,
+  "per_language_title_counts": {
+    "en": 4230,
+    "ar": 4167,
+    "ur": 3989,
+    "hi": 4202,
+    "tl": 4172
+  },
+  "industry_records_written": 4291,
+  "industry_records_with_nace2_0": 737,
+  "industry_records_with_nace2004_crosstab": 4232,
+  "output_path": "C:\\Multilingual_LFS_Project\\backend\\evaluation\\wisco\\data\\processed\\wisco_raw_parsed.json",
+  "industry_output_path": "C:\\Multilingual_LFS_Project\\backend\\evaluation\\wisco\\data\\processed\\wisco_industry_crosswalk.json",
+  "quarantined_examples": [
+    {
+      "key": 110010000000,
+      "isco4_raw": 110,
+      "isco3_raw": 110,
+      "isco2_raw": 11,
+      "isco1_raw": 1
+    },
+    {
+      "key": 110020000000,
+      "isco4_raw": 110,
+      "isco3_raw": 110,
+      "isco2_raw": 11,
+      "isco1_raw": 1
+    },
+    {
+      "key": 210010000000,
+      "isco4_raw": 210,
+      "isco3_raw": 210,
+      "isco2_raw": 21,
+      "isco1_raw": 2
+    },
+    {
+      "key": 310020000000,
+      "isco4_raw": 310,
+      "isco3_raw": 310,
+      "isco2_raw": 31,
+      "isco1_raw": 3
+    },
+    {
+      "key": 310030000000,
+      "isco4_raw": 310,
+      "isco3_raw": 310,
+      "isco2_raw": 31,
+      "isco1_raw": 3
+    },
+    {
+      "key": 310040000000,
+      "isco4_raw": 310,
+      "isco3_raw": 310,
+      "isco2_raw": 31,
+      "isco1_raw": 3
+    },
+    {
+      "key": 310050000000,
+      "isco4_raw": 310,
+      "isco3_raw": 310,
+      "isco2_raw": 31,
+      "isco1_raw": 3
+    },
+    {
+      "key": 310060000000,
+      "isco4_raw": 310,
+      "isco3_raw": 310,
+      "isco2_raw": 31,
+      "isco1_raw": 3
+    }
+  ],
+  "orphan_examples": [
+    "1100100000008420",
+    "1100200000008420",
+    "2100100000008420",
+    "3100200000008420",
+    "3100300000008420",
+    "3100400000008420",
+    "3100500000008420",
+    "3100600000008420",
+    "13440003000168800",
+    "14390300000007900"
+  ]
+}

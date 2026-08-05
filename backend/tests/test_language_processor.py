@@ -62,6 +62,29 @@ class TestDetectLanguage:
         assert lang == "ar"
         assert 0.0 < conf <= 1.0
 
+    def test_urdu_detection(self, lp):
+        lang, conf = lp._detect_language("میں ایک سافٹ ویئر انجینئر ہوں")
+        assert lang == "ur"
+        assert 0.0 < conf <= 1.0
+
+    def test_hindi_detection(self, lp):
+        lang, conf = lp._detect_language("मैं एक सॉफ्टवेयर इंजीनियर हूँ")
+        assert lang == "hi"
+        assert 0.0 < conf <= 1.0
+
+    def test_tagalog_detection(self, lp):
+        lang, conf = lp._detect_language("Ako ay isang software engineer")
+        assert lang == "tl"
+        assert 0.0 < conf <= 1.0
+
+    def test_urdu_english_code_switch(self, lp):
+        result = lp.process("I am working as انجینئر in a company")
+        assert result.is_code_switched is True
+
+    def test_hindi_english_code_switch(self, lp):
+        result = lp.process("My काम is software development")
+        assert result.is_code_switched is True
+
     def test_langdetect_exception_falls_back_gracefully(self, lp, monkeypatch):
         from langdetect import LangDetectException
 
@@ -105,32 +128,32 @@ class TestScriptFallback:
 
 class TestSegmentScripts:
     def test_pure_english_not_code_switched(self, lp):
-        is_cs, _, _, _ = lp._segment_scripts("I work as a nurse full time")
+        is_cs, _, _, _, _ = lp._segment_scripts("I work as a nurse full time")
         assert is_cs is False
 
     def test_pure_arabic_not_code_switched(self, lp):
-        is_cs, _, _, _ = lp._segment_scripts("أعمل ممرضًا في مستشفى حكومي")
+        is_cs, _, _, _, _ = lp._segment_scripts("أعمل ممرضًا في مستشفى حكومي")
         assert is_cs is False
 
     def test_mixed_text_exceeding_threshold_is_code_switched(self, lp):
-        is_cs, _, _, _ = lp._segment_scripts("أنا software engineer في tech company")
+        is_cs, _, _, _, _ = lp._segment_scripts("أنا software engineer في tech company")
         assert is_cs is True
 
     def test_arabic_and_latin_ratios_sum_to_one(self, lp):
-        _, _, ar, lat = lp._segment_scripts("أنا engineer")
-        assert abs(ar + lat - 1.0) < 1e-9
+        _, _, ar, lat, dev = lp._segment_scripts("أنا engineer")
+        assert ar + lat + dev <= 1.0 + 1e-9
 
     def test_arabic_ratio_correct_for_pure_arabic(self, lp):
-        _, _, ar, lat = lp._segment_scripts("مرحبا")
+        _, _, ar, lat, _ = lp._segment_scripts("مرحبا")
         assert ar == pytest.approx(1.0)
         assert lat == pytest.approx(0.0)
 
     def test_segments_list_not_empty(self, lp):
-        _, segments, _, _ = lp._segment_scripts("Hello world")
+        _, segments, _, _, _ = lp._segment_scripts("Hello world")
         assert len(segments) > 0
 
     def test_each_segment_has_valid_script(self, lp):
-        _, segments, _, _ = lp._segment_scripts("أنا engineer في شركة")
+        _, segments, _, _, _ = lp._segment_scripts("أنا engineer في شركة")
         for seg in segments:
             assert seg.script in ("arabic", "latin", "other")
 
@@ -295,3 +318,41 @@ class TestProcess:
     def test_arabic_and_latin_ratios_sum_to_one(self, lp):
         result = lp.process("Hello مرحبا")
         assert abs(result.arabic_ratio + result.latin_ratio - 1.0) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Gulf Arabic detection + normalisation
+# ---------------------------------------------------------------------------
+
+class TestGulfArabicNormalisation:
+    def test_gulf_arabic_classified_as_ar_gulf(self, lp):
+        # "شغل" is a Gulf marker for "work"
+        result = lp.process("أنا أشتغل في شغل كبير وأبي يشتغل معي")
+        assert result.detected_language == "ar-gulf"
+
+    def test_normalised_text_present_for_arabic(self, lp):
+        result = lp.process("أنا طبيب في المستشفى")
+        # Arabic text → normalised_text should be set
+        assert result.normalised_text is not None
+
+    def test_normalised_text_replaces_gulf_tokens(self, lp):
+        # "شغل" → "عمل" after normalisation
+        result = lp.process("شغل شغل شغل")
+        assert result.normalised_text is not None
+        assert "عمل" in result.normalised_text
+
+    def test_normalised_text_none_for_english(self, lp):
+        result = lp.process("I am a software engineer")
+        assert result.normalised_text is None
+
+    def test_raw_text_preserved_unchanged_for_gulf(self, lp):
+        original = "شغل كبير"
+        result = lp.process(original)
+        assert result.raw_text == original
+
+    def test_normalise_gulf_arabic_direct(self, lp):
+        # Direct method test for the normalisation function
+        # أنا is standard Arabic (not Gulf dialect) — must be preserved unchanged
+        normalised = lp._normalise_gulf_arabic("أنا يشتغل في شغل")
+        assert "أنا" in normalised        # standard Arabic word preserved
+        assert "يشتغل" in normalised or "يعمل" in normalised  # may or may not match

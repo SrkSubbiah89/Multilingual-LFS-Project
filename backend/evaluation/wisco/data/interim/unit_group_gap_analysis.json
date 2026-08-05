@@ -1,0 +1,99 @@
+{
+  "wisco_total_units": 436,
+  "our_total_units": 441,
+  "overlap": 422,
+  "wisco_only": [
+    "6210",
+    "6221",
+    "6222",
+    "6223",
+    "6224",
+    "6310",
+    "6320",
+    "6330",
+    "6340",
+    "7119",
+    "9622",
+    "9623",
+    "9624",
+    "9629"
+  ],
+  "ours_only": [
+    {
+      "code": "1347",
+      "label": "Professional Services Managers, NEC"
+    },
+    {
+      "code": "6124",
+      "label": "Apiarists and Sericulturists"
+    },
+    {
+      "code": "6141",
+      "label": "Forestry Workers"
+    },
+    {
+      "code": "6142",
+      "label": "Charcoal Burners and Related Workers"
+    },
+    {
+      "code": "6150",
+      "label": "Aquaculture Workers"
+    },
+    {
+      "code": "6161",
+      "label": "Subsistence Crop Farmers"
+    },
+    {
+      "code": "6162",
+      "label": "Subsistence Livestock Farmers"
+    },
+    {
+      "code": "6163",
+      "label": "Subsistence Mixed Crop and Livestock Farmers"
+    },
+    {
+      "code": "6164",
+      "label": "Subsistence Fishers, Hunters, Trappers and Gatherers"
+    },
+    {
+      "code": "7116",
+      "label": "Other Building Frame and Related Trades Workers"
+    },
+    {
+      "code": "9131",
+      "label": "Domestic Housekeepers"
+    },
+    {
+      "code": "9132",
+      "label": "Restaurant Services Workers"
+    },
+    {
+      "code": "9141",
+      "label": "Building Caretakers"
+    },
+    {
+      "code": "9151",
+      "label": "Messengers, Package Deliverers and Luggage Porters"
+    },
+    {
+      "code": "9152",
+      "label": "Doorkeepers and Related Workers"
+    },
+    {
+      "code": "9153",
+      "label": "Vending Machine Operators and Related Workers"
+    },
+    {
+      "code": "9161",
+      "label": "Refuse Workers"
+    },
+    {
+      "code": "9162",
+      "label": "Sweepers and Related Labourers"
+    },
+    {
+      "code": "9420",
+      "label": "Street and Related Service Workers"
+    }
+  ]
+}

@@ -22,6 +22,16 @@ from backend.rag.vector_store import (
 
 
 # ---------------------------------------------------------------------------
+# Shared socket-probe patch (avoids a live Qdrant connection in every test)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def patch_probe(monkeypatch):
+    """Prevent the Qdrant TCP probe from running — no live Qdrant needed."""
+    monkeypatch.setattr("backend.rag.vector_store._probe_qdrant", lambda h, p: None)
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -177,69 +187,74 @@ def _make_hit(code="2512", title_en="Software Developers",
     return hit
 
 
+def _make_qr(hits):
+    """Wrap a list of hits in a query_points-style response object."""
+    return MagicMock(points=hits)
+
+
 class TestSearch:
     def test_empty_query_returns_empty_list(self, vs, mock_qdrant_client):
         results = vs.search("")
         assert results == []
-        mock_qdrant_client.search.assert_not_called()
+        mock_qdrant_client.query_points.assert_not_called()
 
     def test_whitespace_query_returns_empty_list(self, vs, mock_qdrant_client):
         results = vs.search("   ")
         assert results == []
 
     def test_returns_occupation_match_objects(self, vs, mock_qdrant_client):
-        mock_qdrant_client.search.return_value = [_make_hit()]
+        mock_qdrant_client.query_points.return_value = _make_qr([_make_hit()])
         results = vs.search("software developer")
         assert len(results) == 1
         assert isinstance(results[0], OccupationMatch)
 
     def test_result_fields_match_payload(self, vs, mock_qdrant_client):
-        mock_qdrant_client.search.return_value = [
+        mock_qdrant_client.query_points.return_value = _make_qr([
             _make_hit(code="2512", title_en="Software Developers", score=0.85)
-        ]
+        ])
         result = vs.search("developer")[0]
         assert result.code     == "2512"
         assert result.title_en == "Software Developers"
         assert result.confidence == pytest.approx(0.85, abs=1e-4)
 
     def test_confidence_clamped_below_zero(self, vs, mock_qdrant_client):
-        mock_qdrant_client.search.return_value = [_make_hit(score=-0.1)]
+        mock_qdrant_client.query_points.return_value = _make_qr([_make_hit(score=-0.1)])
         result = vs.search("query")[0]
         assert result.confidence == 0.0
 
     def test_confidence_clamped_above_one(self, vs, mock_qdrant_client):
-        mock_qdrant_client.search.return_value = [_make_hit(score=1.1)]
+        mock_qdrant_client.query_points.return_value = _make_qr([_make_hit(score=1.1)])
         result = vs.search("query")[0]
         assert result.confidence == 1.0
 
     def test_confidence_rounded_to_4_decimal_places(self, vs, mock_qdrant_client):
-        mock_qdrant_client.search.return_value = [_make_hit(score=0.123456789)]
+        mock_qdrant_client.query_points.return_value = _make_qr([_make_hit(score=0.123456789)])
         result = vs.search("query")[0]
         assert result.confidence == pytest.approx(0.1235, abs=1e-4)
 
     def test_top_k_passed_to_qdrant(self, vs, mock_qdrant_client):
-        mock_qdrant_client.search.return_value = []
+        mock_qdrant_client.query_points.return_value = _make_qr([])
         vs.search("nurse", top_k=3)
-        _, call_kwargs = mock_qdrant_client.search.call_args
+        _, call_kwargs = mock_qdrant_client.query_points.call_args
         assert call_kwargs.get("limit") == 3
 
     def test_default_top_k_is_five(self, vs, mock_qdrant_client):
-        mock_qdrant_client.search.return_value = []
+        mock_qdrant_client.query_points.return_value = _make_qr([])
         vs.search("doctor")
-        _, call_kwargs = mock_qdrant_client.search.call_args
+        _, call_kwargs = mock_qdrant_client.query_points.call_args
         assert call_kwargs.get("limit") == 5
 
     def test_multiple_results_returned(self, vs, mock_qdrant_client):
-        mock_qdrant_client.search.return_value = [
+        mock_qdrant_client.query_points.return_value = _make_qr([
             _make_hit("2512", score=0.90),
             _make_hit("2511", score=0.80),
             _make_hit("2513", score=0.70),
-        ]
+        ])
         results = vs.search("developer", top_k=3)
         assert len(results) == 3
 
     def test_query_prefixed_with_query_tag(self, vs, mock_qdrant_client, mock_model):
-        mock_qdrant_client.search.return_value = []
+        mock_qdrant_client.query_points.return_value = _make_qr([])
         vs.search("nurse")
         encode_call_texts = mock_model.encode.call_args[0][0]
         assert encode_call_texts[0].startswith("query: ")

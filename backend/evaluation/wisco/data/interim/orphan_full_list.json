@@ -1,0 +1,318 @@
+[
+  {
+    "key": 1100100000008420,
+    "master_label": "Commissioned officer armed forces"
+  },
+  {
+    "key": 1100200000008420,
+    "master_label": "Military operations leader"
+  },
+  {
+    "key": 2100100000008420,
+    "master_label": "Non-commissioned officer armed forces"
+  },
+  {
+    "key": 3100200000008420,
+    "master_label": "Military air operations crew member"
+  },
+  {
+    "key": 3100300000008420,
+    "master_label": "Military weapons specialist"
+  },
+  {
+    "key": 3100400000008420,
+    "master_label": "Seaman, military operations crew member"
+  },
+  {
+    "key": 3100500000008420,
+    "master_label": "Soldier, military operations crew member"
+  },
+  {
+    "key": 3100600000008420,
+    "master_label": "Special forces crew member"
+  },
+  {
+    "key": 13440003000168800,
+    "master_label": "Manager welfare services centre"
+  },
+  {
+    "key": 14390300000007900,
+    "master_label": "Manager travel agency"
+  },
+  {
+    "key": 23420002000168500,
+    "master_label": "Pre-school teacher"
+  },
+  {
+    "key": 26351900000006400,
+    "master_label": "Credit counsellor"
+  },
+  {
+    "key": 26510400000009000,
+    "master_label": "Graphic artist"
+  },
+  {
+    "key": 31190401360171300,
+    "master_label": "Chemical laboratory worker"
+  },
+  {
+    "key": 31190401360171400,
+    "master_label": "Chemical laboratory worker"
+  },
+  {
+    "key": 34230013000169300,
+    "master_label": "Recreation program worker for prisoners"
+  },
+  {
+    "key": 34230016000169300,
+    "master_label": "Yoga trainer"
+  },
+  {
+    "key": 34340001000165600,
+    "master_label": "Chef de Partie"
+  },
+  {
+    "key": 34340002000165600,
+    "master_label": "Commis chef"
+  },
+  {
+    "key": 34340003000165600,
+    "master_label": "Head chef"
+  },
+  {
+    "key": 34340016000165600,
+    "master_label": "Pastry chef"
+  },
+  {
+    "key": 34340019000165600,
+    "master_label": "Traditional pastrymaker"
+  },
+  {
+    "key": 34340102000005600,
+    "master_label": "Sous chef"
+  },
+  {
+    "key": 35210003000169300,
+    "master_label": "Cinema projectionist"
+  },
+  {
+    "key": 42220600000008200,
+    "master_label": "First line supervisor call centre agents"
+  },
+  {
+    "key": 51200004000165600,
+    "master_label": "Korean food cook"
+  },
+  {
+    "key": 51200013000164896,
+    "master_label": "Railway restaurant cook"
+  },
+  {
+    "key": 51200015000165600,
+    "master_label": "Tea cook"
+  },
+  {
+    "key": 51201100000005600,
+    "master_label": "European food cook"
+  },
+  {
+    "key": 54142000000005504,
+    "master_label": "Hotel doorman"
+  },
+  {
+    "key": 61210700000000096,
+    "master_label": "Fur farmer domestic animals"
+  },
+  {
+    "key": 63400001000160304,
+    "master_label": "Subsistence fisher"
+  },
+  {
+    "key": 72140200000003008,
+    "master_label": "Ship builder"
+  },
+  {
+    "key": 72310800000004496,
+    "master_label": "Master car mechanic"
+  },
+  {
+    "key": 72330601360171296,
+    "master_label": "Steam machine operator"
+  },
+  {
+    "key": 72330601360171504,
+    "master_label": "Steam machine operator"
+  },
+  {
+    "key": 72330602360171296,
+    "master_label": "Production machine mechanic"
+  },
+  {
+    "key": 72330606360171296,
+    "master_label": "Spinning machine mechanic"
+  },
+  {
+    "key": 72330606360171296,
+    "master_label": "Sewing machine mechanic"
+  },
+  {
+    "key": 72330606360171504,
+    "master_label": "Sewing machine mechanic"
+  },
+  {
+    "key": 72330607360171296,
+    "master_label": "Weaving machine mechanic"
+  },
+  {
+    "key": 73170300000001600,
+    "master_label": "Wooden toy maker"
+  },
+  {
+    "key": 73220701360171296,
+    "master_label": "Printing machine operator"
+  },
+  {
+    "key": 73220701360171504,
+    "master_label": "Printing machine operator"
+  },
+  {
+    "key": 74119900000001408,
+    "master_label": "Electrician"
+  },
+  {
+    "key": 74121100000000496,
+    "master_label": "Mine electrician"
+  },
+  {
+    "key": 74220009000166096,
+    "master_label": "Telephone installer"
+  },
+  {
+    "key": 75120007000160992,
+    "master_label": "Confectionery maker (manufacturing)"
+  },
+  {
+    "key": 75160500000001200,
+    "master_label": "Cigarette maker"
+  },
+  {
+    "key": 75320201360171296,
+    "master_label": "Cutting operator"
+  },
+  {
+    "key": 75320902360171296,
+    "master_label": "Pattern maker or drawer"
+  },
+  {
+    "key": 75330202360171296,
+    "master_label": "Embroidery machine operator"
+  },
+  {
+    "key": 75431102360171296,
+    "master_label": "Quality Check (QC) sewing"
+  },
+  {
+    "key": 75431102360171392,
+    "master_label": "Quality Check (QC) sewing"
+  },
+  {
+    "key": 75431102360171504,
+    "master_label": "Quality Check (QC) sewing"
+  },
+  {
+    "key": 75431205360171296,
+    "master_label": "Quality Check (QC) cutting"
+  },
+  {
+    "key": 75431205360171504,
+    "master_label": "Quality Check (QC) cutting"
+  },
+  {
+    "key": 81510100000211392,
+    "master_label": "Press operator"
+  },
+  {
+    "key": 81520101360171296,
+    "master_label": "Weaving machine operator"
+  },
+  {
+    "key": 81530101360171296,
+    "master_label": "Sewing machine operator"
+  },
+  {
+    "key": 81530105360171392,
+    "master_label": "Button machine operator"
+  },
+  {
+    "key": 81540107360171392,
+    "master_label": "Dyeing machine operator"
+  },
+  {
+    "key": 81540107360171504,
+    "master_label": "Dyeing machine operator"
+  },
+  {
+    "key": 81570101360171504,
+    "master_label": "Washing machine operator"
+  },
+  {
+    "key": 81570102360171504,
+    "master_label": "Drying machine operator"
+  },
+  {
+    "key": 81590100000211296,
+    "master_label": "Other Operator"
+  },
+  {
+    "key": 81590100000211392,
+    "master_label": "Other Operator"
+  },
+  {
+    "key": 81590100000211504,
+    "master_label": "Other Operator"
+  },
+  {
+    "key": 81603500000000992,
+    "master_label": "Chewing-gum maker"
+  },
+  {
+    "key": 81830102360171296,
+    "master_label": "Labeling staff"
+  },
+  {
+    "key": 81890403360171296,
+    "master_label": "Line supervisor"
+  },
+  {
+    "key": 82190400000001696,
+    "master_label": "Paperboard products assembler"
+  },
+  {
+    "key": 82190500000002208,
+    "master_label": "Plastic products assembler"
+  },
+  {
+    "key": 82190600000002208,
+    "master_label": "Rubber products assembler"
+  },
+  {
+    "key": 93310100000005296,
+    "master_label": "Bicycle courier"
+  },
+  {
+    "key": 93330002000165200,
+    "master_label": "Baggage handler (airport)"
+  },
+  {
+    "key": 93331700000004896,
+    "master_label": "Remover"
+  },
+  {
+    "key": 96210800000005296,
+    "master_label": "Courier"
+  },
+  {
+    "key": 96291200000008992,
+    "master_label": "Theatre programme vendor"
+  }
+]

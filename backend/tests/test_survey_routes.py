@@ -155,11 +155,19 @@ class TestDeleteSession:
         resp = auth_client.get(f"/survey/sessions/{sid}")
         assert resp.status_code == 404
 
-    def test_delete_cascades_responses(self, auth_client, survey_session, survey_response, db):
+    def test_delete_soft_deletes_session_responses_retained(self, auth_client, survey_session, survey_response, db):
+        # Soft-delete: session gets a deleted_at stamp; SurveyResponse rows are
+        # retained in the DB for GDPR audit trail purposes.
+        from backend.database.models import SurveySession, SurveyResponse
         sid = survey_session["id"]
         rid = survey_response["id"]
         auth_client.delete(f"/survey/sessions/{sid}")
-        assert db.get(SurveyResponse, rid) is None
+        db.expire_all()
+        sess_row = db.get(SurveySession, sid)
+        assert sess_row is not None
+        assert sess_row.deleted_at is not None
+        resp_row = db.get(SurveyResponse, rid)
+        assert resp_row is not None
 
     def test_not_found_returns_404(self, auth_client):
         resp = auth_client.delete("/survey/sessions/9999")

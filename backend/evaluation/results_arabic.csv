@@ -1,0 +1,2 @@
+system_name,top1_accuracy,top3_accuracy,cohen_kappa,hitl_rate,avg_latency_ms,p95_latency_ms,p99_latency_ms,n_evaluated,errors
+hierarchical,0.2667,0.4667,0.813,0.0,484.82,810.35,1080.32,30,0

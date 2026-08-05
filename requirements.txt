@@ -7,6 +7,7 @@ redis
 qdrant-client
 openai
 anthropic
+litellm
 pyotp
 python-jose[cryptography]
 passlib[bcrypt]
@@ -20,3 +21,6 @@ python-dotenv
 httpx
 pydantic[email]
 alembic
+rank-bm25
+slowapi
+openpyxl

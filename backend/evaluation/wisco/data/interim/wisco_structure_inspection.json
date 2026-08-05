@@ -1,0 +1,3445 @@
+{
+  "sheets": [
+    {
+      "name": "CODESET",
+      "rows": 4746,
+      "cols": 233,
+      "header": [
+        "occupai3_API_13dgt",
+        "MASTER LABEL 4000",
+        "am_ET",
+        "ar_AE",
+        "ar_BH",
+        "ar_DJ",
+        "ar_DZ",
+        "ar_EG",
+        "ar_ER",
+        "ar_IQ",
+        "ar_JO",
+        "ar_KM",
+        "ar_KW",
+        "ar_LB",
+        "ar_LY",
+        "ar_MA",
+        "ar_MR",
+        "ar_OM",
+        "ar_PS",
+        "ar_QA",
+        "ar_SA",
+        "ar_SD",
+        "ar_SY",
+        "ar_TN",
+        "ar_YE",
+        "az_AZ",
+        "ba_ID",
+        "bg_BG",
+        "bn_BD",
+        "bs_BA",
+        "cs_CZ",
+        "da_DK",
+        "de_AT",
+        "de_CH",
+        "de_DE",
+        "de_LI",
+        "de_LU",
+        "dz_BT",
+        "el_CY",
+        "el_GR",
+        "en_AD",
+        "en_AG",
+        "en_AU",
+        "en_BB",
+        "en_BD",
+        "en_BS",
+        "en_BW",
+        "en_BZ",
+        "en_CA",
+        "en_CK",
+        "en_DM",
+        "en_ET",
+        "en_FJ",
+        "en_FM",
+        "en_GB",
+        "en_GD",
+        "en_GH",
+        "en_GM",
+        "en_GY",
+        "en_ID",
+        "en_IE",
+        "en_IN",
+        "en_JM",
+        "en_KE",
+        "en_KH",
+        "en_KI",
+        "en_KN",
+        "en_KY",
+        "en_LC",
+        "en_LK",
+        "en_LR",
+        "en_LS",
+        "en_MH",
+        "en_MT",
+        "en_MU",
+        "en_MV",
+        "en_MW",
+        "en_NA",
+        "en_NG",
+        "en_NR",
+        "en_NZ",
+        "en_PG",
+        "en_PH",
+        "en_PK",
+        "en_PW",
+        "en_RW",
+        "en_SB",
+        "en_SC",
+        "en_SG",
+        "en_SL",
+        "en_SR",
+        "en_SS",
+        "en_SZ",
+        "en_TO",
+        "en_TT",
+        "en_TV",
+        "en_TZ",
+        "en_UG",
+        "en_US",
+        "en_VC",
+        "en_VU",
+        "en_WS",
+        "en_ZA",
+        "en_ZM",
+        "en_ZW",
+        "es_AD",
+        "es_AR",
+        "es_BO",
+        "es_CL",
+        "es_CO",
+        "es_CQ",
+        "es_CR",
+        "es_CU",
+        "es_DO",
+        "es_EC",
+        "es_ES",
+        "es_GQ",
+        "es_GT",
+        "es_HN",
+        "es_MX",
+        "es_NI",
+        "es_PA",
+        "es_PE",
+        "es_PR",
+        "es_PY",
+        "es_SV",
+        "es_US",
+        "es_UY",
+        "es_VE",
+        "et_EE",
+        "fa_AF",
+        "fa_IR",
+        "fi_FI",
+        "fr_BE",
+        "fr_BF",
+        "fr_BI",
+        "fr_BJ",
+        "fr_CA",
+        "fr_CD",
+        "fr_CF",
+        "fr_CG",
+        "fr_CH",
+        "fr_CI",
+        "fr_CM",
+        "fr_FR",
+        "fr_GA",
+        "fr_GN",
+        "fr_HT",
+        "fr_LU",
+        "fr_MC",
+        "fr_MG",
+        "fr_ML",
+        "fr_MU",
+        "fr_NC",
+        "fr_NE",
+        "fr_RE",
+        "fr_RW",
+        "fr_SN",
+        "fr_TD",
+        "fr_TG",
+        "fr_TN",
+        "he_IL",
+        "hi_IN",
+        "hr_BA",
+        "hr_HR",
+        "hu_HU",
+        "hy_AM",
+        "is_IS",
+        "it_IT",
+        "it_IT",
+        "ja_JP",
+        "ka_GE",
+        "kk_KZ",
+        "km_KH",
+        "ko_KP",
+        "ko_KR",
+        "lo_LA",
+        "lt_LT",
+        "lv_LV",
+        "mk_MK",
+        "mn_MN",
+        "ms_BN",
+        "ms_MY",
+        "my_MM",
+        "ne_NP",
+        "nl_AW",
+        "nl_BE",
+        "nl_NL",
+        "nl_SR",
+        "no_NO",
+        "pl_PL",
+        "pt_AO",
+        "pt_BR",
+        "pt_CV",
+        "pt_GW",
+        "pt_MZ",
+        "pt_PT",
+        "pt_ST",
+        "pt_TL",
+        "ro_MD",
+        "ro_RO",
+        "ru_AZ",
+        "ru_BY",
+        "ru_KG",
+        "ru_KZ",
+        "ru_RU",
+        "ru_TJ",
+        "ru_UA",
+        "si_LK",
+        "sk_SK",
+        "sl_SI",
+        "so_SO",
+        "sq_AL",
+        "sq_MK",
+        "sq_XK",
+        "sr_ME",
+        "sr_RS",
+        "sv_SE",
+        "sw_BI",
+        "sw_TZ",
+        "th_TH",
+        "tk_TM",
+        "tl_PH",
+        "tr_TR",
+        "uk_UA",
+        "ur_PK",
+        "uz_TM",
+        "uz_UZ",
+        "vi_VN",
+        "zh_CN",
+        "zh_HK",
+        "zh_SG",
+        "zh_TW"
+      ],
+      "columns": [
+        {
+          "name": "occupai3_API_13dgt",
+          "index": 0,
+          "examples": [
+            110000100018,
+            110000200018,
+            110000300018,
+            110000400018,
+            110000500018
+          ]
+        },
+        {
+          "name": "MASTER LABEL 4000",
+          "index": 1,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "am_ET",
+          "index": 2,
+          "examples": []
+        },
+        {
+          "name": "ar_AE",
+          "index": 3,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_BH",
+          "index": 4,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_DJ",
+          "index": 5,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_DZ",
+          "index": 6,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_EG",
+          "index": 7,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_ER",
+          "index": 8,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_IQ",
+          "index": 9,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_JO",
+          "index": 10,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_KM",
+          "index": 11,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_KW",
+          "index": 12,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_LB",
+          "index": 13,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_LY",
+          "index": 14,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_MA",
+          "index": 15,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_MR",
+          "index": 16,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_OM",
+          "index": 17,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_PS",
+          "index": 18,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_QA",
+          "index": 19,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_SA",
+          "index": 20,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_SD",
+          "index": 21,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_SY",
+          "index": 22,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_TN",
+          "index": 23,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "ar_YE",
+          "index": 24,
+          "examples": [
+            "قائد سلاح الجو",
+            "مارشال سلاح الجو",
+            "طيار سلاح الجو",
+            "قائد الجيش",
+            "عقيد الجيش"
+          ]
+        },
+        {
+          "name": "az_AZ",
+          "index": 25,
+          "examples": []
+        },
+        {
+          "name": "ba_ID",
+          "index": 26,
+          "examples": [
+            "Kapten TNI AU",
+            "Marsekal TNI AU",
+            "Pilot TNI AU",
+            "Kapten TNI AD",
+            "Kolonel TNI AD"
+          ]
+        },
+        {
+          "name": "bg_BG",
+          "index": 27,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "bn_BD",
+          "index": 28,
+          "examples": []
+        },
+        {
+          "name": "bs_BA",
+          "index": 29,
+          "examples": [
+            "Kapetan vazduhoplovstva",
+            "Maršal vazduhoplovstva",
+            "Pilot vazduhoplovstva",
+            "Vojni kapetan",
+            "Vojni pukovnik"
+          ]
+        },
+        {
+          "name": "cs_CZ",
+          "index": 30,
+          "examples": [
+            "Kapitán vzdušných sil",
+            "Maršál vzdušných sil",
+            "",
+            "Armádní kapitán",
+            "Armádní plukovník"
+          ]
+        },
+        {
+          "name": "da_DK",
+          "index": 31,
+          "examples": [
+            "Luftkaptajn i forsvaret",
+            "Marskal i luftværnet",
+            "Pilot i luftværnet",
+            "Kaptajn i hæren",
+            "Oberst i hæren"
+          ]
+        },
+        {
+          "name": "de_AT",
+          "index": 32,
+          "examples": [
+            "Luftwaffenkapitän",
+            "Luftwaffenmarschall",
+            "Luftwaffenpilot/in",
+            "Armeekapitän",
+            "Armee Oberst"
+          ]
+        },
+        {
+          "name": "de_CH",
+          "index": 33,
+          "examples": [
+            "Luftwaffenkapitän",
+            "Luftwaffenmarschall",
+            "Luftwaffenpilot/in",
+            "Armeekapitän",
+            "Armee Oberst"
+          ]
+        },
+        {
+          "name": "de_DE",
+          "index": 34,
+          "examples": [
+            "Luftwaffenkapitän",
+            "Luftwaffenmarschall",
+            "Luftwaffenpilot/in",
+            "Armeekapitän",
+            "Armee Oberst"
+          ]
+        },
+        {
+          "name": "de_LI",
+          "index": 35,
+          "examples": [
+            "Luftwaffenkapitän",
+            "Luftwaffenmarschall",
+            "Luftwaffenpilot/in",
+            "Armeekapitän",
+            "Armee Oberst"
+          ]
+        },
+        {
+          "name": "de_LU",
+          "index": 36,
+          "examples": [
+            "Luftwaffenkapitän",
+            "Luftwaffenmarschall",
+            "Luftwaffenpilot/in",
+            "Armeekapitän",
+            "Armee Oberst"
+          ]
+        },
+        {
+          "name": "dz_BT",
+          "index": 37,
+          "examples": []
+        },
+        {
+          "name": "el_CY",
+          "index": 38,
+          "examples": [
+            "Σμηναγός πολεμικής αεροπορίας",
+            "Στρατάρχης πολεμικής αεροπορίας",
+            "Πιλότος πολεμικής αεροπορίας",
+            "Σμηναγός στρατού",
+            "Συνταγματάρχης στρατού"
+          ]
+        },
+        {
+          "name": "el_GR",
+          "index": 39,
+          "examples": [
+            "Σμηναγός πολεμικής αεροπορίας",
+            "Στρατάρχης πολεμικής αεροπορίας",
+            "Πιλότος πολεμικής αεροπορίας",
+            "Σμηναγός στρατού",
+            "Συνταγματάρχης στρατού"
+          ]
+        },
+        {
+          "name": "en_AD",
+          "index": 40,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_AG",
+          "index": 41,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_AU",
+          "index": 42,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_BB",
+          "index": 43,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_BD",
+          "index": 44,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_BS",
+          "index": 45,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_BW",
+          "index": 46,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_BZ",
+          "index": 47,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_CA",
+          "index": 48,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_CK",
+          "index": 49,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_DM",
+          "index": 50,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_ET",
+          "index": 51,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_FJ",
+          "index": 52,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_FM",
+          "index": 53,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_GB",
+          "index": 54,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_GD",
+          "index": 55,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_GH",
+          "index": 56,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_GM",
+          "index": 57,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_GY",
+          "index": 58,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_ID",
+          "index": 59,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_IE",
+          "index": 60,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_IN",
+          "index": 61,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_JM",
+          "index": 62,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_KE",
+          "index": 63,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_KH",
+          "index": 64,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_KI",
+          "index": 65,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_KN",
+          "index": 66,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_KY",
+          "index": 67,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_LC",
+          "index": 68,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_LK",
+          "index": 69,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_LR",
+          "index": 70,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_LS",
+          "index": 71,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_MH",
+          "index": 72,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_MT",
+          "index": 73,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_MU",
+          "index": 74,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_MV",
+          "index": 75,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_MW",
+          "index": 76,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_NA",
+          "index": 77,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_NG",
+          "index": 78,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_NR",
+          "index": 79,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_NZ",
+          "index": 80,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_PG",
+          "index": 81,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_PH",
+          "index": 82,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_PK",
+          "index": 83,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_PW",
+          "index": 84,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_RW",
+          "index": 85,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_SB",
+          "index": 86,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_SC",
+          "index": 87,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_SG",
+          "index": 88,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_SL",
+          "index": 89,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_SR",
+          "index": 90,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_SS",
+          "index": 91,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_SZ",
+          "index": 92,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_TO",
+          "index": 93,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_TT",
+          "index": 94,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_TV",
+          "index": 95,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_TZ",
+          "index": 96,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_UG",
+          "index": 97,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_US",
+          "index": 98,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_VC",
+          "index": 99,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_VU",
+          "index": 100,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_WS",
+          "index": 101,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_ZA",
+          "index": 102,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_ZM",
+          "index": 103,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "en_ZW",
+          "index": 104,
+          "examples": [
+            "Air force captain",
+            "Air force marshal",
+            "Air force pilot",
+            "Army captain",
+            "Army colonel"
+          ]
+        },
+        {
+          "name": "es_AD",
+          "index": 105,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_AR",
+          "index": 106,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_BO",
+          "index": 107,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_CL",
+          "index": 108,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_CO",
+          "index": 109,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_CQ",
+          "index": 110,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_CR",
+          "index": 111,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_CU",
+          "index": 112,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_DO",
+          "index": 113,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_EC",
+          "index": 114,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_ES",
+          "index": 115,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_GQ",
+          "index": 116,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_GT",
+          "index": 117,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_HN",
+          "index": 118,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_MX",
+          "index": 119,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_NI",
+          "index": 120,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_PA",
+          "index": 121,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_PE",
+          "index": 122,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_PR",
+          "index": 123,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_PY",
+          "index": 124,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_SV",
+          "index": 125,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_US",
+          "index": 126,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_UY",
+          "index": 127,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "es_VE",
+          "index": 128,
+          "examples": [
+            "Capitán del Ejército del Aire",
+            "Mariscal del Ejército del Aire",
+            "Piloto del Ejército del Aire",
+            "Capitán del Ejército",
+            "Coronel del Ejército"
+          ]
+        },
+        {
+          "name": "et_EE",
+          "index": 129,
+          "examples": [
+            "Õhujõudude kapten",
+            "Õhujõudude marssal",
+            "Õhujõudude piloot",
+            "Armee kapten",
+            "Armee kolonel"
+          ]
+        },
+        {
+          "name": "fa_AF",
+          "index": 130,
+          "examples": [
+            "کاپیتان نیروی هوایی",
+            "مارشال نیروی هوایی",
+            "",
+            "کاپیتان ارتش",
+            "سرهنگ ارتش"
+          ]
+        },
+        {
+          "name": "fa_IR",
+          "index": 131,
+          "examples": [
+            "کاپیتان نیروی هوایی",
+            "مارشال نیروی هوایی",
+            "",
+            "کاپیتان ارتش",
+            "سرهنگ ارتش"
+          ]
+        },
+        {
+          "name": "fi_FI",
+          "index": 132,
+          "examples": [
+            "Ilmavoimien kapteeni",
+            "Ilmavoimien komentaja",
+            "Ilmavoimien lentäjä",
+            "Maavoimien kapteeni",
+            "Maavoimien eversti"
+          ]
+        },
+        {
+          "name": "fr_BE",
+          "index": 133,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_BF",
+          "index": 134,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_BI",
+          "index": 135,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_BJ",
+          "index": 136,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_CA",
+          "index": 137,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_CD",
+          "index": 138,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_CF",
+          "index": 139,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_CG",
+          "index": 140,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_CH",
+          "index": 141,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_CI",
+          "index": 142,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_CM",
+          "index": 143,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_FR",
+          "index": 144,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_GA",
+          "index": 145,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_GN",
+          "index": 146,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_HT",
+          "index": 147,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_LU",
+          "index": 148,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_MC",
+          "index": 149,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_MG",
+          "index": 150,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_ML",
+          "index": 151,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_MU",
+          "index": 152,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_NC",
+          "index": 153,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_NE",
+          "index": 154,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_RE",
+          "index": 155,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_RW",
+          "index": 156,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_SN",
+          "index": 157,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_TD",
+          "index": 158,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_TG",
+          "index": 159,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "fr_TN",
+          "index": 160,
+          "examples": [
+            "Capitaine de l'armée de l'air",
+            "Maréchal de l'armée de l'air",
+            "Pilote de l'armée de l'air",
+            "Capitaine de l'armée",
+            "Colonel de l'armée"
+          ]
+        },
+        {
+          "name": "he_IL",
+          "index": 161,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "hi_IN",
+          "index": 162,
+          "examples": [
+            "वायु सेना कप्तान",
+            "वायु सेना मार्शल",
+            "वायु सेना पायलट",
+            "सेना कप्तान",
+            "सेना कर्नल"
+          ]
+        },
+        {
+          "name": "hr_BA",
+          "index": 163,
+          "examples": [
+            "Satnik ratnog zrakoplovstva",
+            "Zrakoplovni maršal",
+            "Pilot ratnog zrakoplovstva",
+            "Satnik",
+            "Brigadir"
+          ]
+        },
+        {
+          "name": "hr_HR",
+          "index": 164,
+          "examples": [
+            "Satnik ratnog zrakoplovstva",
+            "Zrakoplovni maršal",
+            "Pilot ratnog zrakoplovstva",
+            "Satnik",
+            "Brigadir"
+          ]
+        },
+        {
+          "name": "hu_HU",
+          "index": 165,
+          "examples": [
+            "Repülőszázados",
+            "Légierő marsallja",
+            "Légierő-pilóta",
+            "Századosa",
+            "Ezredes"
+          ]
+        },
+        {
+          "name": "hy_AM",
+          "index": 166,
+          "examples": []
+        },
+        {
+          "name": "is_IS",
+          "index": 167,
+          "examples": [
+            "",
+            "",
+            "Flugstjóri",
+            "Hershöfðingi",
+            ""
+          ]
+        },
+        {
+          "name": "it_IT",
+          "index": 168,
+          "examples": [
+            "Capitano dell'Aeronautica Militare",
+            "Maresciallo dell'Aeronautica Militare",
+            "Pilota dell'aeronautica",
+            "Capitano dell'esercito",
+            "Colonnello dell'esercito"
+          ]
+        },
+        {
+          "name": "it_IT",
+          "index": 169,
+          "examples": [
+            "Capitano dell'Aeronautica Militare",
+            "Maresciallo dell'Aeronautica Militare",
+            "Pilota dell'aeronautica",
+            "Capitano dell'esercito",
+            "Colonnello dell'esercito"
+          ]
+        },
+        {
+          "name": "ja_JP",
+          "index": 170,
+          "examples": [
+            "空軍大尉",
+            "空軍元帥",
+            "空軍パイロット",
+            "陸軍大尉",
+            "陸軍大佐"
+          ]
+        },
+        {
+          "name": "ka_GE",
+          "index": 171,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "kk_KZ",
+          "index": 172,
+          "examples": [
+            "Әуе күштері капитаны",
+            "Әуе күштері маршалы",
+            "",
+            "Капитан",
+            "Полковник"
+          ]
+        },
+        {
+          "name": "km_KH",
+          "index": 173,
+          "examples": [
+            "កាពីទែនកងទ័ពអាកាស",
+            "សេនាប្រមុខកងទ័ពអាកាស",
+            "វរសេនីយឯកកងទ័ព"
+          ]
+        },
+        {
+          "name": "ko_KP",
+          "index": 174,
+          "examples": [
+            "공군 대위",
+            "공군 원수",
+            "공군 조종사",
+            "육군 대위",
+            "육군 대령"
+          ]
+        },
+        {
+          "name": "ko_KR",
+          "index": 175,
+          "examples": [
+            "공군 대위",
+            "공군 원수",
+            "공군 조종사",
+            "육군 대위",
+            "육군 대령"
+          ]
+        },
+        {
+          "name": "lo_LA",
+          "index": 176,
+          "examples": []
+        },
+        {
+          "name": "lt_LT",
+          "index": 177,
+          "examples": [
+            "Oro pajėgų kapitonas",
+            "Oro pajėgų maršalas",
+            "Oro pajėgų pilotas",
+            "Armijos kapitonas",
+            "Armijos pulkininkas"
+          ]
+        },
+        {
+          "name": "lv_LV",
+          "index": 178,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "mk_MK",
+          "index": 179,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "mn_MN",
+          "index": 180,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "ms_BN",
+          "index": 181,
+          "examples": [
+            "Kapten Tentera Udara",
+            "Marsyal Tentera Udara",
+            "",
+            "Kapten Tentera Darat",
+            "Kolonel Tentera Darat"
+          ]
+        },
+        {
+          "name": "ms_MY",
+          "index": 182,
+          "examples": [
+            "Kapten Tentera Udara",
+            "Marsyal Tentera Udara",
+            "",
+            "Kapten Tentera Darat",
+            "Kolonel Tentera Darat"
+          ]
+        },
+        {
+          "name": "my_MM",
+          "index": 183,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "ne_NP",
+          "index": 184,
+          "examples": []
+        },
+        {
+          "name": "nl_AW",
+          "index": 185,
+          "examples": [
+            "Kapitein bij de luchtmacht",
+            "Marshaller luchtmacht",
+            "Piloot luchtmacht",
+            "Kapitein strijdkrachten",
+            "Kolonel strijdkrachten"
+          ]
+        },
+        {
+          "name": "nl_BE",
+          "index": 186,
+          "examples": [
+            "Kapitein bij de luchtmacht",
+            "Marshaller luchtmacht",
+            "Piloot luchtmacht",
+            "Kapitein strijdkrachten",
+            "Kolonel strijdkrachten"
+          ]
+        },
+        {
+          "name": "nl_NL",
+          "index": 187,
+          "examples": [
+            "Kapitein bij de luchtmacht",
+            "Marshaller luchtmacht",
+            "Piloot luchtmacht",
+            "Kapitein strijdkrachten",
+            "Kolonel strijdkrachten"
+          ]
+        },
+        {
+          "name": "nl_SR",
+          "index": 188,
+          "examples": [
+            "Kapitein bij de luchtmacht",
+            "Marshaller luchtmacht",
+            "Piloot luchtmacht",
+            "Kapitein strijdkrachten",
+            "Kolonel strijdkrachten"
+          ]
+        },
+        {
+          "name": "no_NO",
+          "index": 189,
+          "examples": []
+        },
+        {
+          "name": "pl_PL",
+          "index": 190,
+          "examples": [
+            "Pułkownik Sił Powietrznych",
+            "Generał Sił Powietrznych",
+            "Podporucznik Sił Powietrznych",
+            "Kapitan Wojsk Lądowych",
+            "Pułkownik Wojsk Lądowych"
+          ]
+        },
+        {
+          "name": "pt_AO",
+          "index": 191,
+          "examples": [
+            "Capitão da força aérea",
+            "Marechal da força aérea",
+            "Piloto da força aérea",
+            "Capitão do exército",
+            "Coronel do exército"
+          ]
+        },
+        {
+          "name": "pt_BR",
+          "index": 192,
+          "examples": [
+            "Capitão da força aérea",
+            "Marechal da força aérea",
+            "Piloto da força aérea",
+            "Capitão do exército",
+            "Coronel do exército"
+          ]
+        },
+        {
+          "name": "pt_CV",
+          "index": 193,
+          "examples": [
+            "Capitão da força aérea",
+            "Marechal da força aérea",
+            "Piloto da força aérea",
+            "Capitão do exército",
+            "Coronel do exército"
+          ]
+        },
+        {
+          "name": "pt_GW",
+          "index": 194,
+          "examples": [
+            "Capitão da força aérea",
+            "Marechal da força aérea",
+            "Piloto da força aérea",
+            "Capitão do exército",
+            "Coronel do exército"
+          ]
+        },
+        {
+          "name": "pt_MZ",
+          "index": 195,
+          "examples": [
+            "Capitão da força aérea",
+            "Marechal da força aérea",
+            "Piloto da força aérea",
+            "Capitão do exército",
+            "Coronel do exército"
+          ]
+        },
+        {
+          "name": "pt_PT",
+          "index": 196,
+          "examples": [
+            "Capitão da força aérea",
+            "Marechal da força aérea",
+            "Piloto da força aérea",
+            "Capitão do exército",
+            "Coronel do exército"
+          ]
+        },
+        {
+          "name": "pt_ST",
+          "index": 197,
+          "examples": [
+            "Capitão da força aérea",
+            "Marechal da força aérea",
+            "Piloto da força aérea",
+            "Capitão do exército",
+            "Coronel do exército"
+          ]
+        },
+        {
+          "name": "pt_TL",
+          "index": 198,
+          "examples": [
+            "Capitão da força aérea",
+            "Marechal da força aérea",
+            "Piloto da força aérea",
+            "Capitão do exército",
+            "Coronel do exército"
+          ]
+        },
+        {
+          "name": "ro_MD",
+          "index": 199,
+          "examples": [
+            "Căpitan al forțelor aeriene",
+            "Mareșal al forțelor aeriene",
+            "Pilot al forțelor aeriene",
+            "Căpitan de armată",
+            "Colonel de armată"
+          ]
+        },
+        {
+          "name": "ro_RO",
+          "index": 200,
+          "examples": [
+            "Căpitan al forțelor aeriene",
+            "Mareșal al forțelor aeriene",
+            "Pilot al forțelor aeriene",
+            "Căpitan de armată",
+            "Colonel de armată"
+          ]
+        },
+        {
+          "name": "ru_AZ",
+          "index": 201,
+          "examples": [
+            "Капитан военно-воздужных сил",
+            "Маршал военно-воздужных сил",
+            "Пилот военно-воздужных сил",
+            "Капитан армии",
+            "Полковник армии"
+          ]
+        },
+        {
+          "name": "ru_BY",
+          "index": 202,
+          "examples": [
+            "Капитан военно-воздужных сил",
+            "Маршал военно-воздужных сил",
+            "Пилот военно-воздужных сил",
+            "Капитан армии",
+            "Полковник армии"
+          ]
+        },
+        {
+          "name": "ru_KG",
+          "index": 203,
+          "examples": [
+            "Капитан военно-воздужных сил",
+            "Маршал военно-воздужных сил",
+            "Пилот военно-воздужных сил",
+            "Капитан армии",
+            "Полковник армии"
+          ]
+        },
+        {
+          "name": "ru_KZ",
+          "index": 204,
+          "examples": [
+            "Капитан военно-воздужных сил",
+            "Маршал военно-воздужных сил",
+            "Пилот военно-воздужных сил",
+            "Капитан армии",
+            "Полковник армии"
+          ]
+        },
+        {
+          "name": "ru_RU",
+          "index": 205,
+          "examples": [
+            "Капитан военно-воздужных сил",
+            "Маршал военно-воздужных сил",
+            "Пилот военно-воздужных сил",
+            "Капитан армии",
+            "Полковник армии"
+          ]
+        },
+        {
+          "name": "ru_TJ",
+          "index": 206,
+          "examples": [
+            "Капитан военно-воздужных сил",
+            "Маршал военно-воздужных сил",
+            "Пилот военно-воздужных сил",
+            "Капитан армии",
+            "Полковник армии"
+          ]
+        },
+        {
+          "name": "ru_UA",
+          "index": 207,
+          "examples": [
+            "Капитан военно-воздужных сил",
+            "Маршал военно-воздужных сил",
+            "Пилот военно-воздужных сил",
+            "Капитан армии",
+            "Полковник армии"
+          ]
+        },
+        {
+          "name": "si_LK",
+          "index": 208,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "sk_SK",
+          "index": 209,
+          "examples": [
+            "Kapitán letectva",
+            "Maršál letectva",
+            "Pilot letectva",
+            "Armádny kapitán",
+            "Armádny plukovník"
+          ]
+        },
+        {
+          "name": "sl_SI",
+          "index": 210,
+          "examples": [
+            "Poveljnik letalstva",
+            "Častnik letalstva",
+            "Vojaški pilot",
+            "Stotnik",
+            "Polkovnik"
+          ]
+        },
+        {
+          "name": "so_SO",
+          "index": 211,
+          "examples": []
+        },
+        {
+          "name": "sq_AL",
+          "index": 212,
+          "examples": [
+            "Kapiten i forcave ajrore",
+            "Marshalli i Forcave Ajrore",
+            "Piloti i forcës ajrore",
+            "Kapiten i ushtrisë",
+            "Kolonel i ushtrisë"
+          ]
+        },
+        {
+          "name": "sq_MK",
+          "index": 213,
+          "examples": [
+            "Kapiten i forcave ajrore",
+            "Marshalli i Forcave Ajrore",
+            "Piloti i forcës ajrore",
+            "Kapiten i ushtrisë",
+            "Kolonel i ushtrisë"
+          ]
+        },
+        {
+          "name": "sq_XK",
+          "index": 214,
+          "examples": [
+            "Kapiten i forcave ajrore",
+            "Marshalli i Forcave Ajrore",
+            "Piloti i forcës ajrore",
+            "Kapiten i ushtrisë",
+            "Kolonel i ushtrisë"
+          ]
+        },
+        {
+          "name": "sr_ME",
+          "index": 215,
+          "examples": [
+            "Kapetan vazduhoplovstva",
+            "",
+            "Pilot vazduhoplovstva",
+            "Vojni kapetan",
+            "Vojni pukovnik"
+          ]
+        },
+        {
+          "name": "sr_RS",
+          "index": 216,
+          "examples": [
+            "Kapetan vazduhoplovstva",
+            "",
+            "Pilot vazduhoplovstva",
+            "Vojni kapetan",
+            "Vojni pukovnik"
+          ]
+        },
+        {
+          "name": "sv_SE",
+          "index": 217,
+          "examples": [
+            "Flygvapen kapten",
+            "Flygvapen marskalk",
+            "Flygvapen pilot",
+            "Armé kapten",
+            "Armé överste"
+          ]
+        },
+        {
+          "name": "sw_BI",
+          "index": 218,
+          "examples": [
+            "Nahodha wa kikosi cha anga",
+            "Jemadari wa kikosi cha anga",
+            "Rubani wa kikosi cha anga",
+            "Nahodha wa jeshi",
+            "Kanali wa jeshi"
+          ]
+        },
+        {
+          "name": "sw_TZ",
+          "index": 219,
+          "examples": [
+            "Nahodha wa kikosi cha anga",
+            "Jemadari wa kikosi cha anga",
+            "Rubani wa kikosi cha anga",
+            "Nahodha wa jeshi",
+            "Kanali wa jeshi"
+          ]
+        },
+        {
+          "name": "th_TH",
+          "index": 220,
+          "examples": [
+            "กัปตันกองทัพอากาศ",
+            "จอมพลกองทัพอากาศ",
+            "",
+            "กัปตันประจำกองทัพ",
+            "พันเอกประจำกองทัพ"
+          ]
+        },
+        {
+          "name": "tk_TM",
+          "index": 221,
+          "examples": []
+        },
+        {
+          "name": "tl_PH",
+          "index": 222,
+          "examples": [
+            "Kapitan ng hukbong panghimpapawid",
+            "Marshal ng hukbong panghimpapawid",
+            "Piloto ng hukbong panghimpapawid",
+            "Kapitan ng hukbo",
+            "Koronel ng hukbo"
+          ]
+        },
+        {
+          "name": "tr_TR",
+          "index": 223,
+          "examples": [
+            "Yüzbaşı (Hava Kuvvetleri)",
+            "Mareşal (Hava Kuvvetleri)",
+            "Pilot (Hava Kuvvetleri)",
+            "Yüzbaşı (Kara Kuvvetleri)",
+            "Albay (Kara Kuvvetleri)"
+          ]
+        },
+        {
+          "name": "uk_UA",
+          "index": 224,
+          "examples": [
+            "Капітан військово-повітряних сил",
+            "Маршал військово-повітряних сил",
+            "Пілот військово-повітряних сил",
+            "Капітан збройних сил",
+            "Полковник збройних сил"
+          ]
+        },
+        {
+          "name": "ur_PK",
+          "index": 225,
+          "examples": [
+            "کپتان فضائیہ",
+            "مارشل فضائیہ",
+            "پائلٹ فضائیہ",
+            "فوجی کپتان",
+            "فوجی کرنل"
+          ]
+        },
+        {
+          "name": "uz_TM",
+          "index": 226,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "uz_UZ",
+          "index": 227,
+          "examples": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "name": "vi_VN",
+          "index": 228,
+          "examples": [
+            "Đại úy không quân",
+            "Thống chế không quân; Nguyên soái không quân",
+            "Phi công không quân",
+            "Đại úy quân đội",
+            "Thượng tá quân đội"
+          ]
+        },
+        {
+          "name": "zh_CN",
+          "index": 229,
+          "examples": [
+            "空军上尉",
+            "空军中将",
+            "空军飞行员",
+            "陆军上尉",
+            "陆军上校"
+          ]
+        },
+        {
+          "name": "zh_HK",
+          "index": 230,
+          "examples": [
+            "空军上尉",
+            "空军中将",
+            "空军飞行员",
+            "陆军上尉",
+            "陆军上校"
+          ]
+        },
+        {
+          "name": "zh_SG",
+          "index": 231,
+          "examples": [
+            "空军上尉",
+            "空军中将",
+            "空军飞行员",
+            "陆军上尉",
+            "陆军上校"
+          ]
+        },
+        {
+          "name": "zh_TW",
+          "index": 232,
+          "examples": [
+            "空军上尉",
+            "空军中将",
+            "空军飞行员",
+            "陆军上尉",
+            "陆军上校"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "STRUCTURE",
+      "rows": 2910,
+      "cols": 3,
+      "header": [
+        "Level 1",
+        "Level 2",
+        "Level 3"
+      ],
+      "columns": [
+        {
+          "name": "Level 1",
+          "index": 0,
+          "examples": [
+            -10022,
+            -10022,
+            -10022,
+            -10022,
+            -10022
+          ]
+        },
+        {
+          "name": "Level 2",
+          "index": 1,
+          "examples": [
+            -20337,
+            -20337,
+            -20337,
+            -20337,
+            -20337
+          ]
+        },
+        {
+          "name": "Level 3",
+          "index": 2,
+          "examples": [
+            2423050000000,
+            2431020000000,
+            3313040000000,
+            3322000000000,
+            3323000000000
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MAPPINGS",
+      "rows": 4470,
+      "cols": 9,
+      "header": [
+        "occupai3_API_13dgt",
+        "occupai3_API_17dgt",
+        "ISCO0804",
+        "ISCO0803",
+        "ISCO0802",
+        "ISCO0801",
+        "ISCO08lv",
+        "ISCOISEI",
+        "NACE2.0"
+      ],
+      "columns": [
+        {
+          "name": "occupai3_API_13dgt",
+          "index": 0,
+          "examples": [
+            110000100018,
+            110000200018,
+            110000300018,
+            110000400018,
+            110000500018
+          ]
+        },
+        {
+          "name": "occupai3_API_17dgt",
+          "index": 1,
+          "examples": [
+            1100001000188420,
+            1100002000188420,
+            1100003000188420,
+            1100004000188420,
+            1100005000188420
+          ]
+        },
+        {
+          "name": "ISCO0804",
+          "index": 2,
+          "examples": [
+            110,
+            110,
+            110,
+            110,
+            110
+          ]
+        },
+        {
+          "name": "ISCO0803",
+          "index": 3,
+          "examples": [
+            11,
+            11,
+            11,
+            11,
+            11
+          ]
+        },
+        {
+          "name": "ISCO0802",
+          "index": 4,
+          "examples": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "ISCO0801",
+          "index": 5,
+          "examples": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "ISCO08lv",
+          "index": 6,
+          "examples": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "ISCOISEI",
+          "index": 7,
+          "examples": [
+            65,
+            65,
+            65,
+            65,
+            65
+          ]
+        },
+        {
+          "name": "NACE2.0",
+          "index": 8,
+          "examples": [
+            8420,
+            8420,
+            8420,
+            8420,
+            8420
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OCC>>INDUSTRY",
+      "rows": 4233,
+      "cols": 35,
+      "header": [
+        "ISCO0813",
+        "ISCO0804",
+        "NACE2004_01",
+        "NACE2004_02",
+        "NACE2004_03",
+        "NACE2004_04",
+        "NACE2004_05",
+        "NACE2004_06",
+        "NACE2004_07",
+        "NACE2004_08",
+        "NACE2004_09",
+        "NACE2004_10",
+        "NACE2004_11",
+        "NACE2004_12",
+        "NACE2004_13",
+        "NACE2004_14",
+        "NACE2004_15",
+        "NACE2004_16",
+        "NACE2004_17",
+        "NACE2004_18",
+        "NACE2004_19",
+        "NACE2004_20",
+        "NACE2004_21",
+        "NACE2004_22",
+        "NACE2004_23",
+        "NACE2004_24",
+        "NACE2004_25",
+        "NACE2004_26",
+        "NACE2004_27",
+        "NACE2004_28",
+        "NACE2004_29",
+        "NACE2004_30",
+        "NACE2004_31",
+        "NACE2004_32",
+        "NACE2004_33"
+      ],
+      "columns": [
+        {
+          "name": "ISCO0813",
+          "index": 0,
+          "examples": [
+            110010000000,
+            110020000000,
+            210010000000,
+            310020000000,
+            310030000000
+          ]
+        },
+        {
+          "name": "ISCO0804",
+          "index": 1,
+          "examples": [
+            110,
+            110,
+            210,
+            310,
+            310
+          ]
+        },
+        {
+          "name": "NACE2004_01",
+          "index": 2,
+          "examples": [
+            8422,
+            8422,
+            8422,
+            8422,
+            8422
+          ]
+        },
+        {
+          "name": "NACE2004_02",
+          "index": 3,
+          "examples": [
+            8424,
+            8424,
+            8424,
+            8424,
+            8424
+          ]
+        },
+        {
+          "name": "NACE2004_03",
+          "index": 4,
+          "examples": [
+            8010,
+            8010,
+            8010,
+            8010,
+            8010
+          ]
+        },
+        {
+          "name": "NACE2004_04",
+          "index": 5,
+          "examples": [
+            8020,
+            8020,
+            8020,
+            8020,
+            8020
+          ]
+        },
+        {
+          "name": "NACE2004_05",
+          "index": 6,
+          "examples": [
+            8030,
+            8030,
+            8030,
+            8030,
+            8030
+          ]
+        },
+        {
+          "name": "NACE2004_06",
+          "index": 7,
+          "examples": [
+            99999,
+            99999,
+            99999,
+            99999,
+            99999
+          ]
+        },
+        {
+          "name": "NACE2004_07",
+          "index": 8,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_08",
+          "index": 9,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_09",
+          "index": 10,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_10",
+          "index": 11,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_11",
+          "index": 12,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_12",
+          "index": 13,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_13",
+          "index": 14,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_14",
+          "index": 15,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_15",
+          "index": 16,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_16",
+          "index": 17,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_17",
+          "index": 18,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_18",
+          "index": 19,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_19",
+          "index": 20,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_20",
+          "index": 21,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_21",
+          "index": 22,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_22",
+          "index": 23,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_23",
+          "index": 24,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_24",
+          "index": 25,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_25",
+          "index": 26,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_26",
+          "index": 27,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_27",
+          "index": 28,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_28",
+          "index": 29,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_29",
+          "index": 30,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_30",
+          "index": 31,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_31",
+          "index": 32,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_32",
+          "index": 33,
+          "examples": []
+        },
+        {
+          "name": "NACE2004_33",
+          "index": 34,
+          "examples": []
+        }
+      ]
+    },
+    {
+      "name": "LABELSET ISCO-1-4dgt NACE",
+      "rows": 953,
+      "cols": 4,
+      "header": [
+        "DATASET TYPE",
+        "VARNAME",
+        "VALUE of VAR",
+        "DATA LABEL"
+      ],
+      "columns": [
+        {
+          "name": "DATASET TYPE",
+          "index": 0,
+          "examples": [
+            "VARIABLE",
+            "value",
+            "value",
+            "value",
+            "value"
+          ]
+        },
+        {
+          "name": "VARNAME",
+          "index": 1,
+          "examples": [
+            "ISCO0801",
+            "ISCO0801",
+            "ISCO0801",
+            "ISCO0801",
+            "ISCO0801"
+          ]
+        },
+        {
+          "name": "VALUE of VAR",
+          "index": 2,
+          "examples": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "name": "DATA LABEL",
+          "index": 3,
+          "examples": [
+            "ISCO 2008 digit-1",
+            "Armed forces occupations",
+            "Managers",
+            "Professionals",
+            "Technicians and associate professionals"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CODING RULES",
+      "rows": 6,
+      "cols": 2,
+      "header": [
+        "codes in ISCO0813"
+      ],
+      "columns": [
+        {
+          "name": "codes in ISCO0813",
+          "index": 0,
+          "examples": [
+            "position 1-4 = ISCO 08 4 dgt code",
+            "position 5-6 = follow-up code within ISCO 08 4 dgt",
+            "position 7-8 = follow-up code within ISCO 08 4 dgt within country specific group",
+            "position 9-11 = country code for country-specific group",
+            "position 12-13 = year occ was added to database since 2017"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CITATION",
+      "rows": 4,
+      "cols": 1,
+      "header": [
+        "Tijdens, K.G. (2023). Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613. Netherlands, WageIndicator Foundation"
+      ],
+      "columns": [
+        {
+          "name": "Tijdens, K.G. (2023). Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613. Netherlands, WageIndicator Foundation",
+          "index": 0,
+          "examples": [
+            "In case the OCC>>INDUSTRY prediction is used, please cite:",
+            "Belloni, M, Tijdens, K.G. (2017). Occupation > industry predictions for measuring industry in surveys, Deliverable 8.11 of the SERISS project funded under the European Union’s Horizon 2020 research and innovation programme GA No: 654221, DOI 10.13140/RG.2.2.31328.02566"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "UPDATES",
+      "rows": 1424,
+      "cols": 9,
+      "header": [
+        "date_update",
+        "locales",
+        "code",
+        "master",
+        "label_old",
+        "label_new",
+        "reason",
+        "team member",
+        "Effective in"
+      ],
+      "columns": [
+        {
+          "name": "date_update",
+          "index": 0,
+          "examples": [
+            20230612,
+            20230612,
+            20230612,
+            20230612,
+            20230612
+          ]
+        },
+        {
+          "name": "locales",
+          "index": 1,
+          "examples": [
+            "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+            "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+            "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+            "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+            "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA"
+          ]
+        },
+        {
+          "name": "code",
+          "index": 2,
+          "examples": [
+            1112000600018,
+            1112000900018,
+            1112020000000,
+            1113010000000,
+            1114000300018
+          ]
+        },
+        {
+          "name": "master",
+          "index": 3,
+          "examples": [
+            "Fire commissioner",
+            "Inland revenue commissioner",
+            "Manager public administration",
+            "Traditional chief or head of village",
+            "Trade union leader"
+          ]
+        },
+        {
+          "name": "label_old",
+          "index": 4,
+          "examples": [
+            "Пожарный комиссар",
+            "Комиссар налогового управления",
+            "Руководитель исполнительной власти на местном уровне",
+            "Председатель сельсовета (староста)",
+            "Лидер профсоюзов"
+          ]
+        },
+        {
+          "name": "label_new",
+          "index": 5,
+          "examples": [
+            "Руководитель пожарной службы",
+            "Руководитель налоговой службы",
+            "Менеджер в области государственного управления",
+            "Председатель дачного кооператива или деревенский староста",
+            "Профсоюзный лидер"
+          ]
+        },
+        {
+          "name": "reason",
+          "index": 6,
+          "examples": [
+            "Translation improved",
+            "Translation improved",
+            "Translation improved",
+            "Translation improved",
+            "Translation improved"
+          ]
+        },
+        {
+          "name": "team member",
+          "index": 7,
+          "examples": [
+            "Elena_WageIndicator",
+            "Elena_WageIndicator",
+            "Elena_WageIndicator",
+            "Elena_WageIndicator",
+            "Elena_WageIndicator"
+          ]
+        },
+        {
+          "name": "Effective in",
+          "index": 8,
+          "examples": [
+            "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613",
+            "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613",
+            "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613",
+            "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613",
+            "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SUMMARY CHECKS",
+      "rows": 8,
+      "cols": 4,
+      "header": [
+        "date_check",
+        "locales",
+        "check type",
+        "result"
+      ],
+      "columns": [
+        {
+          "name": "date_check",
+          "index": 0,
+          "examples": [
+            20230612,
+            20230612,
+            20230612,
+            20230612,
+            20230612
+          ]
+        },
+        {
+          "name": "locales",
+          "index": 1,
+          "examples": [
+            "si_LK",
+            "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+            "cs_CZ",
+            "sl_SI",
+            "it_IT"
+          ]
+        },
+        {
+          "name": "check type",
+          "index": 2,
+          "examples": [
+            "Google translate check",
+            "Check by WageIndicator team member Elena",
+            "Check by SSHOC team member",
+            "Check by SSHOC team member",
+            "Check by SSHOC team member"
+          ]
+        },
+        {
+          "name": "result",
+          "index": 3,
+          "examples": [
+            "ok",
+            "implemented",
+            "implemented",
+            "implemented",
+            "implemented"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -51,8 +51,8 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 
 COLLECTION_NAME = "isco_occupations"
-MODEL_NAME      = "intfloat/multilingual-e5-large"
-VECTOR_DIM      = 1024
+MODEL_NAME      = "intfloat/multilingual-e5-small"   # 384-dim; same E5 prefix convention, ~470 MB vs 1.3 GB
+VECTOR_DIM      = 384
 TOP_K_DEFAULT   = 5
 _BATCH_SIZE     = 64   # embedding batch size
 
@@ -611,6 +611,23 @@ _ISCO_DATA: list[dict] = [
 
 
 # ---------------------------------------------------------------------------
+# Helpers (defined early so tests can monkeypatch)
+# ---------------------------------------------------------------------------
+
+def _probe_qdrant(host: str, port: int) -> None:
+    """Raise ConnectionRefusedError if Qdrant is not reachable."""
+    import socket as _socket
+    try:
+        with _socket.create_connection((host, port), timeout=2):
+            pass
+    except OSError:
+        raise ConnectionRefusedError(
+            f"Qdrant is not reachable at {host}:{port}. "
+            "Start Qdrant to enable ISCO semantic search."
+        )
+
+
+# ---------------------------------------------------------------------------
 # VectorStore
 # ---------------------------------------------------------------------------
 
@@ -640,15 +657,7 @@ class VectorStore:
         # Probe Qdrant before loading the heavy ML model.
         # Loading the 1.3 GB SentenceTransformer when Qdrant is unreachable
         # would block every first request for several minutes to no benefit.
-        import socket as _socket
-        try:
-            with _socket.create_connection((_host, _port), timeout=2):
-                pass
-        except OSError:
-            raise ConnectionRefusedError(
-                f"Qdrant is not reachable at {_host}:{_port}. "
-                "Start Qdrant to enable ISCO semantic search."
-            )
+        _probe_qdrant(_host, _port)
 
         self._client = QdrantClient(host=_host, port=_port)
         self._model  = SentenceTransformer(MODEL_NAME)
@@ -685,12 +694,13 @@ class VectorStore:
 
         query_vec = self._embed([query], is_query=True)[0]
 
-        hits = self._client.search(
+        response = self._client.query_points(
             collection_name=COLLECTION_NAME,
-            query_vector=query_vec,
+            query=query_vec,
             limit=top_k,
             with_payload=True,
         )
+        hits = response.points
 
         results: list[OccupationMatch] = []
         for hit in hits:
@@ -754,12 +764,14 @@ class VectorStore:
         )
 
     def _ensure_populated(self) -> None:
-        """Upsert all ISCO entries if the collection is empty."""
+        """Upsert all ISCO entries if the collection is empty or the dataset size changed."""
         count = self._client.count(
             collection_name=COLLECTION_NAME, exact=True
         ).count
-        if count > 0:
+        if count == len(_ISCO_DATA):
             return
+        # Dataset grew / shrank or collection is empty — upsert everything.
+        # Qdrant upsert is idempotent: existing IDs are overwritten, new IDs are inserted.
 
         # Build one embedding text per entry (EN title + AR title + description)
         texts = [

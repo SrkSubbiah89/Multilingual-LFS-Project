@@ -238,14 +238,14 @@ class TestFlagItems:
         assert mgr._flag_items([resp]) == []
 
     def test_missing_isco_flagged(self, mgr):
-        resp = _Resp(isco_code=None, confidence_score=None)
+        resp = _Resp(isco_code=None, confidence_score=None, question_id="job_title")
         resp.isco_code = None
         items = mgr._flag_items([resp])
         assert len(items) == 1
         assert items[0].reason == FlagReason.MISSING_ISCO
 
     def test_empty_isco_string_flagged(self, mgr):
-        resp = _Resp(isco_code="   ", confidence_score=0.80)
+        resp = _Resp(isco_code="   ", confidence_score=0.80, question_id="job_title")
         items = mgr._flag_items([resp])
         assert len(items) == 1
         assert items[0].reason == FlagReason.MISSING_ISCO
@@ -273,7 +273,7 @@ class TestFlagItems:
         assert item.confidence == pytest.approx(0.30)
 
     def test_response_id_preserved_in_flag(self, mgr):
-        resp = _Resp(isco_code="", confidence_score=None)
+        resp = _Resp(isco_code="", confidence_score=None, question_id="job_title")
         resp.isco_code = ""
         item = mgr._flag_items([resp])[0]
         assert item.response_id == resp.id
@@ -294,7 +294,7 @@ class TestComputeMetrics:
         m = _metrics(mgr, [])
         assert m.total_responses == 0
         assert m.avg_confidence == 0.0
-        assert m.isco_coverage == 0.0
+        assert m.isco_coverage == 0.0   # no ISCO-expected fields → 0
 
     def test_total_responses_count(self, mgr):
         resps = [_Resp() for _ in range(5)]
@@ -319,9 +319,10 @@ class TestComputeMetrics:
         assert m.avg_confidence == 0.0
 
     def test_isco_coverage_fraction(self, mgr):
-        # 3 with code, 1 without → coverage = 0.75
-        resps = [_Resp(isco_code="2512") for _ in range(3)]
-        no_code = _Resp()
+        # 3 with code, 1 without → coverage = 3/4 = 0.75
+        # All must use question_id="job_title" so the denominator = 4
+        resps = [_Resp(isco_code="2512", question_id="job_title") for _ in range(3)]
+        no_code = _Resp(question_id="job_title")
         no_code.isco_code = None
         resps.append(no_code)
         m = _metrics(mgr, resps)
@@ -336,7 +337,10 @@ class TestComputeMetrics:
         assert m.low_confidence_count == 1
 
     def test_missing_isco_count(self, mgr):
-        resps = [_Resp(isco_code="2512"), _Resp(isco_code=None)]
+        resps = [
+            _Resp(isco_code="2512", question_id="job_title"),
+            _Resp(isco_code=None,   question_id="job_title"),
+        ]
         resps[1].isco_code = None
         m = _metrics(mgr, resps)
         assert m.missing_isco_count == 1
@@ -359,17 +363,20 @@ class TestComputeQualityScore:
 
     def test_perfect_session(self, mgr):
         # All responses with high confidence and ISCO codes → score close to 1
-        resps = [_Resp(isco_code="2512", confidence_score=1.0) for _ in range(3)]
+        resps = [_Resp(isco_code="2512", confidence_score=1.0, question_id="job_title") for _ in range(3)]
         m = _metrics(mgr, resps)
         score = mgr._compute_quality_score(m)
         # 0.50×1.0 + 0.30×1.0 + 0.20×1.0 = 1.0
         assert score == pytest.approx(1.0, abs=1e-4)
 
     def test_missing_isco_penalises_coverage(self, mgr):
-        # 2 with code, 2 without → coverage = 0.50
-        resps = [_Resp(isco_code="2512", confidence_score=1.0) for _ in range(2)]
+        # 2 job_title responses with code, 2 without → coverage = 0.50
+        resps = [
+            _Resp(isco_code="2512", confidence_score=1.0, question_id="job_title")
+            for _ in range(2)
+        ]
         for _ in range(2):
-            r = _Resp(confidence_score=None)
+            r = _Resp(question_id="job_title")
             r.isco_code = None
             r.confidence_score = None
             resps.append(r)
@@ -381,7 +388,7 @@ class TestComputeQualityScore:
 
     def test_low_confidence_penalises_score(self, mgr):
         # All responses low confidence → low_ratio = 1.0
-        resps = [_Resp(isco_code="2512", confidence_score=0.30) for _ in range(3)]
+        resps = [_Resp(isco_code="2512", confidence_score=0.30, question_id="job_title") for _ in range(3)]
         m = _metrics(mgr, resps)
         score = mgr._compute_quality_score(m)
         # avg_conf = 0.30, isco_cov = 1.0, low_ratio = 1.0
@@ -619,27 +626,27 @@ class TestReviewSession:
     def test_pass_status_for_good_session(self, mgr, monkeypatch, session_factory):
         uid = _make_user(session_factory)
         sid = _make_session(session_factory, uid)
-        for i in range(3):
-            _make_response(
-                session_factory, sid,
-                isco_code="2512", confidence_score=0.95,
-                question_id=f"q{i}",
-            )
+        # Use job_title so ISCO coverage is counted correctly
+        _make_response(
+            session_factory, sid,
+            isco_code="2512", confidence_score=0.95,
+            question_id="job_title",
+        )
         _mock_crew(monkeypatch, _VALID_REPORT_JSON)
         result = mgr.review_session(sid)
+        # avg_conf=0.95, isco_cov=1.0, low_ratio=0 → score=0.975 → PASS
         assert result.status == ReviewStatus.PASS
 
     def test_fail_status_for_moderate_session(self, mgr, monkeypatch, session_factory):
         uid = _make_user(session_factory)
         sid = _make_session(session_factory, uid)
-        # One low-confidence response, one good → avg_conf < threshold
-        _make_response(session_factory, sid, isco_code="2512", confidence_score=0.40, question_id="q1")
-        _make_response(session_factory, sid, isco_code="2512", confidence_score=0.75, question_id="q2")
+        # One low-confidence job_title, one good → avg_conf < pass threshold
+        _make_response(session_factory, sid, isco_code="2512", confidence_score=0.40, question_id="job_title")
+        _make_response(session_factory, sid, isco_code="2512", confidence_score=0.75, question_id="last_job_title")
         _mock_crew(monkeypatch, _VALID_REPORT_JSON)
         result = mgr.review_session(sid)
-        # avg_conf ≈ 0.575, cov = 1.0, low_ratio = 0.5
-        # score ≈ 0.50×0.575 + 0.30×1.0 + 0.20×0.5 = 0.2875 + 0.30 + 0.10 = 0.6875
-        # → between 0.50 and 0.70 → FAIL or PASS depending on exact calc
+        # avg_conf=0.575, isco_cov=1.0, low_ratio=0.5
+        # score = 0.50×0.575 + 0.30×1.0 + 0.20×0.5 = 0.2875+0.30+0.10 = 0.6875 → FAIL
         # Either FAIL or PASS is acceptable; what matters is not ESCALATED
         assert result.status in (ReviewStatus.FAIL, ReviewStatus.PASS)
 
@@ -663,8 +670,9 @@ class TestReviewSession:
     def test_flagged_items_populated(self, mgr, monkeypatch, session_factory):
         uid = _make_user(session_factory)
         sid = _make_session(session_factory, uid)
-        _make_response(session_factory, sid, isco_code=None, confidence_score=None, question_id="q1")
-        _make_response(session_factory, sid, isco_code=None, confidence_score=None, question_id="q2")
+        # Use ISCO-classification question IDs so missing codes are flagged
+        _make_response(session_factory, sid, isco_code=None, confidence_score=None, question_id="job_title")
+        _make_response(session_factory, sid, isco_code=None, confidence_score=None, question_id="last_job_title")
         _mock_crew(monkeypatch, _VALID_REPORT_JSON)
         result = mgr.review_session(sid)
         assert len(result.flagged_items) >= 2

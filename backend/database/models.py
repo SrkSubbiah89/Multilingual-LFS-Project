@@ -15,6 +15,7 @@ class User(Base):
     phone = Column(String, unique=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    deleted_at = Column(DateTime, nullable=True, index=True)  # soft-delete: NULL = active
 
     otp_codes = relationship("OTPCode", back_populates="user")
     survey_sessions = relationship("SurveySession", back_populates="user")
@@ -41,12 +42,31 @@ class SurveySession(Base):
     language = Column(String, nullable=False)
     started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime, nullable=True, index=True)  # soft-delete: NULL = active
 
     user = relationship("User", back_populates="survey_sessions")
     responses = relationship("SurveyResponse", back_populates="session", cascade="all, delete-orphan")
 
 
 class SurveyResponse(Base):
+    """
+    One row per (session, question) answer. Answers are versioned, not
+    overwritten: a correction that lands after the original row already
+    exists (e.g. job_title, which is written immediately at answer-time
+    together with its ISCO classification, before VALIDATING can happen)
+    is inserted as a NEW row with `supersedes_id` pointing at the row it
+    replaces; the old row gets `deleted_at` set. This keeps the original
+    answer, code, confidence, and the fact a correction occurred — material
+    the Audit and HITL quality flows depend on — instead of destroying it.
+
+    `deleted_at` here means "not the active revision," same soft-delete
+    convention used elsewhere in this schema; it does not mean the row was
+    a GDPR-style deletion. Superseded rows are retained indefinitely for
+    audit purposes and never physically removed by a correction.
+
+    All reads must filter `deleted_at IS NULL` to see only the active
+    revision per (session_id, question_id).
+    """
     __tablename__ = "survey_responses"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -55,6 +75,8 @@ class SurveyResponse(Base):
     answer = Column(Text, nullable=False)
     isco_code = Column(String, nullable=True)
     confidence_score = Column(Float, nullable=True)
+    supersedes_id = Column(Integer, ForeignKey("survey_responses.id"), nullable=True, index=True)
+    deleted_at = Column(DateTime, nullable=True, index=True)  # soft-delete: NULL = active revision
 
     session = relationship("SurveySession", back_populates="responses")
 
@@ -142,8 +164,80 @@ class QualityReview(Base):
 
 
 # ---------------------------------------------------------------------------
+# HITL occupation-classification queue
+# ---------------------------------------------------------------------------
+
+class HITLQueue(Base):
+    """
+    Low-confidence ISCO-08 classifications flagged for human review.
+
+    Created by ISCOClassifier when confidence < HITL_THRESHOLD (0.70).
+    Reviewed via GET /hitl/queue + POST /hitl/review endpoints.
+    Priority: HIGH when confidence < 0.50, MEDIUM when 0.50 <= confidence < 0.70.
+    """
+
+    __tablename__ = "hitl_queue"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    session_id       = Column(Integer, ForeignKey("survey_sessions.id"), nullable=True,  index=True)
+    response_id      = Column(Integer, ForeignKey("survey_responses.id"), nullable=True, index=True)
+    respondent_email = Column(String,  nullable=True)
+    raw_text         = Column(Text,    nullable=False)    # original job description text
+    ai_code          = Column(String,  nullable=False)    # ISCO code suggested by AI
+    ai_confidence    = Column(Float,   nullable=False)
+    ai_reasoning     = Column(Text,    nullable=True)
+    hierarchy_path   = Column(Text,    nullable=True)     # JSON list e.g. ["2","25","251","2512"]
+    priority         = Column(String,  nullable=False, default="MEDIUM", index=True)  # HIGH | MEDIUM
+    status           = Column(String,  nullable=False, default="pending", index=True)  # pending | reviewed | rejected
+    reviewer_code    = Column(String,  nullable=True)     # final code after human review
+    reviewer_notes   = Column(Text,    nullable=True)
+    reviewed_by      = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at       = Column(DateTime, nullable=False, index=True)
+    reviewed_at      = Column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
 # Survey report table
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Person Register — pre-filled demographic records (gap: 40-50% question reduction)
+# ---------------------------------------------------------------------------
+
+class PersonRegister(Base):
+    """
+    Stores known respondent attributes from previous survey rounds or
+    admin data imports.  When a new survey session starts for a known user,
+    these fields are injected into the ConversationContext so the agent
+    can skip (or confirm) already-known answers.
+
+    A single user may have multiple records (one per reference period).
+    The most recent record with is_active=True is used for pre-fill.
+    """
+
+    __tablename__ = "person_register"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    user_id             = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    reference_period    = Column(String,  nullable=False)          # e.g. "2025-Q1"
+    employment_status   = Column(String,  nullable=True)           # employed | unemployed | not_in_labour_force
+    job_title           = Column(String,  nullable=True)
+    industry            = Column(String,  nullable=True)
+    isco_code           = Column(String,  nullable=True)           # last known ISCO code
+    isic_code           = Column(String,  nullable=True)           # last known ISIC division
+    isced_level         = Column(Integer, nullable=True)           # ISCED 2011 level 0-8
+    hours_per_week      = Column(Float,   nullable=True)
+    employment_type     = Column(String,  nullable=True)           # full_time | part_time | self_employed | contractor
+    nationality         = Column(String,  nullable=True)
+    age_group           = Column(String,  nullable=True)           # e.g. "25-34"
+    gender              = Column(String,  nullable=True)
+    is_active           = Column(Boolean, default=True, nullable=False)
+    source              = Column(String,  nullable=True)           # "admin_import" | "survey_round"
+    created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = relationship("User")
+
 
 class SurveyReportRecord(Base):
     """

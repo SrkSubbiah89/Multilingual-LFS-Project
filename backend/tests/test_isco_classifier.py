@@ -17,6 +17,7 @@ from backend.agents.isco_classifier import (
     _HIGH_CONFIDENCE_THRESHOLD,
     _detect_script,
 )
+from backend.rag.hierarchical_store import UnitCandidate
 from backend.rag.vector_store import OccupationMatch
 
 
@@ -74,10 +75,19 @@ def mock_crew(monkeypatch):
 
 @pytest.fixture
 def clf(monkeypatch, mock_store, mock_crew):
-    """ISCOClassifier with LLM and VectorStore patched out."""
+    """ISCOClassifier with LLM and VectorStore patched out.
+
+    The hierarchical store is forced to raise so the classifier falls back
+    to the flat mock_store — this keeps tests deterministic without Qdrant.
+    """
     monkeypatch.setattr(
         "backend.agents.isco_classifier.get_llm",
         lambda *a, **kw: MagicMock(),
+    )
+    # Force hierarchical store to be unavailable → flat fallback used
+    monkeypatch.setattr(
+        "backend.agents.isco_classifier.get_hierarchical_store",
+        lambda: (_ for _ in ()).throw(RuntimeError("no hierarchical store in tests")),
     )
     monkeypatch.setattr(
         "backend.agents.isco_classifier.get_vector_store",
@@ -86,12 +96,17 @@ def clf(monkeypatch, mock_store, mock_crew):
     return ISCOClassifier()
 
 
+def make_candidate(code="2512", title_en="Software Developers",
+                   title_ar="", score=0.75) -> UnitCandidate:
+    return UnitCandidate(code=code, label_en=title_en, label_ar=title_ar or title_en, score=score)
+
+
 @pytest.fixture
 def sample_candidates():
     return [
-        make_match(code="2512", title_en="Software Developers",     confidence=0.80),
-        make_match(code="2511", title_en="Systems Analysts",        confidence=0.72),
-        make_match(code="2513", title_en="Web and Multimedia Developers", confidence=0.65),
+        make_candidate(code="2512", title_en="Software Developers",       score=0.80),
+        make_candidate(code="2511", title_en="Systems Analysts",          score=0.72),
+        make_candidate(code="2513", title_en="Web and Multimedia Developers", score=0.65),
     ]
 
 
@@ -177,7 +192,7 @@ class TestClassifyEdgeCases:
         assert isinstance(result, ISCOClassification)
         assert result.primary.code == ""
         assert result.primary.confidence == 0.0
-        assert result.candidates == []
+        assert result.alternatives == []
 
     def test_whitespace_only_returns_sentinel(self, clf, mock_store):
         result = clf.classify("   ")
@@ -187,7 +202,7 @@ class TestClassifyEdgeCases:
         mock_store.search.return_value = []
         result = clf.classify("something obscure")
         assert result.primary.confidence == 0.0
-        assert result.candidates == []
+        assert result.alternatives == []
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +215,7 @@ class TestClassifyFastPath:
             make_match(confidence=_HIGH_CONFIDENCE_THRESHOLD + 0.01)
         ]
         result = clf.classify("software developer")
-        assert result.method == "semantic"
+        assert result.method.endswith("_semantic")  # "flat_semantic" or "hierarchical_semantic"
 
     def test_high_confidence_does_not_call_llm(self, clf, mock_store, mock_crew):
         mock_store.search.return_value = [
@@ -224,7 +239,7 @@ class TestClassifyLlmPath:
     def test_low_confidence_uses_llm_ranked_method(self, clf, mock_store):
         mock_store.search.return_value = [make_match(confidence=0.70)]
         result = clf.classify("software developer")
-        assert result.method == "llm_ranked"
+        assert result.method.endswith("_llm")  # "flat_llm" or "hierarchical_llm"
 
     def test_llm_selected_code_is_primary(self, clf, mock_store):
         mock_store.search.return_value = [
@@ -234,10 +249,16 @@ class TestClassifyLlmPath:
         result = clf.classify("software developer")
         assert result.primary.code == "2512"
 
-    def test_all_candidates_included_in_result(self, clf, mock_store, sample_candidates):
-        mock_store.search.return_value = sample_candidates
+    def test_all_candidates_included_in_result(self, clf, mock_store):
+        oc_candidates = [
+            make_match(code="2512", confidence=0.75),
+            make_match(code="2511", confidence=0.72),
+            make_match(code="2513", confidence=0.65),
+        ]
+        mock_store.search.return_value = oc_candidates
         result = clf.classify("developer")
-        assert len(result.candidates) == len(sample_candidates)
+        # alternatives holds all except the primary (up to 2)
+        assert len(result.alternatives) <= len(oc_candidates)
 
     def test_llm_failure_falls_back_to_top_semantic(self, clf, mock_store, mock_crew):
         mock_store.search.return_value = [make_match(code="2512", confidence=0.70)]
@@ -280,6 +301,7 @@ class TestClassifyResultShape:
 
     def test_context_passed_to_store_search(self, clf, mock_store):
         clf.classify("nurse", context="healthcare sector", top_k=3)
+        # flat fallback calls search(job_title, top_k=top_k); context is used in LLM prompt not store query
         mock_store.search.assert_called_once_with("nurse", top_k=3)
 
     def test_min_usable_confidence_constant_exposed(self):

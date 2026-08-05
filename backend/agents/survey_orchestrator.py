@@ -67,11 +67,18 @@ from backend.agents.hitl_quality_manager import (
     get_hitl_quality_manager,
 )
 from backend.agents.isco_classifier import ISCOClassifier, ISCOClassification
+from backend.agents.isic_classifier import ISICClassifier, ISICClassification
+from backend.agents.isced_classifier import ISCEDClassifier, ISCEDClassification
 from backend.agents.language_processor import (
     LanguageProcessor,
     LanguageProcessorResult,
 )
 from backend.agents.validation_agent import ValidationAgent, ValidationResult
+from backend.agents.semantic_relation import (
+    SemanticRelationEngine,
+    SemanticCoherence,
+    get_semantic_relation_engine,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +108,8 @@ class TurnResult:
     is_code_switched:      bool
     entities:              list[dict]       # [{text, label, language}] from NER
     isco_matches:          list[ISCOMatch]  # one per JOB_TITLE entity
+    isic_classification:   Optional[dict]   # ISIC classification result (if industry classified)
+    isced_classification:  Optional[dict]   # ISCED classification result (if education classified)
     emotional_state:       str              # EmotionalState.value
     survey_action:         str              # SurveyAction.value
     adapted_prompt:        str              # language-appropriate interviewer hint
@@ -108,7 +117,8 @@ class TurnResult:
     validation_violations: list[str]        # human-readable violation messages
     missing_fields:        list[str]        # LFS fields not yet collected
     session_completed:     bool
-    quality_report:        Optional[QualityReport] = None
+    quality_report:        Optional[QualityReport]    = None
+    semantic_coherence:    Optional[SemanticCoherence] = None
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +168,8 @@ class SurveyOrchestrator:
         conversation_manager:   Optional[ConversationManager]   = None,
         validation_agent:       Optional[ValidationAgent]       = None,
         isco_classifier:        Optional[ISCOClassifier]        = None,
+        isic_classifier:        Optional[ISICClassifier]        = None,
+        isced_classifier:       Optional[ISCEDClassifier]       = None,
         audit_logger:           Optional[AuditLogger]           = None,
         hitl_manager:           Optional[HITLQualityManager]    = None,
     ) -> None:
@@ -167,6 +179,8 @@ class SurveyOrchestrator:
         self._conv  = conversation_manager   or ConversationManager()
         self._va    = validation_agent       or ValidationAgent()
         self._isco  = isco_classifier        or ISCOClassifier()
+        self._isic  = isic_classifier        or ISICClassifier()
+        self._isced = isced_classifier       or ISCEDClassifier()
         self._audit = audit_logger           or get_audit_logger()
         self._hitl  = hitl_manager           or get_hitl_quality_manager()
 
@@ -238,13 +252,59 @@ class SurveyOrchestrator:
 
         # ── 7. ISCO classification per JOB_TITLE entity (enrichment) ──
         isco_matches = self._classify_entities(lp_result.entities, detected_lang)
+        # Fallback: if NER found no JOB_TITLE (e.g. Ollama crashed) but the
+        # ConversationManager just collected job_title in this turn, classify it.
+        if not isco_matches:
+            stored_title = ctx.collected_data.get("job_title", "")
+            if stored_title:
+                try:
+                    clf = self._isco.classify(stored_title, context=f"language={detected_lang}")
+                    isco_matches = [ISCOMatch(
+                        job_title=stored_title,
+                        code=clf.primary.code,
+                        title_en=clf.primary.title_en,
+                        title_ar=clf.primary.title_ar,
+                        confidence=clf.primary.confidence,
+                        method=clf.method,
+                    )]
+                except Exception:
+                    pass
 
-        # ── 8. Audit logging (enrichment — safe) ──────────────────────
+        # ── 7b. ISIC classification for industry (enrichment — safe) ────
+        isic_classification: Optional[dict] = None
+        industry_text = ctx.collected_data.get("industry", "")
+        if industry_text:
+            isic_classification = self._classify_isic(industry_text, detected_lang)
+
+        # ── 7c. ISCED classification for education (enrichment — safe) ──
+        isced_classification: Optional[dict] = None
+        education_text = ctx.collected_data.get("education_level", "")
+        if education_text:
+            isced_classification = self._classify_isced(education_text, detected_lang)
+
+        # ── 8. Semantic cross-classification coherence (enrichment — safe) ──
+        semantic_coherence: Optional[SemanticCoherence] = None
+        if isco_matches and ctx.collected_data:
+            try:
+                _sr = get_semantic_relation_engine(use_llm=False)
+                data = ctx.collected_data
+                isced_raw = data.get("isced_level") or data.get("education_level_isced")
+                semantic_coherence = _sr.analyse(
+                    isco_code    = isco_matches[0].code,
+                    isic_section = data.get("isic_section") or data.get("industry_isic_section"),
+                    isced_level  = int(isced_raw) if isced_raw is not None else None,
+                    job_title    = str(data.get("job_title", "")),
+                    language     = detected_lang,
+                )
+            except Exception:
+                pass  # enrichment must never abort a survey turn
+
+        # ── 9. Audit logging (enrichment — safe) ──────────────────────
         self._log_turn(
             session_id, user_id, user_message, reply, lp_result, ei_result, ctx
         )
 
-        # ── 9. Session completion + HITL quality review ───────────────
+        # ── 10. Session completion + HITL quality review ─────────────
         session_completed = ctx.state == ConversationState.COMPLETING
         quality_report: Optional[QualityReport] = None
         if session_completed:
@@ -271,6 +331,8 @@ class SurveyOrchestrator:
                 for e in lp_result.entities
             ],
             isco_matches=isco_matches,
+            isic_classification=isic_classification,
+            isced_classification=isced_classification,
             emotional_state=ei_result.emotional_state.value,
             survey_action=ei_result.survey_action.value,
             adapted_prompt=adapted,
@@ -279,6 +341,7 @@ class SurveyOrchestrator:
             missing_fields=missing,
             session_completed=session_completed,
             quality_report=quality_report,
+            semantic_coherence=semantic_coherence,
         )
 
     def get_conv_context(self, session_id: int) -> Optional[ConversationContext]:
@@ -399,6 +462,33 @@ class SurveyOrchestrator:
             except Exception:
                 pass  # ISCO enrichment must not abort the turn
         return matches
+
+    def _classify_isic(self, industry_text: str, language: str) -> Optional[dict]:
+        try:
+            clf: ISICClassification = self._isic.classify(industry_text)
+            return {
+                "section": clf.section,
+                "section_title": clf.section_title,
+                "division_code": clf.division_code,
+                "division_title": clf.division_title,
+                "confidence": clf.confidence,
+                "method": clf.method,
+            }
+        except Exception:
+            return None
+
+    def _classify_isced(self, education_text: str, language: str) -> Optional[dict]:
+        try:
+            clf: ISCEDClassification = self._isced.classify(education_text)
+            return {
+                "level": clf.level,
+                "level_name": clf.level_name,
+                "description": clf.description,
+                "confidence": clf.confidence,
+                "method": clf.method,
+            }
+        except Exception:
+            return None
 
     def _log_turn(
         self,

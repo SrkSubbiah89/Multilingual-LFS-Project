@@ -35,6 +35,20 @@ export function verifyOtp(email, code) {
   });
 }
 
+export function requestSmsOtp(phone) {
+  return request("/auth/request-sms-otp", {
+    method: "POST",
+    body: JSON.stringify({ phone }),
+  });
+}
+
+export function verifySmsOtp(phone, code) {
+  return request("/auth/verify-sms-otp", {
+    method: "POST",
+    body: JSON.stringify({ phone, code }),
+  });
+}
+
 // ── Survey sessions ───────────────────────────────────────────────────────────
 
 export function createSession(token, language) {
@@ -45,11 +59,14 @@ export function createSession(token, language) {
   });
 }
 
-export function sendMessage(token, sessionId, message) {
+export function sendMessage(token, sessionId, message, preferredLanguage = null) {
   return request(`/survey/sessions/${sessionId}/message`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      ...(preferredLanguage && { preferred_language: preferredLanguage }),
+    }),
   });
 }
 
@@ -57,5 +74,21 @@ export function getReport(token, sessionId, regenerate = false) {
   const qs = regenerate ? "?regenerate=true" : "";
   return request(`/survey/sessions/${sessionId}/report${qs}`, {
     headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+// ── HITL supervisor review ────────────────────────────────────────────────────
+
+export function getHitlQueue(token, statusFilter = "pending") {
+  return request(`/survey/hitl/queue?status_filter=${statusFilter}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function submitHitlReview(token, escalationId, action, code = null, notes = null) {
+  return request("/survey/hitl/review", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ escalation_id: escalationId, action, code, notes }),
   });
 }

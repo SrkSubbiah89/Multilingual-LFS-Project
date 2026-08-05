@@ -1,0 +1,26 @@
+case_id,input_text,input_language,gold_isco_4digit,gold_isic,gold_isced,industry_text,education_text
+1,software developer,en,2512,J,6,I work at a software company that builds mobile apps,Bachelor's degree in Computer Science
+2,primary school teacher,en,2341,P,6,I teach at a primary school,Bachelor's degree in Education
+3,general practitioner doctor,en,2211,Q,7,I work at a medical clinic seeing patients,Medical degree (MBBS) plus postgraduate clinical training
+4,accountant,en,2411,K,6,I work in the accounting department of a bank,Bachelor's degree in Accounting
+5,car mechanic,en,7231,G,3,I repair cars at an auto garage,Vocational diploma in automotive mechanics
+6,taxi driver,en,8322,H,2,I drive a taxi for passengers around the city,Completed secondary school up to grade 9
+7,plumber,en,7126,F,3,I install and repair pipes on construction sites,Vocational training certificate in plumbing
+8,domestic cleaner,en,9111,T,1,I clean houses for private families,Completed primary school only
+9,registered nurse,en,2221,Q,6,I work as a nurse at a government hospital,Bachelor's degree in Nursing
+10,general office clerk,en,4110,N,3,I do administrative paperwork for a business support company,High school diploma
+11,chief executive officer,en,1120,K,7,I run the head office of a financial services company,Master's degree in Business Administration
+12,cook in a restaurant,en,5120,I,2,I cook food at a restaurant,Completed secondary school up to grade 10
+13,electrician,en,7411,F,3,I install electrical wiring on construction sites,Vocational diploma in electrical installation
+14,secondary school teacher,en,2330,P,6,I teach at a secondary school,Bachelor's degree in Education
+15,software engineer,en,2512,J,6,I develop software at a technology company,Bachelor's degree in Software Engineering
+16,مهندس برمجيات,ar,2512,J,6,أعمل في شركة تقنية تطور تطبيقات الهاتف,بكالوريوس في هندسة البرمجيات
+17,طبيب عام,ar,2211,Q,7,أعمل في عيادة طبية أقوم بفحص المرضى,شهادة طب بشري مع تدريب سريري بعد التخرج
+18,معلم مدرسة ابتدائية,ar,2341,P,6,أعمل معلماً في مدرسة ابتدائية,بكالوريوس في التربية
+19,محاسب,ar,2411,K,6,أعمل في قسم المحاسبة في أحد البنوك,بكالوريوس في المحاسبة
+20,سائق تاكسي,ar,8322,H,2,أعمل سائق تاكسي أنقل الركاب في المدينة,أنهيت الصف التاسع من المدرسة
+21,مزارع,ar,6111,A,2,أعمل في مزرعة أزرع الخضروات والحبوب,أنهيت الصف الثامن من المدرسة
+22,hairdresser,en,5141,S,2,I cut and style hair at a beauty salon,Completed secondary school up to grade 10
+23,security guard,en,5414,N,2,I guard a building for a private security company,Completed secondary school up to grade 9
+24,warehouse packer,en,9321,H,1,I pack goods by hand into boxes at a warehouse,Completed primary school only
+25,graphic designer,en,2166,M,6,I design graphics and branding at a creative agency,Bachelor's degree in Graphic Design

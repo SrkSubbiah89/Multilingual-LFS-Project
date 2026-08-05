@@ -1,0 +1,7 @@
+[97m
+  LFS Thesis — ISCO-08 Approach Comparison[0m
+[2m  100 free-text occupation descriptions[0m
+[2m  Systems: No-RAG | BM25 | Standard RAG | Hierarchical RAG[0m
+
+  [bm25] Initialising... [91mFAILED ([WinError 1114] A dynamic link library (DLL) initialization routine failed. Error loading "C:\Users\Sivar\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\torch\lib\shm.dll" or one of its dependencies.)[0m
+  [standard_rag] Initialising... Key already registered with the same priority: C10

@@ -1,0 +1,239 @@
+{
+  "updates_header": [
+    "date_update",
+    "locales",
+    "code",
+    "master",
+    "label_old",
+    "label_new",
+    "reason",
+    "team member",
+    "Effective in"
+  ],
+  "updates_total_rows": 1423,
+  "updates_sample": [
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1112000600018,
+      "master": "Fire commissioner",
+      "label_old": "Пожарный комиссар",
+      "label_new": "Руководитель пожарной службы",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    },
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1112000900018,
+      "master": "Inland revenue commissioner",
+      "label_old": "Комиссар налогового управления",
+      "label_new": "Руководитель налоговой службы",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    },
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1112020000000,
+      "master": "Manager public administration",
+      "label_old": "Руководитель исполнительной власти на местном уровне",
+      "label_new": "Менеджер в области государственного управления",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    },
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1113010000000,
+      "master": "Traditional chief or head of village",
+      "label_old": "Председатель сельсовета (староста)",
+      "label_new": "Председатель дачного кооператива или деревенский староста",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    },
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1114000300018,
+      "master": "Trade union leader",
+      "label_old": "Лидер профсоюзов",
+      "label_new": "Профсоюзный лидер",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    },
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1114010000000,
+      "master": "Senior official employers' organization",
+      "label_old": "Руководитель службы занятости",
+      "label_new": "Руководитель организации работодателей",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    },
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1114040000000,
+      "master": "Senior official special-interest organization",
+      "label_old": "Руководитель профессиональной ассоциации или НГО иной специализации",
+      "label_new": "Руководитель профессиональной ассоциации",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    },
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1212000100018,
+      "master": "Employee relations manager",
+      "label_old": "Управляющий по контактам с работниками",
+      "label_new": "Менеджер по работе с персоналом",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    },
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1213000300018,
+      "master": "Fisheries policy manager",
+      "label_old": "Менеджер по политики в области рыболовства",
+      "label_new": "Менеджер по политике в области рыболовства",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    },
+    {
+      "date_update": 20230612,
+      "locales": "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "code": 1213000400018,
+      "master": "Manager business planning",
+      "label_old": "Менеджер по бизнес планированию",
+      "label_new": "Менеджер по бизнес-планированию",
+      "reason": "Translation improved",
+      "team member": "Elena_WageIndicator",
+      "Effective in": "Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613"
+    }
+  ],
+  "updates_reason_counts": {
+    "Translation improved": 1137,
+    "Translation added": 157,
+    "Improved English": 128,
+    "REMOVED": 1
+  },
+  "updates_locales_touched_top20": {
+    "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA": 694,
+    "cs_CZ": 346,
+    "ka_GE": 158,
+    "ENG": 128,
+    "sl_SI": 82,
+    "nl_NL": 11,
+    "it_IT": 3,
+    "ALL": 1
+  },
+  "summary_checks_all_rows": [
+    [
+      "date_check",
+      "locales",
+      "check type",
+      "result"
+    ],
+    [
+      20230612,
+      "si_LK",
+      "Google translate check",
+      "ok"
+    ],
+    [
+      20230612,
+      "ru_AZ, ru_BY, ru_KG, ru_KZ, ru_RU, ru_TJ, ru_UA",
+      "Check by WageIndicator team member Elena",
+      "implemented"
+    ],
+    [
+      20230612,
+      "cs_CZ",
+      "Check by SSHOC team member",
+      "implemented"
+    ],
+    [
+      20230612,
+      "sl_SI",
+      "Check by SSHOC team member",
+      "implemented"
+    ],
+    [
+      20230612,
+      "it_IT",
+      "Check by SSHOC team member",
+      "implemented"
+    ],
+    [
+      20230613,
+      "ka_GE",
+      "New additions by WageIndicator team member Georgia",
+      "implemented"
+    ],
+    [
+      20230613,
+      "nl_NL",
+      "Few label changes by WageIndicator team member Netherlands",
+      "implemented"
+    ]
+  ],
+  "citation_all_rows": [
+    [
+      "Tijdens, K.G. (2023). Occupations_ISCO08_5dgt_55languages_4000titles_with_mapping_20230613. Netherlands, WageIndicator Foundation"
+    ],
+    [
+      null
+    ],
+    [
+      "In case the OCC>>INDUSTRY prediction is used, please cite:"
+    ],
+    [
+      "Belloni, M, Tijdens, K.G. (2017). Occupation > industry predictions for measuring industry in surveys, Deliverable 8.11 of the SERISS project funded under the European Union’s Horizon 2020 research and innovation programme GA No: 654221, DOI 10.13140/RG.2.2.31328.02566"
+    ]
+  ],
+  "structure_header": [
+    "Level 1",
+    "Level 2",
+    "Level 3"
+  ],
+  "structure_total_rows": 2909,
+  "structure_sample": [
+    [
+      -10022,
+      -20337,
+      2423050000000
+    ],
+    [
+      -10022,
+      -20337,
+      2431020000000
+    ],
+    [
+      -10022,
+      -20337,
+      3313040000000
+    ],
+    [
+      -10022,
+      -20337,
+      3322000000000
+    ],
+    [
+      -10022,
+      -20337,
+      3323000000000
+    ]
+  ]
+}
