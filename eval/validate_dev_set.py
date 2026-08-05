@@ -50,6 +50,9 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from full130_access_guard import guard_against_full130_access  # noqa: E402
+
 # Canonical schema (see eval/dev_set_schema.md for full documentation and
 # the migration note explaining prior, now-superseded column names):
 #   case_id, language, respondent_text, gold_isco_code, gold_label_source,
@@ -62,6 +65,14 @@ REQUIRED_COLUMNS = [
     "case_id", "language", "respondent_text", "gold_isco_code",
     "gold_label_source", "annotator_or_adjudication_reference", "dataset_split",
 ]
+
+# REQUIRED_COLUMNS doubles as the canonical header: not just "these columns
+# must be present" (validate_dev_set()'s per-row check, which only ever
+# runs once dev_rows is non-empty) but "the header row must equal this
+# list EXACTLY, in this exact order" -- see read_csv_header()/
+# validate_csv_header() below, which run independently of row count so a
+# malformed header is caught even on a header-only (0 data row) file.
+CANONICAL_HEADER = REQUIRED_COLUMNS
 
 VALID_LANGUAGES = {"en", "ar", "mixed"}
 VALID_DATASET_SPLIT = "dev_v1"
@@ -229,6 +240,57 @@ def validate_csv_structure(path: Path) -> list:
         errors.append(f"CSV parse error: {exc}")
     except UnicodeDecodeError as exc:
         errors.append(f"File is not valid UTF-8: {exc}")
+    return errors
+
+
+def read_csv_header(path: Path) -> list:
+    """Returns the raw header row as a list of column names, in file
+    order -- or None if the file doesn't exist or has no header row at all
+    (0 bytes / immediately EOF). Deliberately separate from load_csv_rows()
+    (which returns dict rows keyed by header, losing the distinction
+    between "no header" and "header present but zero data rows") so header
+    validation can run independently of, and before, any row-count check."""
+    if not path.exists():
+        return None
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        try:
+            return next(reader)
+        except StopIteration:
+            return None
+
+
+def validate_csv_header(header: list) -> list:
+    """Returns a list of error strings; empty means header == CANONICAL_
+    HEADER exactly (same 7 columns, same order, no duplicates, no extras).
+    Runs independently of row count -- must reject a malformed header even
+    when the file has zero data rows, rather than only reporting "empty"
+    once row-count validation runs (see main()'s call order). Reports
+    EVERY problem found (missing/duplicate/extra/reordered), not just the
+    first, so a single run tells a user everything wrong with the header
+    at once."""
+    if header is None:
+        return ["CSV has no header row (file is empty or unreadable)."]
+
+    errors = []
+    dupes = sorted({c for c in header if header.count(c) > 1})
+    if dupes:
+        errors.append(f"Duplicate column(s) in header: {dupes}")
+
+    header_set = set(header)
+    missing = [c for c in CANONICAL_HEADER if c not in header_set]
+    if missing:
+        errors.append(f"Missing required column(s): {missing}")
+
+    extra = [c for c in header if c not in CANONICAL_HEADER]
+    if extra:
+        errors.append(f"Unexpected extra column(s): {extra}")
+
+    if not errors and header != CANONICAL_HEADER:
+        errors.append(
+            f"Header columns are reordered: got {header}, expected exactly "
+            f"{CANONICAL_HEADER} (same columns, wrong order)."
+        )
     return errors
 
 
@@ -449,28 +511,31 @@ def load_full130_manifest(path: Path) -> tuple:
     return set(manifest.get("case_ids", [])), set(manifest.get("normalized_text_sha256", []))
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dev-set", required=True, type=Path)
-    parser.add_argument("--smoke20", type=Path, default=_DEFAULT_SMOKE20)
-    parser.add_argument(
-        "--full130-manifest", type=Path, default=_DEFAULT_FULL130_MANIFEST,
-        help=(
-            "Leakage-detection manifest (case_ids + normalized-text sha256 hashes only, "
-            "no labels) -- NOT eval/test_set_full130.csv itself, which this script never opens."
-        ),
-    )
-    parser.add_argument(
-        "--isco-catalogue-source", type=Path, default=_DEFAULT_ISCO_CATALOGUE_SOURCE,
-        help=(
-            "Source of valid ISCO-08 unit-group codes for semantic validation -- "
-            "backend/rag/load_full_isco.py, read as plain text (never imported)."
-        ),
-    )
-    args = parser.parse_args()
-
+def _run(args) -> None:
+    """The actual CLI execution path, called from main() wrapped in
+    guard_against_full130_access() -- see that function for why this
+    script must never open eval/test_set_full130.csv directly, and
+    eval/full130_access_guard.py for what "wrapped in the guard" actually
+    checks at runtime."""
+    # main() already validated existence via parser.error() before calling
+    # _run() -- this defensive re-check only matters if _run() is ever
+    # called directly (e.g. from a test) without going through main() first.
     if not args.dev_set.exists():
-        parser.error(f"Dev set not found: {args.dev_set}")
+        print(f"FATAL: Dev set not found: {args.dev_set}", file=sys.stderr)
+        sys.exit(1)
+
+    # Header validation runs FIRST and independently of row count -- a
+    # malformed header must be reported as a header/schema error, not
+    # masked by (or conflated with) the "0 data rows" empty-set error that
+    # validate_dev_set() would otherwise report first for a header-only file.
+    header = read_csv_header(args.dev_set)
+    header_errors = validate_csv_header(header)
+    if header_errors:
+        print(f"FATAL: {args.dev_set} header does not match the canonical schema:", file=sys.stderr)
+        for e in header_errors:
+            print(f"  ERROR: {e}", file=sys.stderr)
+        print(f"  Expected exactly: {CANONICAL_HEADER}", file=sys.stderr)
+        sys.exit(1)
 
     structure_errors = validate_csv_structure(args.dev_set)
     if structure_errors:
@@ -488,17 +553,29 @@ def main() -> None:
             sys.exit(1)
         print(f"Manifest normalization integrity OK: {norm_msg}")
 
+    # Semantic ISCO catalogue: FATAL (not a warning) if it can't be loaded.
+    # An empty/unparsable catalogue here would silently downgrade every
+    # gold_isco_code check to format-only (4-digit) validation, which would
+    # let 0000/9999-style nonexistent codes pass -- treated as a hard
+    # failure so that can never happen unnoticed. validate_dev_set() itself
+    # (the pure function) still accepts an empty/None valid_isco_codes for
+    # unit testing -- this fail-closed behaviour is specific to the CLI
+    # entry point, not the underlying library function.
+    valid_isco_codes = load_isco_unit_group_catalogue(args.isco_catalogue_source)
+    if not valid_isco_codes:
+        print(
+            f"FATAL: could not load the classifier-supported ISCO-08 catalogue from "
+            f"{args.isco_catalogue_source} -- refusing to validate gold_isco_code with "
+            f"format-only (4-digit) checking, which would silently accept nonexistent "
+            f"codes like 0000/9999. Fix the catalogue source before re-running.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     dev_rows = load_csv_rows(args.dev_set)
     smoke20_rows = load_csv_rows(args.smoke20)
     full130_ids = set(manifest.get("case_ids", []))
     full130_text_hashes = set(manifest.get("normalized_text_sha256", []))
-
-    valid_isco_codes = load_isco_unit_group_catalogue(args.isco_catalogue_source)
-    if not valid_isco_codes:
-        print(f"WARNING: could not load the ISCO-08 unit-group catalogue from "
-              f"{args.isco_catalogue_source} -- semantic gold_isco_code validation "
-              f"(rejecting syntactically-valid-but-nonexistent codes) will be skipped for "
-              f"this run. Format-only (4-digit) validation still applies.", file=sys.stderr)
 
     if not smoke20_rows:
         print(f"WARNING: could not load {args.smoke20} (0 rows) -- case_id/text "
@@ -537,6 +614,34 @@ def main() -> None:
         sys.exit(1)
 
     print("\nPASS: no hard errors." + (" (see warnings above)" if report.warnings else ""))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dev-set", required=True, type=Path)
+    parser.add_argument("--smoke20", type=Path, default=_DEFAULT_SMOKE20)
+    parser.add_argument(
+        "--full130-manifest", type=Path, default=_DEFAULT_FULL130_MANIFEST,
+        help=(
+            "Leakage-detection manifest (case_ids + normalized-text sha256 hashes only, "
+            "no labels) -- NOT eval/test_set_full130.csv itself, which this script never opens."
+        ),
+    )
+    parser.add_argument(
+        "--isco-catalogue-source", type=Path, default=_DEFAULT_ISCO_CATALOGUE_SOURCE,
+        help=(
+            "Source of valid ISCO-08 unit-group codes for semantic validation -- "
+            "backend/rag/load_full_isco.py, read as plain text (never imported). An "
+            "empty/unparsable catalogue is FATAL (exit 1), not a soft warning."
+        ),
+    )
+    args = parser.parse_args()
+
+    if not args.dev_set.exists():
+        parser.error(f"Dev set not found: {args.dev_set}")
+
+    with guard_against_full130_access():
+        _run(args)
 
 
 if __name__ == "__main__":

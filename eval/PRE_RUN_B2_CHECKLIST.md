@@ -60,12 +60,22 @@ python eval/validate_dev_set.py --dev-set eval/dev_set_v1.csv
 
 Must exit 0 (PASS; warnings are fine, errors are not) before continuing.
 This checks:
+- **Header validity FIRST, independently of row count** -- the header must
+  exactly match the canonical 7-column order (no missing/duplicate/
+  reordered/extra columns). A malformed header-only file is reported as an
+  explicit header/schema error, never conflated with the generic "Dev set
+  is empty" message a merely-unpopulated (but correctly-headed) file gets.
 - CSV structure (malformed quoting, ragged rows -- rejected before any
   field-level check runs).
 - Schema/field validity, including that `gold_isco_code` is not just
-  4 digits but an **actual** ISCO-08 unit-group code (441-code catalogue
-  from `backend/rag/load_full_isco.py`, read as text -- `0000`/`9999`-style
-  codes are rejected even though they're syntactically valid).
+  4 digits but exists in the **classifier-supported** ISCO catalogue
+  (441 codes from `backend/rag/load_full_isco.py`, read as text --
+  `0000`/`9999`-style codes are rejected even though they're syntactically
+  valid). This is "codes the classifier can predict," not an independently
+  verified statement of official ILO ISCO-08 coverage -- see
+  `eval/dev_set_schema.md`'s follow-up audit note on the 441-vs-436
+  discrepancy. If this catalogue can't be loaded at all, the run is FATAL
+  (exit 1) rather than silently downgrading to format-only validation.
 - Leakage-safety against `eval/test_set_smoke20.csv` (read directly -- it
   is not held-out) and `eval/test_set_full130.csv` (checked via
   `eval/configs/full130_leakage_manifest.json` **only** -- this script does
@@ -93,18 +103,28 @@ JSONL too).
 
 Must print `OVERALL: PASS` and exit 0. Its checklist includes, among the
 items covered in Step 1 above (surfaced here as individual PASS/FAIL lines
--- `isco_catalogue_loaded`, `full130_manifest_normalization_integrity`,
-`dev_set_csv_structure`, `dev_set_validation_vs_smoke20`,
-`dev_set_no_overlap_with_full130` -- plus the baseline/beam/git-tree gates
-from `eval/configs/b1_frozen.json`). This script never opens `eval/
-test_set_full130.csv` -- dev-set overlap against it is checked via
-`eval/configs/full130_leakage_manifest.json` (case_ids and text hashes
-only, no labels), and the whole check sequence runs inside a runtime guard
-that raises immediately if anything ever tries to open a path matching
-`test_set_full130`. Two independent regression-test layers
-(`eval/test_validate_dev_set.py`, `eval/test_pre_run_check.py`) prove this:
-an AST source scan finding no direct `open()`-family call referencing that
-filename, and the runtime guard itself, exercised against real execution.
+-- `dev_set_header_schema`, `dev_set_csv_structure`, `isco_catalogue_loaded`
+(**hard failure** if the classifier-supported ISCO catalogue can't be
+loaded -- see `eval/dev_set_schema.md`'s "Semantic ISCO-08 code validation"
+section for why "classifier-supported" and "official ILO ISCO-08" are not
+the same claim), `full130_manifest_normalization_integrity`,
+`dev_set_validation_vs_smoke20`, `dev_set_no_overlap_with_full130` -- plus
+the baseline/beam/git-tree gates from `eval/configs/b1_frozen.json`). This
+script never opens `eval/test_set_full130.csv` -- dev-set overlap against
+it is checked via `eval/configs/full130_leakage_manifest.json` (case_ids
+and text hashes only, no labels), and the whole check sequence runs inside
+`eval/full130_access_guard.py`'s shared runtime guard, which patches FIVE
+independent file-reading entry points (`builtins.open`, `io.open`,
+`pathlib.Path.open`/`.read_text()`/`.read_bytes()` -- not just
+`builtins.open`, since `io.open` is a separate name binding that a
+builtins-only patch would miss) and raises immediately if anything ever
+tries to open a path matching `test_set_full130`. `eval/validate_dev_set.py`
+wraps its own `main()` in the exact same shared guard. Three independent
+regression-test layers prove this: `eval/test_full130_access_guard.py`
+(all five vectors individually, plus real-execution-path non-triggering),
+and an AST source scan in `eval/test_validate_dev_set.py`/`eval/
+test_pre_run_check.py` finding no direct `open()`-family call referencing
+that filename in either module's own source.
 
 ## Step 3: run the dev-set K-sweep (only after Step 2 PASSes)
 

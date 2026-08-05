@@ -14,10 +14,12 @@ import ast
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import validate_dev_set as vds  # noqa: E402
-import pre_run_check as prc  # noqa: E402 -- reused only for guard_against_full130_access()
+import full130_access_guard as guard  # noqa: E402
 
 
 def make_row(case_id="dev001", language="en", respondent_text="baker",
@@ -379,11 +381,69 @@ def test_real_gold_code_passes_semantic_check():
 def test_semantic_check_skipped_when_catalogue_not_supplied():
     """valid_isco_codes defaults to None/empty -- format-only validation
     still applies, but a nonexistent-but-4-digit code like 0000 is not
-    flagged when no catalogue was supplied (documented skip, not a crash)."""
+    flagged when no catalogue was supplied (documented skip, not a crash).
+    This is validate_dev_set()'s OWN behaviour -- it must stay independently
+    testable with an injected (possibly empty) catalogue. Fail-CLOSED
+    behaviour for a missing catalogue is specific to main(), see below."""
     rows = make_valid_set()
     rows[0]["gold_isco_code"] = "0000"
     report = vds.validate_dev_set(rows, set())  # no valid_isco_codes
     assert report.ok
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: main() fails closed (exit 1, FATAL) when the ISCO catalogue can't
+# be loaded -- distinct from validate_dev_set()'s own soft-skip above.
+# ---------------------------------------------------------------------------
+
+def test_main_exits_fatal_when_isco_catalogue_source_missing(tmp_path, monkeypatch, capsys):
+    dev_set = tmp_path / "dev.csv"
+    _write_raw(dev_set, ",".join(vds.CANONICAL_HEADER) + "\n")
+    monkeypatch.setattr(sys, "argv", [
+        "validate_dev_set.py", "--dev-set", str(dev_set),
+        "--isco-catalogue-source", str(tmp_path / "does_not_exist.py"),
+    ])
+    with pytest.raises(SystemExit) as exc_info:
+        vds.main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "FATAL" in captured.err
+    assert "catalogue" in captured.err.lower()
+
+
+def test_main_fatal_catalogue_exit_happens_before_dataset_can_pass(tmp_path, monkeypatch, capsys):
+    """Even a dev set that would otherwise be schema-valid must not be
+    allowed to report PASS/proceed if the catalogue can't be loaded --
+    'before any dataset can pass' per Fix 3's requirement."""
+    dev_set = tmp_path / "dev.csv"
+    _write_raw(dev_set, ",".join(vds.CANONICAL_HEADER) + "\n")  # well-formed header, 0 rows
+    monkeypatch.setattr(sys, "argv", [
+        "validate_dev_set.py", "--dev-set", str(dev_set),
+        "--isco-catalogue-source", str(tmp_path / "does_not_exist.py"),
+    ])
+    with pytest.raises(SystemExit) as exc_info:
+        vds.main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    # the catalogue failure must be reported -- NOT the unrelated
+    # "Dev set is empty" message that would otherwise fire first
+    assert "catalogue" in captured.err.lower()
+    assert "PASS" not in captured.out
+
+
+def test_main_succeeds_past_catalogue_check_with_real_catalogue_source(tmp_path, monkeypatch, capsys):
+    """Sanity check: the real, default catalogue source does NOT trigger
+    the fail-closed path -- only a genuinely broken/missing source does."""
+    dev_set = tmp_path / "dev.csv"
+    _write_raw(dev_set, ",".join(vds.CANONICAL_HEADER) + "\n")
+    monkeypatch.setattr(sys, "argv", ["validate_dev_set.py", "--dev-set", str(dev_set)])
+    with pytest.raises(SystemExit) as exc_info:
+        vds.main()
+    # still exits 1, but because the set is empty -- NOT a catalogue failure
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "catalogue" not in captured.err.lower()
+    assert "Dev set is empty" in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -522,6 +582,126 @@ def test_validate_csv_structure_allows_properly_quoted_multiline_field(tmp_path)
     rows = vds.load_csv_rows(p)
     assert rows[0]["respondent_text"] == "line one\nline two"
     assert len(rows) == 2  # the multiline field did not get split into extra rows
+
+
+# ---------------------------------------------------------------------------
+# Header validation (Fix 2) -- read_csv_header() / validate_csv_header(),
+# runs independently of row count so a malformed header-only file is
+# reported as a header/schema error, not "empty".
+# ---------------------------------------------------------------------------
+
+def _write_header_only(tmp_path, header_line):
+    p = tmp_path / "dev.csv"
+    _write_raw(p, header_line + "\n")
+    return p
+
+
+def test_read_csv_header_returns_column_list_in_file_order(tmp_path):
+    p = _write_header_only(tmp_path, "case_id,language,respondent_text")
+    assert vds.read_csv_header(p) == ["case_id", "language", "respondent_text"]
+
+
+def test_read_csv_header_missing_file_returns_none(tmp_path):
+    assert vds.read_csv_header(tmp_path / "does_not_exist.csv") is None
+
+
+def test_read_csv_header_truly_empty_file_returns_none(tmp_path):
+    p = tmp_path / "empty.csv"
+    _write_raw(p, "")
+    assert vds.read_csv_header(p) is None
+
+
+def test_canonical_header_matches_required_columns():
+    assert vds.CANONICAL_HEADER == vds.REQUIRED_COLUMNS
+
+
+def test_validate_csv_header_passes_for_exact_canonical_header():
+    assert vds.validate_csv_header(list(vds.CANONICAL_HEADER)) == []
+
+
+def test_validate_csv_header_none_reports_no_header_row():
+    errors = vds.validate_csv_header(None)
+    assert errors
+    assert "no header row" in errors[0].lower()
+
+
+def test_validate_csv_header_rejects_missing_columns():
+    header = [c for c in vds.CANONICAL_HEADER if c != "annotator_or_adjudication_reference"]
+    errors = vds.validate_csv_header(header)
+    assert errors
+    assert any("Missing required column" in e and "annotator_or_adjudication_reference" in e for e in errors)
+
+
+def test_validate_csv_header_rejects_duplicate_columns():
+    header = list(vds.CANONICAL_HEADER) + ["case_id"]  # case_id appears twice
+    errors = vds.validate_csv_header(header)
+    assert errors
+    assert any("Duplicate column" in e and "case_id" in e for e in errors)
+
+
+def test_validate_csv_header_rejects_reordered_columns():
+    header = list(vds.CANONICAL_HEADER)
+    header[0], header[1] = header[1], header[0]  # swap case_id/language
+    errors = vds.validate_csv_header(header)
+    assert errors
+    assert any("reordered" in e.lower() for e in errors)
+
+
+def test_validate_csv_header_rejects_unexpected_extra_column():
+    header = list(vds.CANONICAL_HEADER) + ["notes"]
+    errors = vds.validate_csv_header(header)
+    assert errors
+    assert any("Unexpected extra column" in e and "notes" in e for e in errors)
+
+
+def test_validate_csv_header_reports_multiple_problems_at_once():
+    """Missing + extra simultaneously (a rename, effectively) must surface
+    both problems in one pass, not just the first one found."""
+    header = [c for c in vds.CANONICAL_HEADER if c != "dataset_split"] + ["split"]
+    errors = vds.validate_csv_header(header)
+    assert any("Missing required column" in e and "dataset_split" in e for e in errors)
+    assert any("Unexpected extra column" in e and "split" in e for e in errors)
+
+
+def test_canonical_header_only_template_passes_header_validation_but_fails_on_zero_rows(tmp_path):
+    """Exactly what Fix 2 requires: for the current canonical header-only
+    template, header/schema check must PASS, and the overall validator must
+    FAIL only because zero data rows exist -- not because of the header."""
+    p = _write_header_only(tmp_path, ",".join(vds.CANONICAL_HEADER))
+    header = vds.read_csv_header(p)
+    header_errors = vds.validate_csv_header(header)
+    assert header_errors == []  # header/schema check: PASS
+
+    dev_rows = vds.load_csv_rows(p)
+    report = vds.validate_dev_set(dev_rows, set())
+    assert not report.ok
+    assert report.errors == ["Dev set is empty (no data rows)."]  # FAIL solely for zero rows
+
+
+def test_the_real_shipped_dev_set_v1_csv_passes_header_validation():
+    """The actual checked-in eval/dev_set_v1.csv (header-only) must pass
+    header validation with the real, current CANONICAL_HEADER -- not just a
+    synthetic copy of it."""
+    real_dev_set = Path(__file__).resolve().parent / "dev_set_v1.csv"
+    header = vds.read_csv_header(real_dev_set)
+    assert vds.validate_csv_header(header) == []
+
+
+def test_malformed_header_only_template_reports_header_error_not_merely_empty(tmp_path):
+    """Fix 2's other explicit requirement: a malformed header-only template
+    must report a header/schema error, distinguishable from a generic
+    'empty' message."""
+    reordered = list(vds.CANONICAL_HEADER)
+    reordered[0], reordered[1] = reordered[1], reordered[0]
+    p = _write_header_only(tmp_path, ",".join(reordered))
+
+    header = vds.read_csv_header(p)
+    header_errors = vds.validate_csv_header(header)
+    assert header_errors  # explicit header/schema failure
+    assert any("reordered" in e.lower() for e in header_errors)
+    # crucially, this is NOT the same message validate_dev_set() would give
+    # for a merely-empty (but correctly-headed) file:
+    assert not any("empty" in e.lower() for e in header_errors)
 
 
 # ---------------------------------------------------------------------------
@@ -668,11 +848,12 @@ def test_manifest_builder_module_is_the_documented_authorised_exception():
 
 def test_validate_dev_set_functions_never_open_full130_at_runtime(tmp_path):
     """Behavioural counterpart to the AST scan above -- wraps an ACTUAL
-    execution of every full130-adjacent validate_dev_set.py function in
-    guard_against_full130_access() (imported from pre_run_check.py, which
-    already relies on this exact guarantee) and confirms none of them ever
-    call open() on a path matching eval/test_set_full130.csv, regardless of
-    how indirectly the path might have been constructed."""
+    execution of every full130-adjacent validate_dev_set.py function in the
+    shared guard_against_full130_access() (eval/full130_access_guard.py --
+    the same implementation validate_dev_set.py itself wraps main() in) and
+    confirms none of them ever call open()/io.open()/Path.open()/
+    .read_text()/.read_bytes() on a path matching eval/test_set_full130.csv,
+    regardless of how indirectly the path might have been constructed."""
     dev_set = tmp_path / "dev.csv"
     dev_set.write_text(
         "case_id,language,respondent_text,gold_isco_code,gold_label_source,"
@@ -683,7 +864,7 @@ def test_validate_dev_set_functions_never_open_full130_at_runtime(tmp_path):
     manifest_path = Path(__file__).resolve().parent / "configs" / "full130_leakage_manifest.json"
     smoke20_path = Path(__file__).resolve().parent / "test_set_smoke20.csv"
 
-    with prc.guard_against_full130_access():
+    with guard.guard_against_full130_access():
         structure_errors = vds.validate_csv_structure(dev_set)
         manifest = vds.load_full130_manifest_raw(manifest_path)
         vds.check_manifest_normalization_integrity(manifest)

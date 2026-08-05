@@ -23,9 +23,12 @@ eval/configs/full130_leakage_manifest.json -- a small, pre-built manifest
 containing ONLY case_ids and sha256 hashes of normalized input_text (no
 gold labels, no raw text) extracted from full130 once, offline (see that
 file's own _description). This script additionally wraps its entire check
-sequence in guard_against_full130_access(), a runtime monkeypatch of
-builtins.open() that raises immediately if anything -- including a future
-edit that reintroduces a direct full130 read -- ever tries to open a path
+sequence in eval.full130_access_guard.guard_against_full130_access(), a
+shared runtime guard patching FIVE independent file-reading entry points
+(builtins.open, io.open, pathlib.Path.open/.read_text()/.read_bytes() --
+see that module's docstring for why patching builtins.open alone is not
+enough) that raises immediately if anything -- including a future edit
+that reintroduces a direct full130 read -- ever tries to open a path
 matching eval/test_set_full130.csv. This is a genuine, testable guarantee,
 not just a code-review promise.
 
@@ -52,8 +55,6 @@ Exit codes
 from __future__ import annotations
 
 import argparse
-import builtins
-import contextlib
 import hashlib
 import json
 import sys
@@ -64,43 +65,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import dev_sweep as ds  # noqa: E402
 import validate_dev_set as vds  # noqa: E402
+# Re-exported (not just used internally) so existing callers/tests that
+# reach these via `pre_run_check.guard_against_full130_access`/
+# `pre_run_check.Full130AccessBlocked` keep working -- the guard itself now
+# lives in one shared module so eval/validate_dev_set.py uses the EXACT
+# same implementation, not a second hand-maintained copy.
+from full130_access_guard import (  # noqa: E402
+    Full130AccessBlocked,
+    guard_against_full130_access,
+)
 
 _DEFAULT_SMOKE20 = Path(__file__).resolve().parent / "test_set_smoke20.csv"
 _DEFAULT_FULL130_MANIFEST = Path(__file__).resolve().parent / "configs" / "full130_leakage_manifest.json"
-_FULL130_FILENAME_PATTERN = "test_set_full130"
-
-
-class Full130AccessBlocked(Exception):
-    """Raised by guard_against_full130_access() if anything tries to open a
-    path matching eval/test_set_full130.csv while the guard is active."""
-
-
-@contextlib.contextmanager
-def guard_against_full130_access():
-    """Monkeypatches builtins.open() (which io.open()/Path.open()/
-    Path.read_text()/Path.read_bytes() all funnel through in CPython) to
-    raise Full130AccessBlocked immediately if the path contains
-    "test_set_full130". Restores the original open() on exit, including on
-    exception. This is what makes 'full130 path is never read by pre-run
-    check' a checked runtime property instead of just a code-review claim."""
-    original_open = builtins.open
-
-    def guarded_open(file, *args, **kwargs):
-        path_str = str(file).replace("\\", "/")
-        if _FULL130_FILENAME_PATTERN in path_str:
-            raise Full130AccessBlocked(
-                f"BLOCKED: attempted to open {path_str!r}, which matches the protected "
-                f"full130 test-set filename pattern ({_FULL130_FILENAME_PATTERN!r}). "
-                f"eval/pre_run_check.py must never open eval/test_set_full130.csv -- use "
-                f"eval/configs/full130_leakage_manifest.json for overlap checks instead."
-            )
-        return original_open(file, *args, **kwargs)
-
-    builtins.open = guarded_open
-    try:
-        yield
-    finally:
-        builtins.open = original_open
 
 
 def check_full130_manifest_overlap(dev_rows: list, manifest: dict) -> tuple:
@@ -195,6 +171,16 @@ def run_pre_run_checks(
         else:
             record("git_tree_clean", False, f"dirty (pass --allow-dirty-tree to override): {git_dirty}")
 
+        header = vds.read_csv_header(dev_set_path)
+        header_errors = vds.validate_csv_header(header)
+        record(
+            "dev_set_header_schema", not header_errors,
+            "; ".join(header_errors) if header_errors else
+            f"header matches the canonical schema exactly: {vds.CANONICAL_HEADER}",
+        )
+        if header_errors:
+            return False, checklist  # a malformed header makes further parsing unreliable
+
         structure_errors = vds.validate_csv_structure(dev_set_path)
         record(
             "dev_set_csv_structure", not structure_errors,
@@ -203,13 +189,22 @@ def run_pre_run_checks(
         if structure_errors:
             return False, checklist  # ragged/malformed rows make further parsing unreliable
 
+        # isco_catalogue_loaded is a HARD failure (contributes to overall_ok
+        # via the all(...) aggregation below), matching validate_dev_set.py
+        # main()'s fail-closed behaviour for the same condition -- an empty/
+        # unparsable catalogue would otherwise silently downgrade
+        # gold_isco_code checking to format-only (4-digit), which accepts
+        # nonexistent codes like 0000/9999. This is the classifier-SUPPORTED
+        # catalogue (what ISCOClassifier can actually predict), not an
+        # independent statement of official ISCO-08 completeness -- see
+        # eval/dev_set_schema.md's "Semantic ISCO-08 code validation" section.
         valid_isco_codes = vds.load_isco_unit_group_catalogue()
         record(
             "isco_catalogue_loaded", bool(valid_isco_codes),
             f"{len(valid_isco_codes)} unit-group code(s) loaded from "
-            f"backend/rag/load_full_isco.py" if valid_isco_codes else
-            "could not load the ISCO-08 catalogue -- semantic gold_isco_code validation "
-            "will be skipped (format-only 4-digit validation still applies)",
+            f"backend/rag/load_full_isco.py (classifier-supported ISCO catalogue)" if valid_isco_codes else
+            "FATAL: could not load the classifier-supported ISCO-08 catalogue -- "
+            "gold_isco_code semantic validation cannot run; this blocks OVERALL PASS",
         )
 
         manifest = {}

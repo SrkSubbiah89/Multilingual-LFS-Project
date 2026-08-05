@@ -1,0 +1,65 @@
+# requirements-dev.txt
+#
+# Locked development dependencies for collecting and running the B2
+# non-inference test suite ONLY -- not the full application stack (see
+# requirements.txt for that: FastAPI, SQLAlchemy, Redis, Twilio, SendGrid,
+# etc., none of which the B2 tests import).
+#
+# Covers:
+#   eval/test_run_eval_b2.py
+#   eval/test_validate_dev_set.py
+#   eval/test_dev_sweep.py
+#   eval/test_pre_run_check.py
+#   eval/test_full130_access_guard.py
+#   backend/tests/test_candidate_pool.py
+#   backend/tests/test_isco_reranker_strict.py
+#
+# These tests never call Ollama, Qdrant, or CrewAI at runtime (everything
+# is mocked/monkeypatched -- see each file's own module docstring), but
+# importing the modules under test transitively imports crewai,
+# qdrant-client, sentence-transformers, pydantic, python-dotenv,
+# rank-bm25, and scikit-learn (backend/evaluation/evaluate.py, pulled in
+# via eval/run_eval.py's BM25Baseline import, uses
+# sklearn.metrics.cohen_kappa_score -- a real dependency that was missing
+# from requirements.txt entirely before this file was written; it is
+# listed here, not added to requirements.txt, since this file's job is
+# reproducing the audited test environment, not changing the application's
+# own dependency set).
+#
+# Versions below are pinned to exactly what was installed and verified
+# passing (232+ tests) in the audited environment via `pip freeze` -- not
+# guessed. psutil is optional at runtime (eval/dev_sweep.py degrades
+# gracefully without it -- peak_memory_mb reports None) but is pinned here
+# since it IS installed in the audited environment and some tests assert
+# against its presence.
+#
+# Setup
+# -----
+#     python -m venv .venv-dev
+#     .venv-dev\Scripts\activate        (Windows)  /  source .venv-dev/bin/activate  (macOS/Linux)
+#     pip install -r requirements-dev.txt
+#
+# Test command (exact, non-inference)
+# ------------------------------------
+#     python -m pytest eval/test_run_eval_b2.py eval/test_validate_dev_set.py \
+#         eval/test_dev_sweep.py eval/test_pre_run_check.py \
+#         eval/test_full130_access_guard.py \
+#         backend/tests/test_candidate_pool.py backend/tests/test_isco_reranker_strict.py -q
+#
+# Do NOT change these pins as part of routine dependency bumps without
+# re-running the full B2 suite and the B1-frozen-config codebase checks
+# (eval/pre_run_check.py's implementation_fingerprint/ollama_model_identity
+# checks are independent of these Python package versions, but crewai/
+# pydantic major-version bumps have historically changed Agent/Crew/Task
+# call signatures in ways that would need re-verifying).
+
+crewai==1.9.3
+pydantic==2.11.10
+python-dotenv==1.1.1
+qdrant-client==1.17.0
+sentence-transformers==5.2.3
+rank-bm25==0.2.2
+scikit-learn==1.6.1
+psutil==7.0.0
+pytest==9.0.2
+pytest-asyncio==1.3.0

@@ -29,7 +29,7 @@ independent set whose only purpose is K selection.
 | 1 | `case_id` | string | Unique identifier. **Must not collide with any `case_id` in `test_set_smoke20.csv` or the full130 leakage manifest** (see below) — prefix your IDs (e.g. `dev001`) to make collisions structurally impossible rather than relying on numbering luck. |
 | 2 | `language` | `en` \| `ar` \| `mixed` | Respondent's input language. `mixed` is reserved for genuinely code-switched text, not a way around the en/ar coverage target. |
 | 3 | `respondent_text` | string | **The single field sent to the classifier as job-title/description input** (see "Classifier-input field" below). The free-text a respondent would give, phrased as a survey answer — not an ISCO dictionary title copy-pasted from a reference table. |
-| 4 | `gold_isco_code` | string, 4 digits, **and a real ISCO-08 unit-group code** | The correct ISCO-08 **unit-group** code for `respondent_text`, as determined by the process in `gold_label_source`. Must match `^[0-9]{4}$` **and** exist in the project's ISCO-08 catalogue — see "Semantic ISCO-08 code validation" below. `0000` and `9999` are syntactically valid but rejected, since they are not real unit-group codes. |
+| 4 | `gold_isco_code` | string, 4 digits, **and in the classifier-supported ISCO catalogue** | The correct ISCO-08 **unit-group** code for `respondent_text`, as determined by the process in `gold_label_source`. Must match `^[0-9]{4}$` **and** exist in the project's classifier-supported ISCO catalogue — see "Semantic ISCO-08 code validation" below. `0000` and `9999` are syntactically valid but rejected, since they are not codes the classifier can ever predict. |
 | 5 | `gold_label_source` | string | How the gold code was determined. Must not be blank. Recommended values (not hard-enforced by `validate_dev_set.py`, but expected by `eval/dev_set_v1_data_dictionary.md`'s provenance standard): `human_coder_single`, `human_coder_double_agreement`, `adjudicated_panel`, or `authoritative_source:<name>`. |
 | 6 | `annotator_or_adjudication_reference` | string | Identifier/reference (coder ID, adjudication ticket, citation key) for who/what produced the gold label. Identifies the **labeller**, never the respondent — see confidentiality note below. |
 | 7 | `dataset_split` | string, constant | Always the literal value `dev_v1`. Lets rows retain their split identity if concatenated with other case sets downstream. |
@@ -58,41 +58,58 @@ There is no separate `job_title` / `job_description` split in this schema
 unambiguous, matching the single `input_text` column
 `test_set_smoke20.csv`/`test_set_full130.csv` already use.
 
-## Semantic ISCO-08 code validation
+## Semantic ISCO-08 code validation (classifier-supported catalogue)
 
 Format validation (`^[0-9]{4}$`) alone accepts nonsense codes like `0000`
 or `9999` that no version of this project's classifier could ever predict.
 `eval/validate_dev_set.py`'s `load_isco_unit_group_catalogue()` closes this
-gap by checking `gold_isco_code` against the **actual** catalogue of
-ISCO-08 unit-group codes this project uses at runtime:
+gap by checking `gold_isco_code` against the **classifier-supported ISCO
+catalogue** — the codes this project's classifier can actually return, not
+an independently verified transcription of the official ILO ISCO-08
+standard (see the discrepancy note and required follow-up audit below —
+this distinction matters and must not be blurred in any paper claim):
 
 - **Source**: `backend/rag/load_full_isco.py`'s `_UNIT: list[tuple[str,
   str]] = [...]` module-level literal — the same data that populates the
   `isco08_unit_groups` Qdrant collection every classification query
   actually runs against. There is no separately-maintained JSON/CSV
-  catalogue in this repo; this list *is* the catalogue.
+  catalogue in this repo; this list *is* the catalogue this validator uses.
 - **How it's loaded**: read as **plain text and regex-parsed**
   (`\(\s*"(\d{4})"\s*,`), never imported as a Python module — importing
   `load_full_isco.py` would pull in `qdrant_client`/`sentence_transformers`
   at import time, which this validator must never risk triggering.
-- **Count**: 441 unique 4-digit codes as of this writing. **Known,
-  documented discrepancy**: `load_full_isco.py`'s own docstring claims 436
-  (matching the official ILO ISCO-08 standard); the literal list actually
-  contains 441. This validator intentionally checks against "codes the
-  classifier can actually return" (441), which is the right standard for
-  catching an unpredictable gold code, even though it is not a byte-for-
-  byte transcription of the ILO standard.
+- **Count**: 441 unique 4-digit codes as of this writing.
 - **Versioned/documented**: the source path
   (`_DEFAULT_ISCO_CATALOGUE_SOURCE`) and parsing logic are both in
   `eval/validate_dev_set.py`, overridable via `--isco-catalogue-source` for
   testing. If `backend/rag/load_full_isco.py`'s `_UNIT` list is ever
   restructured, this parser (and this documentation) need updating together.
-- **Fails open, loudly, not silently**: if the catalogue can't be loaded
-  (missing/moved source file), `eval/validate_dev_set.py --dev-set ...`
-  prints a `WARNING` and skips the semantic check for that run — format-only
-  validation still applies. This is a deliberate availability trade-off, not
-  a silent pass; `eval/pre_run_check.py`'s `isco_catalogue_loaded` checklist
-  item makes the same skip visible in its own PASS/FAIL output.
+- **Fails CLOSED, not open**: `eval/validate_dev_set.py`'s CLI (`main()`)
+  treats an empty/unparsable catalogue as **FATAL** — it prints an error and
+  exits 1 before any dataset can pass, rather than silently downgrading to
+  format-only validation (which would let `0000`/`9999`-style nonexistent
+  codes slip through unnoticed). `eval/pre_run_check.py`'s
+  `isco_catalogue_loaded` checklist item is likewise a **hard failure** — a
+  missing/unparsable catalogue blocks `OVERALL: PASS`. The underlying pure
+  function, `validate_dev_set()`, remains independently testable with an
+  injected (possibly empty) catalogue for unit tests — only the CLI/gate
+  entry points are fail-closed, not the library function itself.
+
+### Required follow-up: 441-versus-official-source discrepancy
+
+`backend/rag/load_full_isco.py`'s own docstring claims 436 unit groups
+(matching the official ILO ISCO-08 standard's published count); the
+literal `_UNIT` list actually contains 441 unique codes. **This discrepancy
+has not been independently audited** and must not be silently treated as
+"441 is correct" or "436 is correct" — it could reflect intentional
+project-specific additions, a transcription error, duplicate/near-duplicate
+entries under different codes, or something else. **Before any
+conference-paper claim about complete or correct official ISCO-08
+coverage, this discrepancy requires a dedicated data-quality audit**
+(diffing `_UNIT` against the published ILO ISCO-08 unit-group list,
+case by case) — out of scope for this validator, which only needs "codes
+the classifier can actually predict," not "codes that are officially
+correct." Track this as an open item, not a resolved one.
 
 ## Text normalisation (leakage checks only — never classifier input)
 
@@ -202,13 +219,26 @@ raw text) for the full130 side of any check.
 hashes are guaranteed built by the same function every consumer will
 compare against. It defaults to a dry run (prints a summary, touches
 nothing) — pass `--write` to actually update the checked-in manifest.
-`eval/test_validate_dev_set.py` and `eval/test_pre_run_check.py` each
-contain a full130-isolation regression guard: an AST scan confirming
-`validate_dev_set.py`/`pre_run_check.py` contain no direct `open()`-family
-call referencing `eval/test_set_full130.csv`, a locked-in check that the
-manifest builder *does*, and a runtime test that wraps actual execution of
-every full130-adjacent function in a `builtins.open()`-patching guard that
-raises immediately if anything tries to open a path matching that filename.
+
+The runtime guard itself lives in **one shared module**,
+`eval/full130_access_guard.py` (`guard_against_full130_access()`), used by
+both `eval/validate_dev_set.py` (wraps `main()`'s entire execution path)
+and `eval/pre_run_check.py` (wraps its whole checklist run) — not two
+independently-maintained copies. It patches **five** independent
+file-reading entry points, not just `builtins.open()`: `builtins.open`,
+`io.open` (a *separate* name binding from `builtins.open`, so a
+builtins-only patch would miss code that calls `io.open(...)` directly),
+`pathlib.Path.open`, `pathlib.Path.read_text`, and `pathlib.Path.
+read_bytes`. Any call whose path argument contains `"test_set_full130"`
+raises `Full130AccessBlocked` immediately; unrelated paths (including the
+leakage manifest) pass through unaffected. `eval/
+test_full130_access_guard.py` tests all five vectors individually, proves
+unrelated paths stay readable, and proves the real `validate_dev_set.py`/
+`pre_run_check.py` execution paths never trigger it. `eval/
+test_validate_dev_set.py` and `eval/test_pre_run_check.py` additionally
+contain an AST-scan regression guard confirming neither module contains a
+direct `open()`-family call referencing `eval/test_set_full130.csv` in its
+own source, with a locked-in check that the manifest builder *does*.
 
 ## Confidentiality
 
@@ -217,6 +247,24 @@ survey transcript — avoid names, contact details, exact employer
 identifiers, or other personally identifying information.
 `annotator_or_adjudication_reference` identifies the labeller (an ID or
 citation), never the respondent.
+
+## Header validation (runs before, and independently of, row count)
+
+`eval/validate_dev_set.py`'s `read_csv_header()` + `validate_csv_header()`
+check the header row itself, separately from and *before* any row-count or
+per-row check: the header must equal `CANONICAL_HEADER` (== `REQUIRED_
+COLUMNS`, the 7 columns above, in exactly that order) with no missing,
+duplicate, reordered, or extra columns. This matters specifically because
+`validate_dev_set()`'s per-row logic only ever inspects column names once
+`dev_rows` is non-empty (it short-circuits on "Dev set is empty" before
+reaching any column check) — without a standalone header check, a
+malformed header on a header-only (0 data row) file would be masked by the
+generic "empty" error rather than reported as what it actually is. `eval/
+validate_dev_set.py --dev-set ...` runs this check first and exits 1 with
+an explicit header/schema error (never conflated with "Dev set is empty")
+if it fails; `eval/pre_run_check.py`'s `dev_set_header_schema` checklist
+item does the same, and short-circuits the remaining checklist (further
+parsing is unreliable against an unknown header).
 
 ## CSV structure and edge cases
 

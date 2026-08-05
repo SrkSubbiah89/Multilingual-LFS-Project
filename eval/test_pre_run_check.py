@@ -443,6 +443,59 @@ def test_checklist_includes_isco_catalogue_loaded_item(tmp_path):
     assert names["isco_catalogue_loaded"] is True  # real catalogue, 441 codes
 
 
+def test_checklist_isco_catalogue_missing_is_a_hard_failure(tmp_path, monkeypatch):
+    """Fix 3's explicit requirement: isco_catalogue_loaded must remain a
+    hard failure (blocks overall_ok), not an advisory-only item."""
+    monkeypatch.setattr(vds, "load_isco_unit_group_catalogue", lambda *a, **k: set())
+    dev_set = tmp_path / "dev_set_v1.csv"
+    write_dev_set(dev_set, make_valid_dev_rows())
+    overall_ok, checklist = prc.run_pre_run_checks(
+        dev_set, REAL_BASELINE, REAL_SMOKE20, REAL_MANIFEST,
+        confirm_inferred_beam=3, allow_dirty_tree=True,
+    )
+    names = dict((n, ok) for n, ok, _ in checklist)
+    assert names["isco_catalogue_loaded"] is False
+    assert overall_ok is False
+
+
+def test_checklist_includes_dev_set_header_schema_item(tmp_path):
+    dev_set = tmp_path / "dev_set_v1.csv"
+    write_dev_set(dev_set, make_valid_dev_rows())
+    overall_ok, checklist = prc.run_pre_run_checks(
+        dev_set, REAL_BASELINE, REAL_SMOKE20, REAL_MANIFEST,
+        confirm_inferred_beam=3, allow_dirty_tree=True,
+    )
+    names = dict((n, ok) for n, ok, _ in checklist)
+    assert names["dev_set_header_schema"] is True
+
+
+def test_checklist_malformed_header_blocks_overall(tmp_path):
+    dev_set = tmp_path / "dev_set_v1.csv"
+    reordered = ["language", "case_id", "respondent_text", "gold_isco_code",
+                 "gold_label_source", "annotator_or_adjudication_reference", "dataset_split"]
+    dev_set.write_text(",".join(reordered) + "\n", encoding="utf-8")
+    overall_ok, checklist = prc.run_pre_run_checks(
+        dev_set, REAL_BASELINE, REAL_SMOKE20, REAL_MANIFEST,
+        confirm_inferred_beam=3, allow_dirty_tree=True,
+    )
+    names = dict((n, ok) for n, ok, _ in checklist)
+    assert names["dev_set_header_schema"] is False
+    assert overall_ok is False
+
+
+def test_checklist_canonical_header_only_template_passes_header_item(tmp_path):
+    dev_set = tmp_path / "dev_set_v1.csv"
+    dev_set.write_text(",".join(vds.CANONICAL_HEADER) + "\n", encoding="utf-8")
+    overall_ok, checklist = prc.run_pre_run_checks(
+        dev_set, REAL_BASELINE, REAL_SMOKE20, REAL_MANIFEST,
+        confirm_inferred_beam=3, allow_dirty_tree=True,
+    )
+    names = dict((n, ok) for n, ok, _ in checklist)
+    assert names["dev_set_header_schema"] is True
+    # overall still fails, but purely downstream (0 rows), not the header
+    assert names["dev_set_validation_vs_smoke20"] is False
+
+
 def test_checklist_semantic_isco_rejection_flows_through(tmp_path):
     """A gold_isco_code like 9999 (syntactically valid, doesn't exist) must
     fail dev_set_validation_vs_smoke20 once the real catalogue is wired in."""
