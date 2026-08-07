@@ -101,14 +101,23 @@ for how a real, citable coverage percentage would be produced.
 hierarchical-retrieval method id (`isic_hierarchical_retrieval` /
 `iscedf_hierarchical_retrieval`) when the engine actually ran and returned
 a usable result (`ready=True`, `unavailable_reason==""`, a non-empty
-`code`). In every other case — required collections missing, or the
-search returned nothing — it falls back to the existing legacy
-keyword/LLM (ISIC) or keyword/rule (ISCED-F) pipeline and reports one of:
+`code`). In every other case — required collections missing, Qdrant
+unreachable or erroring at readiness-check time (Task 05.1), an embedding
+failure, an engine-search failure, or the search returning nothing — it
+falls back to the existing legacy keyword/LLM (ISIC) or keyword/rule
+(ISCED-F) pipeline and reports one of:
 
 - `isic_hierarchical_fallback_keyword` / `isic_hierarchical_fallback_llm`
 - `iscedf_hierarchical_fallback_keyword`
 
-with `fallback_used=True` and a non-empty `fallback_reason`. The
+with `fallback_used=True` and a non-empty `fallback_reason`. All of these
+operational failure modes are caught narrowly at their external-call
+boundary in `StandardHierarchicalStore` (the Qdrant readiness check, the
+embedding call, and the engine-search call) — never as a blanket catch
+around unrelated classifier logic — and fold into the same
+`ready=False` / non-empty `unavailable_reason` contract the classifier
+already branches on, so no separate handling was needed in the
+classifiers themselves. The
 hierarchical-trace fields (`hierarchy_path`, `stage_confidences`,
 `top_candidates`) are left at their empty defaults on every fallback
 result, so a fallback can never be mistaken for a completed hierarchical
@@ -159,6 +168,14 @@ embedding-model load, no network call):
 8. The collection-builder CLI's `--dry-run` path never imports
    `qdrant_client`/`sentence_transformers` classes into scope and produces
    deterministic, well-formed output.
+9. (Task 05.1) A Qdrant readiness-check failure (e.g. connection error)
+   yields an explicit unavailable result, never runs a hierarchy query,
+   and never loads the embedding model; both classifiers fall back with
+   the correct explicit label in this condition, and ISCED-F still
+   reports its independently classified level. An embedding failure and
+   an engine-search failure are each surfaced the same way — an explicit,
+   non-fabricated `unavailable_reason`, never a raised exception or a
+   silently fabricated result.
 
 ## What is, and is not, manuscript-safe right now
 

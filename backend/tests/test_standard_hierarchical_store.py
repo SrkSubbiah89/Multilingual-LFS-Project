@@ -265,3 +265,183 @@ def test_iscedf_factory_with_injected_args_returns_fresh_instance_each_time():
     a = get_iscedf_hierarchical_store(client=client, embedder=embedder)
     b = get_iscedf_hierarchical_store(client=client, embedder=embedder)
     assert a is not b
+
+
+# ---------------------------------------------------------------------------
+# Operational resilience (Task 05.1): readiness-check / embedding /
+# engine-search failures must never raise out of search() -- always an
+# explicit, no-code StandardHierarchyResult instead.
+# ---------------------------------------------------------------------------
+
+class _RaisingGetCollectionsClient:
+    """get_collections() raises -- simulates Qdrant being unreachable or
+    erroring at readiness-check time. query_points() must never be called."""
+
+    def __init__(self, exc=None):
+        self._exc = exc or ConnectionError("Qdrant unreachable")
+        self.query_points_called = False
+
+    def get_collections(self):
+        raise self._exc
+
+    def query_points(self, *args, **kwargs):
+        self.query_points_called = True
+        raise AssertionError("query_points() must never be called when readiness check failed")
+
+
+class _RaisingEmbedder:
+    def __init__(self, exc=None):
+        self._exc = exc or RuntimeError("embedding model failed to load")
+
+    def encode(self, *args, **kwargs):
+        raise self._exc
+
+
+def test_readiness_check_failure_yields_explicit_unavailable_result_and_never_queries():
+    """1. A fake client whose get_collections() raises yields an explicit
+    unavailable result and never runs a hierarchy query."""
+    client = _RaisingGetCollectionsClient()
+    store = StandardHierarchicalStore(
+        standard="ISIC Rev.4", stages=isic_stages(), client=client, embedder=FakeEmbedder(),
+    )
+    assert store.ready is False
+    assert store._unavailable_reason != ""
+
+    result = store.search("cereal farming")
+    assert result.ready is False
+    assert result.code == ""
+    assert result.unavailable_reason != ""
+    assert "qdrant" in result.unavailable_reason.lower() or "readiness" in result.unavailable_reason.lower()
+    assert client.query_points_called is False
+
+
+def test_readiness_check_failure_never_loads_embedding_model():
+    """No SentenceTransformer construction attempted when readiness already
+    failed and no embedder was injected -- verified via the internal
+    _embedder attribute staying None (no real model, no crash)."""
+    client = _RaisingGetCollectionsClient()
+    store = StandardHierarchicalStore(standard="ISIC Rev.4", stages=isic_stages(), client=client)
+    assert store.ready is False
+    assert store._embedder is None
+
+
+def test_readiness_check_failure_still_honours_injected_embedder():
+    """Dependency injection keeps working even on the failure path -- an
+    explicitly injected fake embedder is still stored (just never called,
+    since search() short-circuits before reaching _embed_query)."""
+    client = _RaisingGetCollectionsClient()
+    embedder = FakeEmbedder()
+    store = StandardHierarchicalStore(standard="ISIC Rev.4", stages=isic_stages(), client=client, embedder=embedder)
+    assert store._embedder is embedder
+    store.search("cereal farming")
+    assert embedder.calls == []  # never reached -- readiness failure short-circuits first
+
+
+def test_isic_classifier_hierarchical_mode_falls_back_on_readiness_failure(monkeypatch):
+    """2. ISIC hierarchical mode falls back with the correct explicit label
+    and metadata when the readiness check fails."""
+    from backend.agents.classifier_methods import (
+        ISIC_HIERARCHICAL_RETRIEVAL,
+        ISIC_HIERARCHICAL_FALLBACK_KEYWORD,
+        ISIC_HIERARCHICAL_FALLBACK_LLM,
+    )
+    from backend.agents.isic_classifier import ISICClassifier
+    from unittest.mock import MagicMock, patch
+
+    client = _RaisingGetCollectionsClient()
+    store = StandardHierarchicalStore(
+        standard="ISIC Rev.4", stages=isic_stages(), client=client, embedder=FakeEmbedder(),
+    )
+    monkeypatch.setattr(
+        "backend.rag.standard_hierarchical_store.get_isic_hierarchical_store", lambda: store,
+    )
+
+    with patch("backend.agents.isic_classifier.get_llm", return_value=MagicMock()):
+        clf = ISICClassifier()
+    result = clf.classify("software developer tech startup app", method=ISIC_HIERARCHICAL_RETRIEVAL)
+
+    assert result.method in (ISIC_HIERARCHICAL_FALLBACK_KEYWORD, ISIC_HIERARCHICAL_FALLBACK_LLM)
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert result.section != ""  # legacy pipeline genuinely ran
+
+
+def test_isced_classifier_hierarchical_mode_falls_back_on_readiness_failure_and_keeps_level(monkeypatch):
+    """3. ISCED-F hierarchical mode falls back with the correct explicit
+    label and metadata when the readiness check fails, while retaining
+    independently classified ISCED 2011 level output."""
+    from backend.agents.classifier_methods import (
+        ISCEDF_HIERARCHICAL_RETRIEVAL,
+        ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD,
+    )
+    from backend.agents.isced_classifier import ISCEDClassifier
+
+    client = _RaisingGetCollectionsClient()
+    store = StandardHierarchicalStore(
+        standard="ISCED-F 2013", stages=iscedf_stages(), client=client, embedder=FakeEmbedder(),
+    )
+    monkeypatch.setattr(
+        "backend.rag.standard_hierarchical_store.get_iscedf_hierarchical_store", lambda: store,
+    )
+
+    clf = ISCEDClassifier()
+    result = clf.classify("Bachelor of Science BSc university", method=ISCEDF_HIERARCHICAL_RETRIEVAL)
+
+    assert result.method == ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert result.level == 6  # independently classified, unaffected by the store failure
+
+
+def test_embedder_failure_does_not_fabricate_result():
+    """4a. An embedder failure does not fabricate a result and is explicitly
+    surfaced to the fallback path."""
+    client = FakeQdrantClient(_ISIC_TABLE, existing_collections=set(ISIC_COLLECTIONS.values()))
+    store = StandardHierarchicalStore(
+        standard="ISIC Rev.4", stages=isic_stages(), client=client, embedder=_RaisingEmbedder(),
+    )
+    assert store.ready is True  # collections were fine -- only embedding fails
+
+    result = store.search("cereal farming")
+    assert result.ready is True
+    assert result.code == ""
+    assert result.unavailable_reason != ""
+    assert "embed" in result.unavailable_reason.lower()
+    assert client.calls == []  # never reached a Qdrant query
+
+
+def test_engine_search_failure_does_not_fabricate_result():
+    """4b. An engine/search failure does not fabricate a result and is
+    explicitly surfaced to the fallback path."""
+    client = FakeQdrantClient(_ISIC_TABLE, existing_collections=set(ISIC_COLLECTIONS.values()))
+    store = StandardHierarchicalStore(
+        standard="ISIC Rev.4", stages=isic_stages(), client=client, embedder=FakeEmbedder(),
+    )
+    assert store.ready is True
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("unexpected engine failure")
+
+    store._engine.search = _boom  # simulate a failure the engine itself doesn't already swallow
+
+    result = store.search("cereal farming")
+    assert result.ready is True
+    assert result.code == ""
+    assert result.unavailable_reason != ""
+    assert "search" in result.unavailable_reason.lower()
+
+
+def test_positive_path_parent_filtering_unaffected_by_resilience_changes():
+    """5. Existing positive-path parent filtering still passes unchanged."""
+    store, client, _ = _make_isic_store()
+    result = store.search("cereal farming")
+    assert result.ready is True
+    assert result.unavailable_reason == ""
+    assert result.code == "0111"
+    assert result.hierarchy_path == ["A", "01", "011", "0111"]
+    assert client.calls == [
+        ("isic_rev4_sections", None, 2),
+        ("isic_rev4_divisions", "A", 2),
+        ("isic_rev4_groups", "01", 2),
+        ("isic_rev4_classes", "011", 5),
+    ]

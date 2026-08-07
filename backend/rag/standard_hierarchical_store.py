@@ -30,6 +30,26 @@ True`` with a non-empty ``unavailable_reason``) -- callers (ISICClassifier/
 ISCEDClassifier) must branch on ``unavailable_reason`` being non-empty to
 decide whether to fall back, never on ``code`` being non-empty alone.
 
+Operational resilience (Task 05.1): the readiness check itself is an
+external call (``QdrantClient.get_collections()``) and can fail if Qdrant
+is unreachable or erroring, not just report collections as missing. That
+failure is caught at construction time and folded into the SAME
+``ready=False`` / non-empty ``unavailable_reason`` contract above -- a
+caller cannot tell "collections missing" apart from "Qdrant unreachable"
+without reading the reason text, and does not need to; both mean "do not
+attempt a hierarchical query, use the explicit fallback path instead".
+When readiness fails this way, the embedding model is never loaded (no
+``SentenceTransformer`` construction) -- there is nothing useful to do
+with it. Two more operational boundaries -- embedding the query text, and
+running the engine search itself -- are also caught around this same
+external-call boundary in ``search()``: on failure, an explicit no-code
+``StandardHierarchyResult`` with a non-empty ``unavailable_reason`` is
+returned rather than letting the exception propagate into the classifier.
+No score, candidate, or hierarchy path is ever fabricated on any of these
+paths. Exception handling here is deliberately narrow -- it wraps ONLY
+these three external-call boundaries (readiness check, embedding,
+engine search), never any other classifier logic.
+
 Dependency injection for hermetic tests: both ``client`` and ``embedder``
 are constructor parameters. Passing either causes
 ``get_isic_hierarchical_store()``/``get_iscedf_hierarchical_store()`` to
@@ -159,19 +179,54 @@ class StandardHierarchicalStore:
             _port = int(port or os.getenv("QDRANT_PORT", 6333))
             self._client = QdrantClient(host=_host, port=_port)
 
-        self._embedder = embedder if embedder is not None else SentenceTransformer(MODEL_NAME)
-
         # Upfront, one-time collection-readiness check -- see module
-        # docstring's "Readiness contract".
-        existing = {c.name for c in self._client.get_collections().collections}
-        self._missing_collections = [c for c in self._required_collections if c not in existing]
-        self.ready = not self._missing_collections
-        if not self.ready:
-            _logger.warning(
-                "StandardHierarchicalStore(%s): required Qdrant collection(s) missing: %s. "
-                "search() will report ready=False and never attempt a hierarchical query.",
-                self.standard, ", ".join(self._missing_collections),
+        # docstring's "Readiness contract" and "Operational resilience".
+        # This is an external call and can fail outright (Qdrant
+        # unreachable/erroring), not just report collections as missing --
+        # both outcomes fold into the same ready=False / unavailable_reason
+        # contract, since neither state permits a hierarchical query.
+        self._missing_collections: list[str] = []
+        self._unavailable_reason: str = ""
+        try:
+            existing = {c.name for c in self._client.get_collections().collections}
+            self._missing_collections = [c for c in self._required_collections if c not in existing]
+            self.ready = not self._missing_collections
+            if not self.ready:
+                self._unavailable_reason = (
+                    f"Required Qdrant collection(s) missing for {self.standard}: "
+                    f"{', '.join(self._missing_collections)}. Build them with "
+                    f"'python -m backend.rag.build_standard_hierarchical_collections' "
+                    f"before this store can run a real search."
+                )
+                _logger.warning(
+                    "StandardHierarchicalStore(%s): required Qdrant collection(s) missing: %s. "
+                    "search() will report ready=False and never attempt a hierarchical query.",
+                    self.standard, ", ".join(self._missing_collections),
+                )
+        except Exception as exc:
+            self.ready = False
+            self._unavailable_reason = (
+                f"Qdrant readiness check failed for {self.standard}: {exc}. "
+                f"search() will report this as an operational unavailability and never "
+                f"attempt a hierarchical query."
             )
+            _logger.warning(
+                "StandardHierarchicalStore(%s): Qdrant readiness check failed: %s. "
+                "search() will report ready=False and never attempt a hierarchical query.",
+                self.standard, exc,
+            )
+
+        # Never load the embedding model when the store is already known to
+        # be unavailable (readiness check failed or collections missing) --
+        # there is nothing useful to do with it. Dependency-injected
+        # embedders are always honoured regardless of readiness, so tests
+        # can still assert on embedder.calls staying empty.
+        if embedder is not None:
+            self._embedder = embedder
+        elif self.ready:
+            self._embedder = SentenceTransformer(MODEL_NAME)
+        else:
+            self._embedder = None
 
         self._engine = HierarchyBeamSearchEngine(
             client=self._client, stages=stages, hitl_threshold=hitl_threshold,
@@ -197,12 +252,7 @@ class StandardHierarchicalStore:
                 code="", label_en="", label_ar="", confidence=0.0,
                 stage_confidences={}, hierarchy_path=[], top_candidates=[],
                 hitl_required=True, ready=False,
-                unavailable_reason=(
-                    f"Required Qdrant collection(s) missing for {self.standard}: "
-                    f"{', '.join(self._missing_collections)}. Build them with "
-                    f"'python -m backend.rag.build_standard_hierarchical_collections' "
-                    f"before this store can run a real search."
-                ),
+                unavailable_reason=self._unavailable_reason,
             )
 
         text = (text or "").strip()
@@ -214,10 +264,38 @@ class StandardHierarchicalStore:
                 unavailable_reason="empty input text",
             )
 
-        query_vec = self._embed_query(text)
-        engine_result = self._engine.search(
-            query_vec, top_k=top_k, beam=beam, reranker_candidates=reranker_candidates,
-        )
+        try:
+            query_vec = self._embed_query(text)
+        except Exception as exc:
+            _logger.warning(
+                "StandardHierarchicalStore(%s): embedding failed: %s. "
+                "search() reports this as an operational unavailability.",
+                self.standard, exc,
+            )
+            return StandardHierarchyResult(
+                code="", label_en="", label_ar="", confidence=0.0,
+                stage_confidences={}, hierarchy_path=[], top_candidates=[],
+                hitl_required=True, ready=True,
+                unavailable_reason=f"{self.standard} query embedding failed: {exc}",
+            )
+
+        try:
+            engine_result = self._engine.search(
+                query_vec, top_k=top_k, beam=beam, reranker_candidates=reranker_candidates,
+            )
+        except Exception as exc:
+            _logger.warning(
+                "StandardHierarchicalStore(%s): engine search failed: %s. "
+                "search() reports this as an operational unavailability.",
+                self.standard, exc,
+            )
+            return StandardHierarchyResult(
+                code="", label_en="", label_ar="", confidence=0.0,
+                stage_confidences={}, hierarchy_path=[], top_candidates=[],
+                hitl_required=True, ready=True,
+                unavailable_reason=f"{self.standard} hierarchical engine search failed: {exc}",
+            )
+
         if engine_result is None:
             return StandardHierarchyResult(
                 code="", label_en="", label_ar="", confidence=0.0,
