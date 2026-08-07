@@ -34,13 +34,17 @@ assumed. In particular:
     that is ISCO-only accuracy -- so every ISIC/ISCED/SRE/HITL row is
     ``evaluated=False`` until Section D/E of the Reviewer #2 work produces a
     real run manifest to point ``evaluated_ref`` at.
-  - The two "not yet implemented" ISIC/ISCED-F hierarchical-retrieval rows
-    have their ``input_fields``/``output_schema`` populated with the
-    *intended* future schema (clearly marked "planned, not yet built" in
-    ``fallback_behaviour``), not treated as unknown/null -- this is useful
-    for the agent-role diagram export (Section I) and does not overstate
-    current capability (``evaluated`` is False and the method is listed in
-    ``classifier_methods.NOT_IMPLEMENTED_METHODS``).
+  - The two ISIC/ISCED-F hierarchical-retrieval rows (Task 05) describe a
+    REAL, tested code path (backend/rag/standard_hierarchical_store.py,
+    built on the same generic backend.rag.hierarchy_engine ISCO uses) that
+    is honestly still ``evaluated=False`` -- no accuracy measurement exists
+    for either standard yet, and no live Qdrant collection has been built/
+    populated by this repository's own work (that is a separate, explicit
+    operator action; see ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md).
+    Until an operator builds the collections, or whenever a search finds
+    nothing, the classifier falls back to its existing keyword/rule pipeline
+    under an explicit ``*_hierarchical_fallback_*`` method label -- never
+    silently reported as the hierarchical-retrieval method id itself.
 
 Usage
 -----
@@ -190,7 +194,7 @@ REGISTRY: list[ClassifierMethodEntry] = [
         model_name=_GENERAL_MODEL, model_version=None, embedding_model=None,
         prompt_version=_NO_PROMPT_VERSIONING,
         decoding_config={"task_type": "GENERAL", "keyword_threshold": 0.85, "top_k": 3},
-        fallback_behaviour="Keyword lookup over a flat leaf-path table (_ISIC_DATA); LLM re-ranking (role 'ISIC Industry Classifier') only invoked when keyword confidence < 0.85. LLM failure falls back to best keyword match with confidence deflated by 0.8x. NOT hierarchical retrieval -- this is keyword lookup, not Section->Division->Group->Class RAG (see isic_hierarchical_retrieval below for the deferred hierarchical mode).",
+        fallback_behaviour="Keyword lookup over a flat leaf-path table (_ISIC_DATA); LLM re-ranking (role 'ISIC Industry Classifier') only invoked when keyword confidence < 0.85. LLM failure falls back to best keyword match with confidence deflated by 0.8x. NOT hierarchical retrieval -- this is keyword lookup, not Section->Division->Group->Class RAG (see isic_hierarchical_retrieval below, and also the *_hierarchical_fallback_* labels this method reports under when the hierarchical path itself falls back to this same pipeline).",
         evaluated=False, evaluated_ref=None,
         affects_hitl_escalation=False,
     ),
@@ -200,14 +204,16 @@ REGISTRY: list[ClassifierMethodEntry] = [
         category="retrieval",
         input_fields=["text"],
         output_schema={
-            "section": "str (planned)", "division_code": "str (planned)",
-            "group_code": "str (planned)", "class_code": "str (planned)",
-            "confidence": "float (planned)", "hierarchy_path": "list[str] (planned)",
-            "stage_confidences": "dict (planned)", "top_candidates": "list (planned)",
+            "section": "str (4-level parent-filtered path)", "division_code": "str (2-digit)",
+            "group_code": "str (3-digit)", "class_code": "str (4-digit)",
+            "confidence": "float 0-1 (weighted sum of per-stage top scores, weights 0.10/0.20/0.25/0.45)",
+            "hierarchy_path": "list[str] (section->division->group->class codes)",
+            "stage_confidences": "dict{stage1..stage4}", "top_candidates": "list[dict] (final-stage pool)",
+            "hitl_required": "bool", "fallback_used": "bool", "fallback_reason": "Optional[str]",
         },
-        model_name=None, model_version=None, embedding_model=None,
-        prompt_version=None, decoding_config=None,
-        fallback_behaviour="NOT YET IMPLEMENTED. No Qdrant collections, loader, or live retrieval exist for ISIC today. Calling ISICClassifier.classify(text, method='isic_hierarchical_retrieval') returns a structured not-implemented result (confidence=0.0, all hierarchy fields empty) rather than raising or silently running the keyword pipeline. See CLASSIFIER_METHOD_REGISTRY.md for the deferred build plan (Section B, full pass).",
+        model_name=None, model_version=None, embedding_model=_E5_EMBEDDING,
+        prompt_version=None, decoding_config={"beam": 2, "reranker_candidates": 5},
+        fallback_behaviour="Real, tested parent-filtered beam search (backend/rag/standard_hierarchical_store.py) reusing the same generic backend.rag.hierarchy_engine.HierarchyBeamSearchEngine ISCO uses, over isic_rev4_sections/divisions/groups/classes. NOT YET EVALUATED for accuracy, and only produces a live result once an operator has built those Qdrant collections (backend/rag/build_standard_hierarchical_collections.py --standard isic --execute -- not run by this repository's own work). If the collections are missing or the search returns no usable result, ISICClassifier.classify(text, method='isic_hierarchical_retrieval') falls back to the existing keyword/LLM pipeline but reports method='isic_hierarchical_fallback_keyword' or '...fallback_llm' with fallback_used=True and a non-empty fallback_reason -- never silently reported as isic_hierarchical_retrieval.",
         evaluated=False, evaluated_ref=None,
         affects_hitl_escalation=False,
     ),
@@ -236,13 +242,17 @@ REGISTRY: list[ClassifierMethodEntry] = [
         category="retrieval",
         input_fields=["text"],
         output_schema={
-            "broad_code": "str (planned)", "narrow_code": "str (planned)",
-            "detailed_code": "str (planned)", "confidence": "float (planned)",
-            "hierarchy_path": "list[str] (planned)", "stage_confidences": "dict (planned)",
+            "broad_code": "str (2-digit)", "narrow_code": "str (3-digit)",
+            "detailed_code": "str (4-digit)",
+            "confidence": "float 0-1 (level_conf*0.4 + field_conf*0.6, field_conf from the engine)",
+            "hierarchy_path": "list[str] (broad->narrow->detailed codes)",
+            "stage_confidences": "dict{stage1..stage3}", "top_candidates": "list[dict]",
+            "hitl_required": "bool", "fallback_used": "bool", "fallback_reason": "Optional[str]",
+            "level": "int 0-8 (ALWAYS from the independent _score_level() scorer, never part of this path)",
         },
-        model_name=None, model_version=None, embedding_model=None,
-        prompt_version=None, decoding_config=None,
-        fallback_behaviour="NOT YET IMPLEMENTED. No Qdrant collections, loader, or live retrieval exist for ISCED-F today. Calling ISCEDClassifier.classify(text, method='iscedf_hierarchical_retrieval') returns a structured not-implemented result (confidence=0.0, level=-1 sentinel, all field codes empty) rather than raising or silently running the rule/keyword pipeline. ISCED 2011 attainment-LEVEL classification is intentionally kept separate (a level, not a field hierarchy) and is unaffected by this deferred item.",
+        model_name=None, model_version=None, embedding_model=_E5_EMBEDDING,
+        prompt_version=None, decoding_config={"beam": 2, "reranker_candidates": 5},
+        fallback_behaviour="Real, tested parent-filtered beam search (backend/rag/standard_hierarchical_store.py, same generic engine as ISIC/ISCO) over iscedf2013_broad_fields/narrow_fields/detailed_fields for the FIELD dimension only -- ISCED 2011 attainment LEVEL is always computed independently by _score_level() regardless of which path runs. NOT YET EVALUATED for accuracy, and only produces a live field result once an operator has built those Qdrant collections (backend/rag/build_standard_hierarchical_collections.py --standard iscedf --execute -- not run by this repository's own work). If the collections are missing or the search returns no usable result, ISCEDClassifier.classify(text, method='iscedf_hierarchical_retrieval') falls back to the existing keyword/rule pipeline but reports method='iscedf_hierarchical_fallback_keyword' with fallback_used=True and a non-empty fallback_reason -- never silently reported as iscedf_hierarchical_retrieval.",
         evaluated=False, evaluated_ref=None,
         affects_hitl_escalation=False,
     ),

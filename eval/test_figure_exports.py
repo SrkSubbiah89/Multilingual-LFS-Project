@@ -30,10 +30,13 @@ def test_isco_stages_are_four_implemented_stages():
     assert [s.stage_name for s in hier_export.ISCO_STAGES] == ["major", "submajor", "minor", "unit"]
 
 
-def test_planned_stages_are_marked_planned_not_implemented():
-    assert hier_export.PLANNED_STAGES
-    assert all(s.status == "planned" for s in hier_export.PLANNED_STAGES)
-    assert all(s.collection == "(not yet implemented)" for s in hier_export.PLANNED_STAGES)
+def test_isic_iscedf_stages_are_implemented_but_unevaluated():
+    stages = hier_export.IMPLEMENTED_UNEVALUATED_STAGES
+    assert stages
+    assert all(s.status == "implemented_unevaluated" for s in stages)
+    # Real collection names (Task 05), never a placeholder string.
+    assert all(s.collection.startswith(("isic_rev4_", "iscedf2013_")) for s in stages)
+    assert all(s.weight > 0.0 for s in stages)
 
 
 def test_hierarchy_export_writes_json_and_csv(tmp_path):
@@ -70,11 +73,15 @@ def test_edges_count_matches_registry_length():
     assert len(edges) == len(REGISTRY)
 
 
-def test_edges_mark_not_implemented_methods_correctly():
+def test_edges_mark_all_registry_methods_as_implemented():
+    """As of Task 05, every REGISTRY row (including ISIC/ISCED-F
+    hierarchical retrieval) describes real code -- is_implemented is now
+    always True. Evaluated-vs-not is a separate distinction, tracked by
+    ClassifierMethodEntry.evaluated, not this diagram field."""
     edges = agent_export.build_edges()
-    stub_edges = [e for e in edges if e.method_id in ("isic_hierarchical_retrieval", "iscedf_hierarchical_retrieval")]
-    assert stub_edges
-    assert all(e.is_implemented is False for e in stub_edges)
+    hier_edges = [e for e in edges if e.method_id in ("isic_hierarchical_retrieval", "iscedf_hierarchical_retrieval")]
+    assert hier_edges
+    assert all(e.is_implemented is True for e in edges)
 
 
 def test_agent_role_diagram_cli(tmp_path, monkeypatch):
