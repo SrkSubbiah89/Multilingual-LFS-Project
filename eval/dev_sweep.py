@@ -579,10 +579,18 @@ def compute_k_config_hash(k: int, resolved_reranker_model: str, keyword_map_enab
     reproducible hash. branch_collapse is always False here (B2). Two
     different K values legitimately get two different hashes (K is baked
     into the hashed payload, same as every other run_eval.py invocation) --
-    this is provenance for what actually ran, not a cross-K equality check."""
+    this is provenance for what actually ran, not a cross-K equality check.
+
+    sre="on" / use_llm_reranker="on": B2's K-sweep never toggles either
+    (those flags postdate this function -- added by Conference I Reviewer
+    #2 Section E for ablation support) and always runs with both at their
+    true default ("on"), matching run_one_case()'s own default behaviour
+    (sre_enabled=True, use_llm_reranker=True) -- this is what every B2
+    sweep case actually ran with, not an approximation."""
     fake_args = SimpleNamespace(
         system="hierarchical", beam=beam, stage1_mode=stage1_mode,
         reranker_candidates=k, branch_collapse=False, config=config_label,
+        sre="on", use_llm_reranker="on",
     )
     return run_eval._config_hash(fake_args, resolved_reranker_model, keyword_map_enabled)
 

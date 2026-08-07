@@ -670,10 +670,17 @@ def test_compute_k_config_hash_deterministic_for_same_inputs():
 def test_compute_k_config_hash_matches_run_eval_config_hash_mechanism():
     """Sanity check that this isn't a reimplementation that could drift from
     run_eval._config_hash() -- it must BE that function, called with a
-    branch_collapse=False, hierarchical-system stand-in args object."""
+    branch_collapse=False, hierarchical-system stand-in args object.
+
+    sre/use_llm_reranker="on": these two run_eval.py CLI flags (Conference I
+    Reviewer #2 Section E ablation support) postdate this test and
+    compute_k_config_hash() -- both now included, matching B2's true
+    always-on-default K-sweep behaviour (see compute_k_config_hash()'s own
+    docstring in eval/dev_sweep.py)."""
     from types import SimpleNamespace as SNS
     fake_args = SNS(system="hierarchical", beam=3, stage1_mode="leaf_vote",
-                     reranker_candidates=5, branch_collapse=False, config="label")
+                     reranker_candidates=5, branch_collapse=False, config="label",
+                     sre="on", use_llm_reranker="on")
     expected = ds.run_eval._config_hash(fake_args, "ollama/llama3.2:latest", False)
     actual = ds.compute_k_config_hash(5, "ollama/llama3.2:latest", False, 3, "leaf_vote", "label")
     assert actual == expected
