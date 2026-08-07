@@ -639,25 +639,33 @@ def test_assert_baseline_matches_codebase_reports_all_mismatches_at_once(fake_ol
         assert "timeout_s" in msg
 
 
-def test_the_actual_shipped_b1_frozen_json_is_correctly_quarantined():
-    """Conference I Reviewer #2, Task 04 (B1 baseline quarantine). The real
-    eval/configs/b1_frozen.json this repo ships is INTENTIONALLY historical
-    and stale as of the hierarchy-engine refactor (backend/rag/
-    hierarchical_store.py's _hierarchical_search now delegates to
-    backend/rag/hierarchy_engine.py, changing its source and therefore its
-    implementation-fingerprint hash) -- this is an expected, permanent
-    consequence of that refactor, not a newly-measured regression, and not
-    something to "fix" by re-running B1 in this test. This test asserts the
-    file is well-formed AND correctly self-reports as not sweep-ready,
-    exactly the safety state the repository must be in until a real B1
-    re-freeze happens (separate explicit approval required -- see
+def test_the_actual_shipped_b1_frozen_json_is_correctly_quarantined(fake_ollama_identity):
+    """Conference I Reviewer #2, Task 04 (B1 baseline quarantine); Task 04.1
+    (hermetic test isolation). The real eval/configs/b1_frozen.json this
+    repo ships is INTENTIONALLY historical and stale as of the hierarchy-
+    engine refactor (backend/rag/hierarchical_store.py's
+    _hierarchical_search now delegates to backend/rag/hierarchy_engine.py,
+    changing its source and therefore its implementation-fingerprint hash)
+    -- this is an expected, permanent consequence of that refactor, not a
+    newly-measured regression, and not something to "fix" by re-running B1
+    in this test. This test asserts the file is well-formed AND correctly
+    self-reports as not sweep-ready, exactly the safety state the
+    repository must be in until a real B1 re-freeze happens (separate
+    explicit approval required -- see
     Documentation/AI_HANDOFF/CLAUDE_B1_BASELINE_STATUS_REPORT.md).
 
-    Deliberately NOT using fake_ollama_identity -- this is the one test
-    that should hit the real, locally installed Ollama, since it's
-    asserting the shipped file's ollama_model_identity claim against THIS
-    machine's actual state (a live, metadata-only GET /api/tags call --
-    no inference)."""
+    Uses fake_ollama_identity (Task 04.1): this test's purpose is to prove
+    the fail-closed BASELINE_VALIDITY/fingerprint quarantine state, which
+    has nothing to do with Ollama model identity -- it does not need, and
+    must not require, a live local Ollama with this exact model pulled, so
+    it no longer makes a real /api/tags request. check_ollama_model_
+    identity() itself is NOT weakened, removed, or bypassed anywhere in
+    production -- a real B2 run (eval/dev_sweep.py's own main(), invoked
+    outside of tests) still calls the real resolve_ollama_model_identity()
+    and still fails closed exactly as before if Ollama is unreachable or
+    the digest doesn't match; only THIS unit test substitutes a
+    deterministic identity fixture, the same substitution every other
+    assert_baseline_matches_codebase() test in this file already uses."""
     path = Path(__file__).resolve().parent / "configs" / "b1_frozen.json"
     baseline = ds.load_baseline_config(path)
 
