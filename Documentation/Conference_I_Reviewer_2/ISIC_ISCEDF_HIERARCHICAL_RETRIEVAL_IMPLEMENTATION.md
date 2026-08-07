@@ -103,9 +103,10 @@ hierarchical-retrieval method id (`isic_hierarchical_retrieval` /
 a usable result (`ready=True`, `unavailable_reason==""`, a non-empty
 `code`). In every other case — required collections missing, Qdrant
 unreachable or erroring at readiness-check time (Task 05.1), an embedding
-failure, an engine-search failure, or the search returning nothing — it
-falls back to the existing legacy keyword/LLM (ISIC) or keyword/rule
-(ISCED-F) pipeline and reports one of:
+failure (including the embedding *model itself* failing to initialize —
+Task 05.2, see below), an engine-search failure, or the search returning
+nothing — it falls back to the existing legacy keyword/LLM (ISIC) or
+keyword/rule (ISCED-F) pipeline and reports one of:
 
 - `isic_hierarchical_fallback_keyword` / `isic_hierarchical_fallback_llm`
 - `iscedf_hierarchical_fallback_keyword`
@@ -113,11 +114,11 @@ falls back to the existing legacy keyword/LLM (ISIC) or keyword/rule
 with `fallback_used=True` and a non-empty `fallback_reason`. All of these
 operational failure modes are caught narrowly at their external-call
 boundary in `StandardHierarchicalStore` (the Qdrant readiness check, the
-embedding call, and the engine-search call) — never as a blanket catch
-around unrelated classifier logic — and fold into the same
-`ready=False` / non-empty `unavailable_reason` contract the classifier
-already branches on, so no separate handling was needed in the
-classifiers themselves. The
+embedding call — which now also covers lazy model construction — and the
+engine-search call) — never as a blanket catch around unrelated classifier
+logic — and fold into the same `ready=False` / non-empty
+`unavailable_reason` contract the classifier already branches on, so no
+separate handling was needed in the classifiers themselves. The
 hierarchical-trace fields (`hierarchy_path`, `stage_confidences`,
 `top_candidates`) are left at their empty defaults on every fallback
 result, so a fallback can never be mistaken for a completed hierarchical
@@ -176,6 +177,15 @@ embedding-model load, no network call):
    an engine-search failure are each surfaced the same way — an explicit,
    non-fabricated `unavailable_reason`, never a raised exception or a
    silently fabricated result.
+10. (Task 05.2) `SentenceTransformer(MODEL_NAME)` construction is proven
+    lazy (never attempted in `__init__`, only on first real `search()`
+    use) and proven covered by the same protected boundary as query
+    encoding: a construction failure yields the same explicit,
+    embedding-related `unavailable_reason` and correct classifier fallback
+    label as any other embedding failure, for both ISIC and ISCED-F (with
+    ISCED-F's level still independently classified); an injected fake
+    embedder is proven to bypass model construction entirely, even when
+    the real constructor is made to always fail.
 
 ## What is, and is not, manuscript-safe right now
 

@@ -445,3 +445,142 @@ def test_positive_path_parent_filtering_unaffected_by_resilience_changes():
         ("isic_rev4_groups", "01", 2),
         ("isic_rev4_classes", "011", 5),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Model-initialization resilience (Task 05.2): SentenceTransformer(MODEL_NAME)
+# construction is lazy and happens only inside the protected embedding
+# boundary in search() -- a construction failure must never raise to the
+# classifier, and must never be attempted at all when not `ready` or when a
+# fake embedder was injected.
+# ---------------------------------------------------------------------------
+
+class _RaisingSentenceTransformer:
+    """Stand-in for sentence_transformers.SentenceTransformer whose
+    constructor raises -- simulates a model-initialization failure (e.g.
+    missing/corrupt local cache, out-of-memory, etc.)."""
+
+    def __init__(self, *args, **kwargs):
+        raise RuntimeError("embedding model failed to initialize")
+
+
+def test_model_construction_never_attempted_in_init_no_embedder_injected():
+    """Constructing a ready store WITHOUT an injected embedder must not
+    call SentenceTransformer at all -- proof construction is lazy."""
+    import backend.rag.standard_hierarchical_store as store_mod
+
+    calls = {"count": 0}
+
+    class _CountingSentenceTransformer:
+        def __init__(self, *args, **kwargs):
+            calls["count"] += 1
+
+        def encode(self, *args, **kwargs):
+            import numpy as np
+            return np.zeros((1, 384))
+
+    original = store_mod.SentenceTransformer
+    store_mod.SentenceTransformer = _CountingSentenceTransformer
+    try:
+        client = FakeQdrantClient(_ISIC_TABLE, set(ISIC_COLLECTIONS.values()))
+        store = StandardHierarchicalStore(standard="ISIC Rev.4", stages=isic_stages(), client=client)
+        assert calls["count"] == 0  # not constructed in __init__
+        assert store._embedder is None
+
+        store.search("cereal farming")
+        assert calls["count"] == 1  # constructed lazily, on first real use
+    finally:
+        store_mod.SentenceTransformer = original
+
+
+def test_model_construction_failure_yields_explicit_embedding_unavailable_result(monkeypatch):
+    """1. When SentenceTransformer construction raises, a ready-store
+    search() returns an explicit no-code embedding-unavailable result
+    rather than raising."""
+    import backend.rag.standard_hierarchical_store as store_mod
+    monkeypatch.setattr(store_mod, "SentenceTransformer", _RaisingSentenceTransformer)
+
+    client = FakeQdrantClient(_ISIC_TABLE, set(ISIC_COLLECTIONS.values()))
+    store = StandardHierarchicalStore(standard="ISIC Rev.4", stages=isic_stages(), client=client)
+    assert store.ready is True  # collections fine -- only model init fails
+
+    result = store.search("cereal farming")
+    assert result.ready is True
+    assert result.code == ""
+    assert result.unavailable_reason != ""
+    assert "embed" in result.unavailable_reason.lower()
+    assert client.calls == []  # never reached a Qdrant query
+
+
+def test_isic_classifier_falls_back_on_model_construction_failure(monkeypatch):
+    """2. ISICClassifier.classify(..., method=isic_hierarchical_retrieval)
+    receives a model-construction failure as the correct explicitly
+    labelled ISIC fallback result."""
+    import backend.rag.standard_hierarchical_store as store_mod
+    from backend.agents.classifier_methods import (
+        ISIC_HIERARCHICAL_RETRIEVAL,
+        ISIC_HIERARCHICAL_FALLBACK_KEYWORD,
+        ISIC_HIERARCHICAL_FALLBACK_LLM,
+    )
+    from backend.agents.isic_classifier import ISICClassifier
+    from unittest.mock import MagicMock, patch
+
+    monkeypatch.setattr(store_mod, "SentenceTransformer", _RaisingSentenceTransformer)
+    client = FakeQdrantClient(_ISIC_TABLE, set(ISIC_COLLECTIONS.values()))
+    store = StandardHierarchicalStore(standard="ISIC Rev.4", stages=isic_stages(), client=client)
+    monkeypatch.setattr(
+        "backend.rag.standard_hierarchical_store.get_isic_hierarchical_store", lambda: store,
+    )
+
+    with patch("backend.agents.isic_classifier.get_llm", return_value=MagicMock()):
+        clf = ISICClassifier()
+    result = clf.classify("software developer tech startup app", method=ISIC_HIERARCHICAL_RETRIEVAL)
+
+    assert result.method in (ISIC_HIERARCHICAL_FALLBACK_KEYWORD, ISIC_HIERARCHICAL_FALLBACK_LLM)
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert result.section != ""  # legacy pipeline genuinely ran
+
+
+def test_isced_classifier_falls_back_on_model_construction_failure_and_keeps_level(monkeypatch):
+    """3. ISCEDClassifier.classify(..., method=iscedf_hierarchical_retrieval)
+    receives a model-construction failure as the correct explicitly
+    labelled ISCED-F fallback result and retains independent ISCED 2011
+    level classification."""
+    import backend.rag.standard_hierarchical_store as store_mod
+    from backend.agents.classifier_methods import (
+        ISCEDF_HIERARCHICAL_RETRIEVAL,
+        ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD,
+    )
+    from backend.agents.isced_classifier import ISCEDClassifier
+
+    monkeypatch.setattr(store_mod, "SentenceTransformer", _RaisingSentenceTransformer)
+    client = FakeQdrantClient(_ISCEDF_TABLE, set(ISCEDF_COLLECTIONS.values()))
+    store = StandardHierarchicalStore(standard="ISCED-F 2013", stages=iscedf_stages(), client=client)
+    monkeypatch.setattr(
+        "backend.rag.standard_hierarchical_store.get_iscedf_hierarchical_store", lambda: store,
+    )
+
+    clf = ISCEDClassifier()
+    result = clf.classify("Bachelor of Science BSc university", method=ISCEDF_HIERARCHICAL_RETRIEVAL)
+
+    assert result.method == ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert result.level == 6  # independently classified, unaffected by the model-init failure
+
+
+def test_injected_embedder_bypasses_model_construction_even_if_it_would_fail(monkeypatch):
+    """4. A fake injected embedder bypasses model construction entirely --
+    proven by monkeypatching SentenceTransformer to always raise and
+    confirming the injected-embedder positive path still succeeds."""
+    import backend.rag.standard_hierarchical_store as store_mod
+    monkeypatch.setattr(store_mod, "SentenceTransformer", _RaisingSentenceTransformer)
+
+    store, client, embedder = _make_isic_store()  # embedder=FakeEmbedder() injected
+    result = store.search("cereal farming")
+
+    assert result.ready is True
+    assert result.unavailable_reason == ""
+    assert result.code == "0111"
+    assert embedder.calls == [["query: cereal farming"]]

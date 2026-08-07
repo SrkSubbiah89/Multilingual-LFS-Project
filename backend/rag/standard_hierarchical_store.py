@@ -38,17 +38,29 @@ failure is caught at construction time and folded into the SAME
 caller cannot tell "collections missing" apart from "Qdrant unreachable"
 without reading the reason text, and does not need to; both mean "do not
 attempt a hierarchical query, use the explicit fallback path instead".
-When readiness fails this way, the embedding model is never loaded (no
-``SentenceTransformer`` construction) -- there is nothing useful to do
-with it. Two more operational boundaries -- embedding the query text, and
-running the engine search itself -- are also caught around this same
-external-call boundary in ``search()``: on failure, an explicit no-code
+When readiness fails this way, the embedding model is never loaded. Two
+more operational boundaries -- embedding the query text, and running the
+engine search itself -- are also caught around this same external-call
+boundary in ``search()``: on failure, an explicit no-code
 ``StandardHierarchyResult`` with a non-empty ``unavailable_reason`` is
 returned rather than letting the exception propagate into the classifier.
 No score, candidate, or hierarchy path is ever fabricated on any of these
 paths. Exception handling here is deliberately narrow -- it wraps ONLY
 these three external-call boundaries (readiness check, embedding,
 engine search), never any other classifier logic.
+
+Model initialization resilience (Task 05.2): ``SentenceTransformer(MODEL_
+NAME)`` construction is LAZY -- it happens inside ``_embed_query()``, on
+first use, not in ``__init__``. This means it is automatically covered by
+the same protected try/except ``search()`` already wraps around
+``_embed_query()`` (added in Task 05.1) -- a model-construction failure
+is indistinguishable, from the caller's perspective, from a query-encoding
+failure: both surface as a ready-store, no-code result with a non-empty,
+embedding-related ``unavailable_reason``, never a raised exception. It
+also means a store whose readiness check failed or whose collections are
+missing never attempts model construction at all, since ``search()``
+returns before ``_embed_query()`` is ever called. A dependency-injected
+``embedder=`` is stored as-is and never replaced by a real model.
 
 Dependency injection for hermetic tests: both ``client`` and ``embedder``
 are constructor parameters. Passing either causes
@@ -216,17 +228,17 @@ class StandardHierarchicalStore:
                 self.standard, exc,
             )
 
-        # Never load the embedding model when the store is already known to
-        # be unavailable (readiness check failed or collections missing) --
-        # there is nothing useful to do with it. Dependency-injected
-        # embedders are always honoured regardless of readiness, so tests
-        # can still assert on embedder.calls staying empty.
-        if embedder is not None:
-            self._embedder = embedder
-        elif self.ready:
-            self._embedder = SentenceTransformer(MODEL_NAME)
-        else:
-            self._embedder = None
+        # Embedding model construction is LAZY (Task 05.2) -- never done in
+        # __init__. An injected fake embedder is stored directly and used
+        # as-is; otherwise self._embedder stays None until _embed_query()
+        # constructs the real SentenceTransformer on first use, inside the
+        # same protected try/except boundary search() already wraps
+        # _embed_query() in. This means a store that is not `ready` never
+        # attempts model construction at all (search() returns before ever
+        # calling _embed_query()), and a construction failure on a ready
+        # store is caught exactly like any other embedding failure -- never
+        # raised to the classifier.
+        self._embedder = embedder
 
         self._engine = HierarchyBeamSearchEngine(
             client=self._client, stages=stages, hitl_threshold=hitl_threshold,
@@ -325,6 +337,13 @@ class StandardHierarchicalStore:
     # ------------------------------------------------------------------
 
     def _embed_query(self, text: str) -> list[float]:
+        # Lazy construction (Task 05.2) -- see __init__'s comment. Runs
+        # inside search()'s try/except around _embed_query(), so a
+        # SentenceTransformer(MODEL_NAME) construction failure is caught
+        # exactly like a query-encoding failure, never raised to the
+        # classifier. An injected embedder is never overwritten.
+        if self._embedder is None:
+            self._embedder = SentenceTransformer(MODEL_NAME)
         prefixed = f"query: {text.strip()}"
         vec = self._embedder.encode(
             [prefixed], normalize_embeddings=True, show_progress_bar=False, batch_size=1,
