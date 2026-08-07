@@ -22,8 +22,18 @@ def mock_store():
 
 
 @pytest.fixture
-def clf(monkeypatch, mock_store):
-    monkeypatch.setattr("backend.agents.isco_classifier.get_llm", lambda t: MagicMock())
+def get_llm_mock():
+    # Production calls get_llm(TaskType.GENERAL, temperature=self._llm_temperature)
+    # (backend/agents/isco_classifier.py) -- a positional TaskType arg plus a
+    # temperature= keyword. Must accept both, not just a single positional
+    # arg, or ISCOClassifier.__init__'s try/except silently swallows the
+    # resulting TypeError and falls back to semantic-only classification.
+    return MagicMock(side_effect=lambda *args, **kwargs: MagicMock())
+
+
+@pytest.fixture
+def clf(monkeypatch, mock_store, get_llm_mock):
+    monkeypatch.setattr("backend.agents.isco_classifier.get_llm", get_llm_mock)
     monkeypatch.setattr(
         "backend.agents.isco_classifier.get_hierarchical_store",
         lambda **kw: None,   # force flat path so mock_store is used
@@ -171,11 +181,19 @@ class TestHierarchicalStages:
         # High confidence → method is semantic (no LLM suffix)
         assert "semantic" in result.method
 
-    def test_llm_used_for_low_similarity(self, clf, mock_store):
+    def test_llm_used_for_low_similarity(self, clf, mock_store, get_llm_mock):
         mock_store.search.return_value[0].confidence = 0.60
         result = clf.classify("I do stuff with computers")
         # Low confidence → LLM re-ranking, method ends with _llm
         assert "llm" in result.method
+        # Proof of the actual root cause fix: get_llm was called with the
+        # production temperature= keyword (the old lambda t: MagicMock()
+        # test double could not accept this and silently disabled the LLM
+        # agent, which is why this test previously took the semantic-only
+        # path instead of exercising LLM re-ranking).
+        assert get_llm_mock.called
+        _, call_kwargs = get_llm_mock.call_args
+        assert "temperature" in call_kwargs
 
     def test_stage_confidences_when_present(self, clf, mock_store):
         result = clf.classify("nurse")
