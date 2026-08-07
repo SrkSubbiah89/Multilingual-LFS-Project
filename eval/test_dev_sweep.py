@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import dev_sweep as ds  # noqa: E402
@@ -338,3 +340,492 @@ def test_render_markdown_report_notes_memory_budget_not_set():
         memory_budget_mb=None,
     )
     assert "not set -- check skipped" in report
+
+
+def test_render_markdown_report_includes_determinism_and_baseline_provenance():
+    results = [kresult(5, recall=0.8, top1=0.7)]
+    decision = ds.select_k(results, reference_k=5)
+    report = ds.render_markdown_report(
+        decision, results, "eval/dev_set_v1.csv", "ollama/llama3.2:latest", 10, "2026-01-01T00:00:00Z",
+        baseline_config_path="eval/configs/b1_frozen.json",
+        baseline={"beam": 3, "stage1_mode": "leaf_vote", "keyword_map_enabled": False,
+                  "llm_temperature": 0.0, "timeout_s": 120, "prompt_fingerprint": "abc123",
+                  "_source_csv": "eval/results/raw_runs/x.csv", "_source_top1_accuracy": "54/130"},
+        git_commit="deadbeef", seed=42, dev_row_order=["c1", "c2"], k_execution_order=[5],
+    )
+    assert "eval/configs/b1_frozen.json" in report
+    assert "deadbeef" in report
+    assert "Seed: 42" in report
+    assert "c1, c2" in report
+    assert "[5]" in report
+
+
+# ---------------------------------------------------------------------------
+# Baseline config: load, shape validation, and codebase cross-check
+# ---------------------------------------------------------------------------
+
+FAKE_MODEL_DIGEST = "fake0000digest0000for0000hermetic0000tests0000not0000live0000ollama0000query"
+
+
+def valid_baseline(**overrides):
+    fingerprint = ds.compute_composite_fingerprint()
+    baseline = {
+        "reranker_model": "ollama/llama3.2:latest",
+        "beam": 3,
+        "stage1_mode": "leaf_vote",
+        "keyword_map_enabled": False,
+        "branch_collapse": False,
+        "llm_temperature": ds.HARDCODED_LLM_TEMPERATURE,
+        "timeout_s": ds._OLLAMA_INFERENCE_TIMEOUT,
+        "beam_evidence": {"status": "confirmed", "source": "test fixture", "detail": "n/a"},
+        "ollama_model_identity": {"tag": "llama3.2:latest", "digest": FAKE_MODEL_DIGEST},
+        "implementation_fingerprint": fingerprint,
+    }
+    baseline.update(overrides)
+    return baseline
+
+
+@pytest.fixture(autouse=False)
+def fake_ollama_identity(monkeypatch):
+    """Hermetic stand-in for resolve_ollama_model_identity() -- tests must
+    not depend on Ollama actually running/having this exact model pulled.
+    Matches valid_baseline()'s ollama_model_identity fixture value."""
+    monkeypatch.setattr(
+        ds, "resolve_ollama_model_identity",
+        lambda tag: {"status": "confirmed", "tag": tag, "digest": FAKE_MODEL_DIGEST,
+                     "parameter_size": "3.2B", "quantization_level": "Q4_K_M",
+                     "family": "llama", "size_bytes": 123},
+    )
+
+
+def test_load_baseline_config_reads_json(tmp_path):
+    p = tmp_path / "baseline.json"
+    p.write_text('{"reranker_model": "ollama/llama3.2:latest", "beam": 3}', encoding="utf-8")
+    cfg = ds.load_baseline_config(p)
+    assert cfg["reranker_model"] == "ollama/llama3.2:latest"
+    assert cfg["beam"] == 3
+
+
+def test_validate_baseline_shape_valid_config_has_no_errors():
+    assert ds.validate_baseline_shape(valid_baseline()) == []
+
+
+def test_validate_baseline_shape_reports_missing_fields():
+    errors = ds.validate_baseline_shape({"reranker_model": "ollama/llama3.2:latest"})
+    assert errors
+    assert "missing required field" in errors[0]
+
+
+def test_validate_baseline_shape_rejects_bad_reranker_model_prefix():
+    errors = ds.validate_baseline_shape(valid_baseline(reranker_model="llama3.2:latest"))
+    assert any("reranker_model" in e for e in errors)
+
+
+def test_validate_baseline_shape_rejects_non_positive_beam():
+    errors = ds.validate_baseline_shape(valid_baseline(beam=0))
+    assert any("beam" in e for e in errors)
+
+
+def test_validate_baseline_shape_rejects_bad_stage1_mode():
+    errors = ds.validate_baseline_shape(valid_baseline(stage1_mode="bogus"))
+    assert any("stage1_mode" in e for e in errors)
+
+
+def test_validate_baseline_shape_rejects_bad_beam_evidence_status():
+    errors = ds.validate_baseline_shape(valid_baseline(beam_evidence={"status": "maybe"}))
+    assert any("beam_evidence" in e for e in errors)
+
+
+def test_validate_baseline_shape_rejects_incomplete_model_identity():
+    errors = ds.validate_baseline_shape(valid_baseline(ollama_model_identity={"tag": "x"}))  # no digest
+    assert any("ollama_model_identity" in e for e in errors)
+
+
+def test_validate_baseline_shape_rejects_empty_fingerprint_components():
+    errors = ds.validate_baseline_shape(
+        valid_baseline(implementation_fingerprint={"components": {}, "composite_sha256": "abc"})
+    )
+    assert any("implementation_fingerprint" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# Composite implementation fingerprint (task C)
+# ---------------------------------------------------------------------------
+
+def test_compute_composite_fingerprint_is_stable_and_deterministic():
+    a = ds.compute_composite_fingerprint()
+    b = ds.compute_composite_fingerprint()
+    assert a == b
+    assert len(a["composite_sha256"]) == 64
+    assert set(a["components"]) == set(ds.IMPLEMENTATION_FINGERPRINT_TARGETS)
+
+
+def test_compute_composite_fingerprint_component_names_are_exactly_the_documented_three():
+    fp = ds.compute_composite_fingerprint()
+    assert set(fp["components"].keys()) == {
+        "HierarchicalISCOStore._hierarchical_search",
+        "ISCOClassifier._llm_select_from_candidates",
+        "ISCOClassifier._parse_llm_response",
+    }
+
+
+def test_compute_composite_fingerprint_composite_depends_on_every_component():
+    """Changing what a single component hashes to (simulated by monkeypatching
+    IMPLEMENTATION_FINGERPRINT_TARGETS) must change the composite -- proves
+    the composite isn't silently derived from just one of the three."""
+    baseline_fp = ds.compute_composite_fingerprint()
+
+    class _Dummy:
+        def dummy(self):
+            return "different source text entirely"
+
+    import types as _types
+    patched = dict(ds.IMPLEMENTATION_FINGERPRINT_TARGETS)
+    patched["ISCOClassifier._parse_llm_response"] = lambda: _Dummy.dummy
+    old = ds.IMPLEMENTATION_FINGERPRINT_TARGETS
+    ds.IMPLEMENTATION_FINGERPRINT_TARGETS = patched
+    try:
+        changed_fp = ds.compute_composite_fingerprint()
+    finally:
+        ds.IMPLEMENTATION_FINGERPRINT_TARGETS = old
+    assert changed_fp["composite_sha256"] != baseline_fp["composite_sha256"]
+
+
+def test_compute_live_prompt_fingerprint_still_works_as_legacy_wrapper():
+    a = ds.compute_live_prompt_fingerprint()
+    assert isinstance(a, str) and len(a) == 16
+
+
+# ---------------------------------------------------------------------------
+# assert_baseline_matches_codebase (task B/C additions)
+# ---------------------------------------------------------------------------
+
+def test_assert_baseline_matches_codebase_passes_for_valid_baseline(fake_ollama_identity):
+    ds.assert_baseline_matches_codebase(valid_baseline())  # must not raise
+
+
+def test_assert_baseline_matches_codebase_rejects_branch_collapse_true(fake_ollama_identity):
+    with pytest.raises(ds.BaselineMismatchError, match="branch_collapse"):
+        ds.assert_baseline_matches_codebase(valid_baseline(branch_collapse=True))
+
+
+def test_assert_baseline_matches_codebase_rejects_wrong_temperature(fake_ollama_identity):
+    with pytest.raises(ds.BaselineMismatchError, match="llm_temperature"):
+        ds.assert_baseline_matches_codebase(valid_baseline(llm_temperature=0.7))
+
+
+def test_assert_baseline_matches_codebase_rejects_wrong_timeout(fake_ollama_identity):
+    with pytest.raises(ds.BaselineMismatchError, match="timeout_s"):
+        ds.assert_baseline_matches_codebase(valid_baseline(timeout_s=30))
+
+
+def test_assert_baseline_matches_codebase_rejects_stale_composite_fingerprint(fake_ollama_identity):
+    stale = {"components": {"a": "0000000000000000"}, "composite_sha256": "0" * 64}
+    with pytest.raises(ds.BaselineMismatchError, match="implementation_fingerprint"):
+        ds.assert_baseline_matches_codebase(valid_baseline(implementation_fingerprint=stale))
+
+
+def test_assert_baseline_matches_codebase_rejects_model_identity_mismatch(fake_ollama_identity):
+    with pytest.raises(ds.BaselineMismatchError, match="ollama_model_identity"):
+        ds.assert_baseline_matches_codebase(
+            valid_baseline(ollama_model_identity={"tag": "llama3.2:latest", "digest": "wrong-digest"})
+        )
+
+
+def test_assert_baseline_matches_codebase_fails_closed_when_ollama_unreachable(monkeypatch):
+    monkeypatch.setattr(
+        ds, "resolve_ollama_model_identity",
+        lambda tag: {"status": "unavailable", "tag": tag, "reason": "connection refused"},
+    )
+    with pytest.raises(ds.BaselineMismatchError, match="could not confirm"):
+        ds.assert_baseline_matches_codebase(valid_baseline())
+
+
+def test_assert_baseline_matches_codebase_reports_all_mismatches_at_once(fake_ollama_identity):
+    baseline = valid_baseline(branch_collapse=True, llm_temperature=0.7, timeout_s=1)
+    try:
+        ds.assert_baseline_matches_codebase(baseline)
+        assert False, "expected BaselineMismatchError"
+    except ds.BaselineMismatchError as exc:
+        msg = str(exc)
+        assert "branch_collapse" in msg
+        assert "llm_temperature" in msg
+        assert "timeout_s" in msg
+
+
+def test_the_actual_shipped_b1_frozen_json_passes_shape_and_codebase_checks():
+    """The real eval/configs/b1_frozen.json this repo ships must itself be
+    internally consistent with the current codebase AND the currently
+    installed Ollama model -- if this test starts failing, either the file
+    is stale (someone edited the reranker prompt/timeout constant, or
+    re-pulled the model under the same tag) or the file was authored with a
+    typo. Either way it must be caught here, not at the start of a real B2
+    run. Deliberately NOT using fake_ollama_identity -- this is the one
+    test that should hit the real, locally installed Ollama, since it's
+    asserting the shipped file matches THIS machine's actual state."""
+    path = Path(__file__).resolve().parent / "configs" / "b1_frozen.json"
+    baseline = ds.load_baseline_config(path)
+    assert ds.validate_baseline_shape(baseline) == []
+    ds.assert_baseline_matches_codebase(baseline)  # must not raise
+    assert baseline["reranker_model"] == "ollama/llama3.2:latest"  # NOT ...1b, see file's _notes
+    assert baseline["beam_evidence"]["status"] == "inferred"  # honest, not silently upgraded
+
+
+# ---------------------------------------------------------------------------
+# Beam-provenance gate (task A)
+# ---------------------------------------------------------------------------
+
+def test_check_beam_evidence_confirmed_passes_without_override():
+    ok, msg = ds.check_beam_evidence(valid_baseline(), confirm_inferred_beam=None)
+    assert ok is True
+
+
+def test_check_beam_evidence_inferred_fails_without_override():
+    baseline = valid_baseline(beam_evidence={"status": "inferred", "source": "x", "detail": "y"})
+    ok, msg = ds.check_beam_evidence(baseline, confirm_inferred_beam=None)
+    assert ok is False
+    assert "confirm-inferred-beam" in msg
+
+
+def test_check_beam_evidence_inferred_passes_with_correct_override():
+    baseline = valid_baseline(beam=3, beam_evidence={"status": "inferred", "source": "x", "detail": "y"})
+    ok, msg = ds.check_beam_evidence(baseline, confirm_inferred_beam=3)
+    assert ok is True
+    assert "OVERRIDE" in msg
+
+
+def test_check_beam_evidence_inferred_fails_with_wrong_override_value():
+    baseline = valid_baseline(beam=3, beam_evidence={"status": "inferred", "source": "x", "detail": "y"})
+    ok, msg = ds.check_beam_evidence(baseline, confirm_inferred_beam=5)
+    assert ok is False
+    assert "does not match" in msg
+
+
+# ---------------------------------------------------------------------------
+# Determinism: dev-row shuffle and K execution order
+# ---------------------------------------------------------------------------
+
+def test_deterministic_shuffle_same_seed_same_order():
+    items = list(range(20))
+    a = ds.deterministic_shuffle(items, seed=42)
+    b = ds.deterministic_shuffle(items, seed=42)
+    assert a == b
+
+
+def test_deterministic_shuffle_different_seed_different_order():
+    items = list(range(20))
+    a = ds.deterministic_shuffle(items, seed=42)
+    b = ds.deterministic_shuffle(items, seed=43)
+    assert a != b
+
+
+def test_deterministic_shuffle_is_a_permutation_not_a_mutation_or_loss():
+    items = list(range(20))
+    shuffled = ds.deterministic_shuffle(items, seed=1)
+    assert sorted(shuffled) == items
+    assert items == list(range(20))  # original list untouched
+
+
+def test_deterministic_k_order_same_seed_same_order():
+    k_values = [5, 8, 10, 15, 20]
+    a = ds.deterministic_k_order(k_values, seed=42)
+    b = ds.deterministic_k_order(k_values, seed=42)
+    assert a == b
+    assert sorted(a) == k_values
+
+
+def test_deterministic_k_order_differs_from_dev_row_shuffle_stream():
+    """K-order uses seed+1, not seed, specifically so it doesn't move in
+    lockstep with the dev-row shuffle for the same --seed value."""
+    k_values = [5, 8, 10, 15, 20, 25, 30, 35]
+    k_order = ds.deterministic_k_order(k_values, seed=42)
+    row_shuffle_of_same_values = ds.deterministic_shuffle(k_values, seed=42)
+    assert k_order != row_shuffle_of_same_values
+
+
+# ---------------------------------------------------------------------------
+# Provenance: git commit resolution and per-K config hash
+# ---------------------------------------------------------------------------
+
+def test_resolve_git_commit_full_returns_a_real_hash_in_this_repo():
+    commit = ds.resolve_git_commit_full()
+    assert isinstance(commit, str)
+    assert len(commit) == 40  # full git rev-parse HEAD, not --short
+    assert all(c in "0123456789abcdef" for c in commit)
+
+
+def test_compute_k_config_hash_differs_across_k():
+    h5 = ds.compute_k_config_hash(5, "ollama/llama3.2:latest", False, 3, "leaf_vote", "label")
+    h10 = ds.compute_k_config_hash(10, "ollama/llama3.2:latest", False, 3, "leaf_vote", "label")
+    assert h5 != h10
+    assert h5 and h10  # both non-empty
+
+
+def test_compute_k_config_hash_deterministic_for_same_inputs():
+    a = ds.compute_k_config_hash(5, "ollama/llama3.2:latest", False, 3, "leaf_vote", "label")
+    b = ds.compute_k_config_hash(5, "ollama/llama3.2:latest", False, 3, "leaf_vote", "label")
+    assert a == b
+
+
+def test_compute_k_config_hash_matches_run_eval_config_hash_mechanism():
+    """Sanity check that this isn't a reimplementation that could drift from
+    run_eval._config_hash() -- it must BE that function, called with a
+    branch_collapse=False, hierarchical-system stand-in args object."""
+    from types import SimpleNamespace as SNS
+    fake_args = SNS(system="hierarchical", beam=3, stage1_mode="leaf_vote",
+                     reranker_candidates=5, branch_collapse=False, config="label")
+    expected = ds.run_eval._config_hash(fake_args, "ollama/llama3.2:latest", False)
+    actual = ds.compute_k_config_hash(5, "ollama/llama3.2:latest", False, 3, "leaf_vote", "label")
+    assert actual == expected
+
+
+# ---------------------------------------------------------------------------
+# Provenance (task D): sha256_of_file, git-tree-clean, environment snapshot
+# ---------------------------------------------------------------------------
+
+def test_sha256_of_file_matches_hashlib_directly(tmp_path):
+    p = tmp_path / "x.txt"
+    p.write_bytes(b"hello world")
+    import hashlib as _hashlib
+    assert ds.sha256_of_file(p) == _hashlib.sha256(b"hello world").hexdigest()
+
+
+def test_sha256_of_file_returns_none_for_missing_file(tmp_path):
+    assert ds.sha256_of_file(tmp_path / "does_not_exist.txt") is None
+
+
+def test_check_git_tree_clean_returns_bool_and_string():
+    clean, output = ds.check_git_tree_clean()
+    assert isinstance(clean, bool)
+    assert isinstance(output, str)
+    assert clean == (output == "")
+
+
+def test_check_git_tree_clean_detects_dirty_when_git_status_has_output(monkeypatch):
+    class _FakeResult:
+        returncode = 0
+        stdout = " M eval/dev_sweep.py\n"
+        stderr = ""
+    monkeypatch.setattr(ds.subprocess, "run", lambda *a, **k: _FakeResult())
+    clean, output = ds.check_git_tree_clean()
+    assert clean is False
+    assert "eval/dev_sweep.py" in output
+
+
+def test_check_git_tree_clean_fails_closed_when_git_unavailable(monkeypatch):
+    def _raise(*a, **k):
+        raise FileNotFoundError("git not found")
+    monkeypatch.setattr(ds.subprocess, "run", _raise)
+    clean, output = ds.check_git_tree_clean()
+    assert clean is False  # unknown state -> NOT treated as clean
+    assert "FileNotFoundError" in output
+
+
+def test_resolve_environment_provenance_returns_all_documented_keys():
+    env = ds.resolve_environment_provenance()
+    for key in (
+        "current_b2_git_commit", "git_tree_clean", "git_tree_dirty_files",
+        "python_version", "requirements_path", "requirements_sha256",
+        "ollama_version", "qdrant_version", "os", "cpu", "ram_gb", "gpu",
+    ):
+        assert key in env
+
+
+def test_resolve_environment_provenance_survives_ollama_and_qdrant_being_unreachable(monkeypatch):
+    """Neither Ollama nor Qdrant being reachable must not crash provenance
+    resolution -- ollama_version/qdrant_version just come back None."""
+    def _raise(*a, **k):
+        raise OSError("connection refused")
+    monkeypatch.setattr(ds.urllib.request, "urlopen", _raise)
+    env = ds.resolve_environment_provenance()  # must not raise
+    assert env["ollama_version"] is None
+    assert env["qdrant_version"] is None
+
+
+def test_resolve_qdrant_version_returns_none_on_connection_error(monkeypatch):
+    def _raise(*a, **k):
+        raise OSError("connection refused")
+    monkeypatch.setattr(ds.urllib.request, "urlopen", _raise)
+    assert ds.resolve_qdrant_version() is None
+
+
+def test_resolve_ollama_version_returns_none_on_connection_error(monkeypatch):
+    def _raise(*a, **k):
+        raise OSError("connection refused")
+    monkeypatch.setattr(ds.urllib.request, "urlopen", _raise)
+    assert ds.resolve_ollama_version() is None
+
+
+def test_resolve_ollama_model_identity_returns_unavailable_on_connection_error(monkeypatch):
+    def _raise(*a, **k):
+        raise OSError("connection refused")
+    monkeypatch.setattr(ds.urllib.request, "urlopen", _raise)
+    result = ds.resolve_ollama_model_identity("llama3.2:latest")
+    assert result["status"] == "unavailable"
+
+
+def test_resolve_ollama_model_identity_returns_unavailable_when_tag_not_found(monkeypatch):
+    import io as _io
+
+    class _FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return b'{"models": [{"name": "other-model:latest", "digest": "abc"}]}'
+    monkeypatch.setattr(ds.urllib.request, "urlopen", lambda *a, **k: _FakeResp())
+    result = ds.resolve_ollama_model_identity("llama3.2:latest")
+    assert result["status"] == "unavailable"
+
+
+# ---------------------------------------------------------------------------
+# _load_dev_rows_as_test_set -- the canonical dev_set_v1.csv schema
+# translation layer (case_id/language/respondent_text/gold_isco_code ->
+# run_eval's case_id/input_language/input_text/gold_isco_4digit). See
+# eval/dev_set_schema.md for the canonical schema this depends on.
+# ---------------------------------------------------------------------------
+
+def test_load_dev_rows_as_test_set_maps_canonical_columns(tmp_path):
+    p = tmp_path / "dev.csv"
+    p.write_text(
+        "case_id,language,respondent_text,gold_isco_code,gold_label_source,"
+        "annotator_or_adjudication_reference,dataset_split\n"
+        "dev001,en,baker,7512,human_coder_single,AB,dev_v1\n",
+        encoding="utf-8",
+    )
+    rows = ds._load_dev_rows_as_test_set(p)
+    assert rows == [{
+        "case_id": "dev001", "input_text": "baker", "input_language": "en",
+        "gold_isco_4digit": "7512",
+    }]
+
+
+def test_load_dev_rows_as_test_set_ignores_extra_provenance_columns(tmp_path):
+    """gold_label_source/annotator_or_adjudication_reference/dataset_split
+    are read from the file (DictReader sees them) but must never leak into
+    the translated row dev_sweep.py actually runs -- they're provenance
+    metadata for humans/validate_dev_set.py, not classifier input."""
+    p = tmp_path / "dev.csv"
+    p.write_text(
+        "case_id,language,respondent_text,gold_isco_code,gold_label_source,"
+        "annotator_or_adjudication_reference,dataset_split\n"
+        "dev001,en,baker,7512,human_coder_single,AB,dev_v1\n",
+        encoding="utf-8",
+    )
+    rows = ds._load_dev_rows_as_test_set(p)
+    assert set(rows[0].keys()) == {"case_id", "input_text", "input_language", "gold_isco_4digit"}
+
+
+def test_load_dev_rows_as_test_set_multiple_rows_preserve_order(tmp_path):
+    p = tmp_path / "dev.csv"
+    p.write_text(
+        "case_id,language,respondent_text,gold_isco_code,gold_label_source,"
+        "annotator_or_adjudication_reference,dataset_split\n"
+        "dev001,en,baker,7512,human_coder_single,AB,dev_v1\n"
+        "dev002,ar,طباخ,7512,human_coder_single,CD,dev_v1\n",
+        encoding="utf-8",
+    )
+    rows = ds._load_dev_rows_as_test_set(p)
+    assert [r["case_id"] for r in rows] == ["dev001", "dev002"]
+    assert rows[1]["input_text"] == "طباخ"

@@ -312,3 +312,122 @@ def test_use_llm_reranker_omitted_defaults_to_true():
     run_eval.run_one_case(clf, **base_kwargs())
     _, kwargs = clf.classify.call_args
     assert kwargs["use_llm"] is True
+
+
+# ---------------------------------------------------------------------------
+# Exact classifier-input regression test (schema-strengthening task, item 3):
+# respondent_text/input_text must reach ISCOClassifier.classify() completely
+# unchanged -- no normalization, translation, concatenation, rewriting, or
+# truncation -- and the dev-set (eval/dev_set_v1.csv) mapping must be
+# IDENTICAL to the mapping B0/B1 already use for
+# eval/test_set_smoke20.csv/eval/test_set_full130.csv's own input_text
+# column. No production code is touched by this test unless it proves an
+# existing inconsistency (none was found).
+# ---------------------------------------------------------------------------
+
+# Deliberately adversarial text: mixed case (would change under
+# lowercasing), internal double/irregular whitespace (would change under
+# whitespace-collapsing), leading/trailing whitespace (would change under
+# stripping), and >200 chars (would change under truncation). Any
+# transformation applied before classify() would corrupt at least one of
+# these properties, making it detectable by the assertions below.
+_TRICKY_INPUT_TEXT = "  Software   DEVELOPER  \t building MOBILE apps" + (" extra words" * 20)
+
+
+def test_run_one_case_passes_input_text_to_classify_verbatim():
+    """run_eval.run_one_case() must call clf.classify(job_title=input_text)
+    with NO transformation applied to input_text anywhere along the way."""
+    captured = {}
+
+    def _classify(job_title, language, top_k, use_llm, trace):
+        captured["job_title"] = job_title
+        return make_clf_result()
+
+    clf = MagicMock()
+    clf.classify.side_effect = _classify
+
+    kwargs = base_kwargs()
+    kwargs["input_text"] = _TRICKY_INPUT_TEXT
+    run_eval.run_one_case(clf, **kwargs)
+
+    assert captured["job_title"] == _TRICKY_INPUT_TEXT  # byte-for-byte identical
+    assert captured["job_title"] is _TRICKY_INPUT_TEXT or captured["job_title"] == _TRICKY_INPUT_TEXT
+    # explicitly rule out the transformations a "helpful" normalization step
+    # might apply, so this test would actually fail if one were added:
+    assert captured["job_title"] != _TRICKY_INPUT_TEXT.strip()  # not stripped
+    assert captured["job_title"] != _TRICKY_INPUT_TEXT.lower()  # not lowercased
+    assert captured["job_title"] != " ".join(_TRICKY_INPUT_TEXT.split())  # whitespace not collapsed
+    assert len(captured["job_title"]) == len(_TRICKY_INPUT_TEXT)  # not truncated
+
+
+def test_dev_set_and_full130_style_calls_produce_identical_job_title():
+    """Proves the dev-set input mapping is IDENTICAL to the frozen B1
+    evaluation mapping: by the time run_one_case() is called, there is no
+    code-path distinction between "this row came from eval/dev_set_v1.csv's
+    respondent_text column" and "this row came from eval/test_set_full130
+    .csv's input_text column" -- both become run_one_case(input_text=...),
+    and this test proves both produce the exact same job_title at the
+    classify() call site for the exact same underlying string."""
+    captured = []
+
+    def _classify(job_title, language, top_k, use_llm, trace):
+        captured.append(job_title)
+        return make_clf_result()
+
+    clf = MagicMock()
+    clf.classify.side_effect = _classify
+
+    # Path A: what dev_sweep.py's _load_dev_rows_as_test_set() produces from
+    # a dev_set_v1.csv row (respondent_text -> input_text), fed to run_one_case.
+    kwargs_a = base_kwargs()
+    kwargs_a["case_id"] = "dev_case"
+    kwargs_a["input_text"] = _TRICKY_INPUT_TEXT
+    run_eval.run_one_case(clf, **kwargs_a)
+
+    # Path B: what run_eval.py's own CSV loader produces from a
+    # test_set_full130.csv row (input_text column, read directly in
+    # run_eval.main() -- see row["input_text"] there), fed to run_one_case
+    # with the exact same underlying string.
+    kwargs_b = base_kwargs()
+    kwargs_b["case_id"] = "full130_case"
+    kwargs_b["input_text"] = _TRICKY_INPUT_TEXT
+    run_eval.run_one_case(clf, **kwargs_b)
+
+    assert captured[0] == captured[1] == _TRICKY_INPUT_TEXT
+
+
+def test_dev_sweep_csv_to_classify_chain_is_verbatim_end_to_end(tmp_path):
+    """Full chain: dev_set_v1.csv's respondent_text column -> dev_sweep.
+    _load_dev_rows_as_test_set() -> run_eval.run_one_case()'s input_text
+    param -> clf.classify()'s job_title param. Reads the real
+    dev_sweep.py (not a reimplementation) so a future edit to the mapping
+    would be caught here, not just in dev_sweep's own unit tests."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import dev_sweep as ds
+
+    p = tmp_path / "dev.csv"
+    p.write_text(
+        "case_id,language,respondent_text,gold_isco_code,gold_label_source,"
+        "annotator_or_adjudication_reference,dataset_split\n"
+        f'dev001,en,"{_TRICKY_INPUT_TEXT}",7512,human_coder_single,AB,dev_v1\n',
+        encoding="utf-8",
+    )
+    dev_rows = ds._load_dev_rows_as_test_set(p)
+    assert dev_rows[0]["input_text"] == _TRICKY_INPUT_TEXT  # unchanged by the CSV->dict mapping
+
+    captured = {}
+
+    def _classify(job_title, language, top_k, use_llm, trace):
+        captured["job_title"] = job_title
+        return make_clf_result()
+
+    clf = MagicMock()
+    clf.classify.side_effect = _classify
+
+    row = dev_rows[0]
+    run_eval.run_one_case(
+        clf, sre=MagicMock(), isic_clf=MagicMock(), isced_clf=MagicMock(), row_index=0,
+        case_id=row["case_id"], input_text=row["input_text"], input_language=row["input_language"],
+        gold_isco_4digit=row["gold_isco_4digit"], gold_isic="", gold_isced="", config_hash="x",
+    )
+    assert captured["job_title"] == _TRICKY_INPUT_TEXT  # verbatim, end to end

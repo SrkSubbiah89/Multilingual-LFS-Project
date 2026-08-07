@@ -97,28 +97,95 @@ A candidate K is operationally eligible only if ALL of the following hold
    read by this script, so it cannot factor into this decision even by
    accident.
 
+Baseline config (--baseline-config, mandatory)
+---------------------------------------------------------------------------
+B2 is only meaningful as a K-only ablation if every other pipeline setting
+is *exactly* what produced the frozen B1 confirmation result (54/130 on
+eval/test_set_full130.csv, see eval/configs/b1_frozen.json's _source_csv).
+--baseline-config points at a JSON file (see eval/configs/b1_frozen.json)
+recording that frozen configuration. This script does NOT expose separate
+--reranker-model/--beam/--stage1-mode/--disable-keyword-map flags -- those
+values are read directly FROM the baseline file, so there is no separate
+CLI value that could silently disagree with it. reranker_candidates (K) is
+the only pipeline setting this script ever varies from the baseline.
+
+What "load and assert" means concretely, since most of the frozen fields
+have no independent value to compare against once they're sourced from the
+file (see above): reranker_model/beam/stage1_mode/keyword_map_enabled are
+*sourced from*, not *checked against*, the baseline (the strongest possible
+guarantee that they can't drift). branch_collapse must literally be False
+in the file (hard requirement -- a baseline with branch_collapse=true would
+not describe B1 at all). llm_temperature, timeout_s, and
+implementation_fingerprint have no CLI knob at all -- they're either
+hardcoded constants (HARDCODED_LLM_TEMPERATURE here mirrors
+run_eval.build_system()'s hardcoded 0.0; timeout_s is
+backend.llm.llm_client._OLLAMA_INFERENCE_TIMEOUT) or a composite sha256
+fingerprint over every B1 decision-critical function's live source (there
+is no explicit prompt-version string anywhere in this codebase, so the
+fingerprint is the closest available drift detector -- see
+compute_composite_fingerprint() and task C in eval/configs/b1_frozen.json's
+_notes for the exact component list and why each is/isn't included).
+ollama_model_identity's digest is likewise checked live (task B) -- the
+"latest" tag is mutable, so the pinned digest, not the tag, is what's
+actually compared. assert_baseline_matches_codebase() recomputes all of
+these against the CURRENT codebase/environment and raises
+BaselineMismatchError, refusing to run any case, if the frozen file's
+claims no longer hold -- e.g. someone edited the reranker prompt, bumped
+the Ollama timeout, or re-pulled the model under the same tag, without
+re-freezing eval/configs/b1_frozen.json. beam_evidence (task A) is a
+separate, non-negotiable gate: see check_beam_evidence() and
+--confirm-inferred-beam below.
+
+Determinism (--seed)
+---------------------------------------------------------------------------
+--seed (default: run_eval.RANDOM_SEED, i.e. 42) drives two independent,
+reproducible permutations, both recorded in the Markdown report:
+  - dev-row execution order: the loaded dev set is shuffled ONCE with
+    random.Random(seed) before the sweep starts, and every K runs through
+    that SAME shuffled order (not a fresh shuffle per K) so cases stay
+    directly comparable across K values case-by-case.
+  - K execution order: the K values themselves run in
+    random.Random(seed + 1)'s shuffled order (a distinct derived seed so
+    the two permutations don't move in lockstep), not ascending numeric
+    order -- guards against any systematic warm-up/ordering effect from
+    always running small K before large K.
+Both are pure functions of --seed -- re-running with the same seed
+reproduces the same dev-row order and the same K order.
+
 Usage
 -----
     python eval/validate_dev_set.py --dev-set eval/dev_set_v1.csv   # first!
     python eval/dev_sweep.py --dev-set eval/dev_set_v1.csv \
-        --reranker-model ollama/llama3.2:1b --k-values 5,8,10,15,20
+        --baseline-config eval/configs/b1_frozen.json --k-values 5,8,10,15,20
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import inspect
+import json
+import os
+import random
 import statistics
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import run_eval  # noqa: E402
+from backend.llm.llm_client import _OLLAMA_BASE_URL, _OLLAMA_HEALTH_TIMEOUT, _OLLAMA_INFERENCE_TIMEOUT  # noqa: E402
+from backend.rag.hierarchical_store import HierarchicalISCOStore  # noqa: E402
+
+import urllib.error  # noqa: E402
+import urllib.request  # noqa: E402
 
 try:
     import psutil
@@ -127,6 +194,7 @@ except ImportError:
     _HAVE_PSUTIL = False
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results" / "dev_sweep"
+DEFAULT_BASELINE_CONFIG = Path(__file__).resolve().parent / "configs" / "b1_frozen.json"
 
 DEFAULT_K_VALUES = [5, 8, 10, 15, 20]
 DEFAULT_REFERENCE_K = 5
@@ -134,6 +202,484 @@ DEFAULT_RECALL_CLOSE_THRESHOLD = 0.02
 DEFAULT_P95_CEILING_FACTOR = 1.5
 DEFAULT_MAX_ADDITIONAL_TIMEOUT_OR_INVALID = 1
 DEFAULT_WARMUP_CASES = 2
+DEFAULT_SWEEP_SEED = run_eval.RANDOM_SEED
+
+# run_eval.build_system()'s hierarchical/flat branches hardcode
+# ISCOClassifier(llm_temperature=0.0, ...) -- not a CLI-configurable value
+# anywhere in this harness. Mirrored here so assert_baseline_matches_codebase()
+# has something authoritative to check the frozen file's claim against.
+HARDCODED_LLM_TEMPERATURE = 0.0
+
+REQUIRED_BASELINE_FIELDS = [
+    "reranker_model", "beam", "stage1_mode", "keyword_map_enabled",
+    "branch_collapse", "llm_temperature", "timeout_s",
+    "beam_evidence", "ollama_model_identity", "implementation_fingerprint",
+]
+
+# The exact, sorted set of B1 decision-critical functions hashed into
+# implementation_fingerprint. For the B1 hierarchical code path, candidate
+# pooling/dedup and UnitCandidate serialisation-before-the-reranker both
+# happen INLINE inside HierarchicalISCOStore._hierarchical_search() (see
+# eval/configs/b1_frozen.json's _notes) -- there is no separate pooling
+# helper or serialisation function to add for B1 specifically.
+# backend/rag/candidate_pool.py is NOT part of this list: it is not called
+# by the B1 code path (see that module's own docstring), so hashing it
+# would create false-positive drift signals for B3-Sort-only changes.
+IMPLEMENTATION_FINGERPRINT_TARGETS = {
+    "HierarchicalISCOStore._hierarchical_search": lambda: HierarchicalISCOStore._hierarchical_search,
+    "ISCOClassifier._llm_select_from_candidates": lambda: run_eval.ISCOClassifier._llm_select_from_candidates,
+    "ISCOClassifier._parse_llm_response": lambda: run_eval.ISCOClassifier._parse_llm_response,
+}
+
+
+class BaselineMismatchError(Exception):
+    """Raised by assert_baseline_matches_codebase() -- refuses to run any
+    B2 case rather than produce a comparison that silently isn't actually
+    comparable to the frozen B1 result."""
+
+
+# ---------------------------------------------------------------------------
+# Baseline config: load, shape-validate, and cross-check against the
+# CURRENT codebase (see module docstring's "Baseline config" section for
+# what's sourced-from vs. asserted-against and why).
+# ---------------------------------------------------------------------------
+
+def load_baseline_config(path: Path) -> dict:
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def validate_baseline_shape(baseline: dict) -> list:
+    """Structural/type checks only -- no comparison against the codebase
+    (that's assert_baseline_matches_codebase()) and no beam-evidence policy
+    decision (that's check_beam_evidence()). Pure, unit-testable. Returns a
+    list of error strings; empty means the shape is valid."""
+    errors = []
+    missing = [f for f in REQUIRED_BASELINE_FIELDS if f not in baseline]
+    if missing:
+        errors.append(f"missing required field(s): {missing}")
+        return errors  # remaining checks assume presence
+
+    model = baseline["reranker_model"]
+    if not isinstance(model, str) or not (model.startswith("ollama/") or model.startswith("anthropic/")):
+        errors.append(f"reranker_model={model!r} must be a string starting with 'ollama/' or 'anthropic/'")
+    if not isinstance(baseline["beam"], int) or baseline["beam"] < 1:
+        errors.append(f"beam={baseline['beam']!r} must be a positive integer")
+    if baseline["stage1_mode"] not in ("description", "leaf_vote"):
+        errors.append(f"stage1_mode={baseline['stage1_mode']!r} must be 'description' or 'leaf_vote'")
+    if not isinstance(baseline["keyword_map_enabled"], bool):
+        errors.append(f"keyword_map_enabled={baseline['keyword_map_enabled']!r} must be a bool")
+    if not isinstance(baseline["branch_collapse"], bool):
+        errors.append(f"branch_collapse={baseline['branch_collapse']!r} must be a bool")
+    if not isinstance(baseline["llm_temperature"], (int, float)):
+        errors.append(f"llm_temperature={baseline['llm_temperature']!r} must be numeric")
+    if not isinstance(baseline["timeout_s"], (int, float)):
+        errors.append(f"timeout_s={baseline['timeout_s']!r} must be numeric")
+
+    beam_evidence = baseline["beam_evidence"]
+    if not isinstance(beam_evidence, dict) or beam_evidence.get("status") not in ("confirmed", "inferred"):
+        errors.append(
+            f"beam_evidence={beam_evidence!r} must be a dict with status in "
+            f"('confirmed', 'inferred')"
+        )
+
+    identity = baseline["ollama_model_identity"]
+    if not isinstance(identity, dict) or not identity.get("tag") or not identity.get("digest"):
+        errors.append(
+            f"ollama_model_identity={identity!r} must be a dict with non-empty 'tag' and 'digest'"
+        )
+
+    fingerprint = baseline["implementation_fingerprint"]
+    if (
+        not isinstance(fingerprint, dict)
+        or not isinstance(fingerprint.get("components"), dict)
+        or not fingerprint.get("components")
+        or not isinstance(fingerprint.get("composite_sha256"), str)
+        or not fingerprint.get("composite_sha256")
+    ):
+        errors.append(
+            f"implementation_fingerprint={fingerprint!r} must be a dict with a non-empty "
+            f"'components' dict and a non-empty 'composite_sha256' string"
+        )
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# Implementation fingerprint: composite hash over every B1 decision-critical
+# function's live source (task C). Sorted by component name before hashing
+# so composite_sha256 never depends on dict/insertion order.
+# ---------------------------------------------------------------------------
+
+def compute_composite_fingerprint() -> dict:
+    """Returns {"components": {name: 16-hex-char hash}, "composite_sha256":
+    64-hex-char hash}. The composite is sha256 of the sorted
+    "name:hash\\n"-joined component lines -- deterministic regardless of
+    dict ordering, and any single function's edit changes both its own
+    component hash and the composite."""
+    components = {}
+    for name in sorted(IMPLEMENTATION_FINGERPRINT_TARGETS):
+        fn = IMPLEMENTATION_FINGERPRINT_TARGETS[name]()
+        src = inspect.getsource(fn)
+        components[name] = hashlib.sha256(src.encode()).hexdigest()[:16]
+
+    composite_input = "\n".join(f"{name}:{components[name]}" for name in sorted(components))
+    composite = hashlib.sha256(composite_input.encode()).hexdigest()
+    return {"components": components, "composite_sha256": composite}
+
+
+def compute_live_prompt_fingerprint() -> str:
+    """Deprecated single-function fingerprint, kept only because
+    compute_composite_fingerprint() is now the authoritative check --
+    superseded by it, retained as a thin wrapper in case other code still
+    imports this name. sha256 of ISCOClassifier._llm_select_from_candidates
+    ()'s current source, truncated to 16 hex chars."""
+    src = inspect.getsource(run_eval.ISCOClassifier._llm_select_from_candidates)
+    return hashlib.sha256(src.encode()).hexdigest()[:16]
+
+
+# ---------------------------------------------------------------------------
+# Ollama model identity: a stable digest, not the mutable "latest" tag
+# (task B). Metadata-only HTTP calls (GET /api/tags, GET /api/version) --
+# never /api/generate or /api/chat, so no inference is ever performed here.
+# ---------------------------------------------------------------------------
+
+def resolve_ollama_model_identity(tag: str) -> dict:
+    """Best-effort live lookup of *tag*'s installed digest via Ollama's
+    /api/tags (metadata only, no inference). Returns
+    {"status": "confirmed", "tag", "digest", "parameter_size",
+    "quantization_level", "family", "size_bytes"} on success, or
+    {"status": "unavailable", "tag", "reason"} if Ollama is unreachable or
+    the tag isn't pulled -- callers must fail closed on "unavailable"
+    (task B.4), never silently skip the check."""
+    try:
+        req = urllib.request.Request(f"{_OLLAMA_BASE_URL}/api/tags")
+        with urllib.request.urlopen(req, timeout=_OLLAMA_HEALTH_TIMEOUT) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        return {"status": "unavailable", "tag": tag, "reason": f"{type(exc).__name__}: {exc}"}
+
+    for m in data.get("models", []):
+        if m.get("name") == tag or m.get("model") == tag:
+            details = m.get("details", {}) or {}
+            return {
+                "status": "confirmed",
+                "tag": tag,
+                "digest": m.get("digest", ""),
+                "parameter_size": details.get("parameter_size", ""),
+                "quantization_level": details.get("quantization_level", ""),
+                "family": details.get("family", ""),
+                "size_bytes": m.get("size"),
+            }
+    return {"status": "unavailable", "tag": tag, "reason": f"tag {tag!r} not found in /api/tags response"}
+
+
+def resolve_ollama_version() -> Optional[str]:
+    """GET /api/version -- metadata only, no inference. Returns None
+    (best-effort) if unreachable."""
+    try:
+        req = urllib.request.Request(f"{_OLLAMA_BASE_URL}/api/version")
+        with urllib.request.urlopen(req, timeout=_OLLAMA_HEALTH_TIMEOUT) as resp:
+            return json.loads(resp.read()).get("version")
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return None
+
+
+def check_branch_collapse_false(baseline: dict) -> tuple:
+    if baseline["branch_collapse"] is not False:
+        return False, (
+            f"branch_collapse={baseline['branch_collapse']!r} in the baseline config, but B2 "
+            f"requires branch_collapse=False (B1 pooling) -- this file does not describe B1."
+        )
+    return True, "branch_collapse=False confirmed"
+
+
+def check_llm_temperature(baseline: dict) -> tuple:
+    if baseline["llm_temperature"] != HARDCODED_LLM_TEMPERATURE:
+        return False, (
+            f"llm_temperature={baseline['llm_temperature']!r} in the baseline config, but "
+            f"run_eval.build_system() hardcodes {HARDCODED_LLM_TEMPERATURE!r} for every "
+            f"hierarchical run (not a CLI-configurable value in this harness)."
+        )
+    return True, f"llm_temperature={HARDCODED_LLM_TEMPERATURE} confirmed against the hardcoded value"
+
+
+def check_timeout(baseline: dict) -> tuple:
+    if baseline["timeout_s"] != _OLLAMA_INFERENCE_TIMEOUT:
+        return False, (
+            f"timeout_s={baseline['timeout_s']!r} in the baseline config, but "
+            f"backend.llm.llm_client._OLLAMA_INFERENCE_TIMEOUT is currently "
+            f"{_OLLAMA_INFERENCE_TIMEOUT!r}."
+        )
+    return True, f"timeout_s={_OLLAMA_INFERENCE_TIMEOUT} confirmed against the live constant"
+
+
+def check_implementation_fingerprint(baseline: dict) -> tuple:
+    live_fingerprint = compute_composite_fingerprint()
+    baseline_fingerprint = baseline["implementation_fingerprint"]
+    if baseline_fingerprint.get("composite_sha256") != live_fingerprint["composite_sha256"]:
+        changed = sorted(
+            name for name in live_fingerprint["components"]
+            if baseline_fingerprint.get("components", {}).get(name) != live_fingerprint["components"][name]
+        )
+        return False, (
+            f"implementation_fingerprint.composite_sha256="
+            f"{baseline_fingerprint.get('composite_sha256')!r} in the baseline config, but the "
+            f"live composite is {live_fingerprint['composite_sha256']!r} -- component(s) with a "
+            f"changed source hash: {changed or '(component set itself differs)'}. B1 decision-"
+            f"critical logic has changed since the frozen B1 run. Re-run and re-freeze B1 before "
+            f"trusting a B2 comparison."
+        )
+    return True, f"implementation_fingerprint.composite_sha256 confirmed ({live_fingerprint['composite_sha256'][:16]}...)"
+
+
+def check_ollama_model_identity(baseline: dict) -> tuple:
+    identity = resolve_ollama_model_identity(baseline["ollama_model_identity"]["tag"])
+    if identity["status"] != "confirmed":
+        return False, (
+            f"could not confirm the live identity of Ollama model "
+            f"{baseline['ollama_model_identity']['tag']!r}: {identity.get('reason')}. "
+            f"Failing closed -- see task B.4."
+        )
+    if identity["digest"] != baseline["ollama_model_identity"]["digest"]:
+        return False, (
+            f"ollama_model_identity.digest={baseline['ollama_model_identity']['digest']!r} in the "
+            f"baseline config, but the locally installed {baseline['ollama_model_identity']['tag']!r} "
+            f"currently resolves to digest={identity['digest']!r} -- the 'latest' tag is mutable and "
+            f"has moved (e.g. re-pulled) since the frozen B1 run. Re-run and re-freeze B1 with the "
+            f"currently-installed model, or reinstall the exact frozen digest, before trusting a "
+            f"B2 comparison."
+        )
+    return True, f"ollama_model_identity.digest confirmed for {identity['tag']!r}"
+
+
+# The 5 codebase/environment cross-checks assert_baseline_matches_codebase()
+# runs, in order -- also used individually by eval/pre_run_check.py so its
+# checklist reports each as its own PASS/FAIL line rather than one bundled
+# exception. Each is (name, fn(baseline) -> (ok, message)).
+BASELINE_CODEBASE_CHECKS = [
+    ("branch_collapse", check_branch_collapse_false),
+    ("llm_temperature", check_llm_temperature),
+    ("timeout_s", check_timeout),
+    ("implementation_fingerprint", check_implementation_fingerprint),
+    ("ollama_model_identity", check_ollama_model_identity),
+]
+
+
+def assert_baseline_matches_codebase(baseline: dict) -> None:
+    """Runs every check in BASELINE_CODEBASE_CHECKS -- the frozen baseline's
+    claims about non-CLI-configurable pipeline behaviour (temperature,
+    timeout, implementation fingerprint, branch_collapse) and the pinned
+    Ollama model identity, against the CURRENT codebase/environment.
+    reranker_model/beam/stage1_mode/keyword_map_enabled are deliberately
+    NOT checked here -- once this script sources them directly from the
+    baseline file (see main()), there is no separate value left for them
+    to disagree with. beam evidence policy is a separate concern, see
+    check_beam_evidence(). Raises BaselineMismatchError (all mismatches
+    listed at once, not just the first) if anything here no longer
+    matches -- refuses to run any case rather than silently produce a
+    comparison that isn't actually comparable to the frozen B1 result."""
+    mismatches = [msg for _, check in BASELINE_CODEBASE_CHECKS for ok, msg in [check(baseline)] if not ok]
+    if mismatches:
+        raise BaselineMismatchError(
+            f"{len(mismatches)} mismatch(es) between --baseline-config and the current "
+            f"codebase/environment -- refusing to run B2 (would not be comparable to the frozen "
+            f"B1 result):\n" + "\n".join(f"  - {m}" for m in mismatches)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Beam-provenance gate (task A). A separate policy decision from
+# assert_baseline_matches_codebase() above -- this isn't "does the live
+# codebase match the file", it's "is the file's own beam claim trustworthy
+# enough to run on", which only a human with direct run-history access can
+# ultimately resolve for an 'inferred' status.
+# ---------------------------------------------------------------------------
+
+def check_beam_evidence(baseline: dict, confirm_inferred_beam: Optional[int] = None) -> tuple:
+    """Returns (ok: bool, message: str). ok=True either because
+    beam_evidence.status == "confirmed", or because the caller passed
+    --confirm-inferred-beam with EXACTLY baseline["beam"]'s value (a wrong
+    override value is a hard failure, not silently accepted/ignored)."""
+    status = baseline["beam_evidence"]["status"]
+    beam = baseline["beam"]
+
+    if status == "confirmed":
+        return True, (
+            f"beam_evidence.status='confirmed' (source: {baseline['beam_evidence'].get('source')})"
+        )
+
+    if confirm_inferred_beam is None:
+        return False, (
+            f"beam_evidence.status='inferred' for beam={beam} (source: "
+            f"{baseline['beam_evidence'].get('source')}; detail: "
+            f"{baseline['beam_evidence'].get('detail')}). Refusing to run by default -- pass "
+            f"--confirm-inferred-beam {beam} after independently verifying beam={beam} from your "
+            f"own run history to proceed."
+        )
+
+    if confirm_inferred_beam != beam:
+        return False, (
+            f"--confirm-inferred-beam {confirm_inferred_beam} does not match the baseline config's "
+            f"beam={beam} -- refusing to run. Pass --confirm-inferred-beam {beam} (the exact "
+            f"frozen value) if you have verified it, or fix the baseline config if beam={beam} "
+            f"is itself wrong."
+        )
+
+    return True, (
+        f"beam_evidence.status='inferred' for beam={beam}, but --confirm-inferred-beam {beam} "
+        f"was passed -- proceeding on human-confirmed override. THIS OVERRIDE IS RECORDED IN "
+        f"THE REPORT AND EVERY ROW'S JSONL METADATA."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Determinism: dev-row and K execution order, both pure functions of --seed.
+# ---------------------------------------------------------------------------
+
+def deterministic_shuffle(items: list, seed: int) -> list:
+    rng = random.Random(seed)
+    shuffled = list(items)
+    rng.shuffle(shuffled)
+    return shuffled
+
+
+def deterministic_k_order(k_values: list, seed: int) -> list:
+    # seed + 1, not seed, so the K-order permutation is a distinct stream
+    # from the dev-row shuffle above rather than moving in lockstep with it.
+    rng = random.Random(seed + 1)
+    order = list(k_values)
+    rng.shuffle(order)
+    return order
+
+
+# ---------------------------------------------------------------------------
+# Provenance: real git commit and a real, run_eval-consistent config hash
+# per K, replacing placeholder git_commit=""/cfg_hash=f"devsweep_k{k}"
+# values from before the baseline-config mechanism existed.
+# ---------------------------------------------------------------------------
+
+def resolve_git_commit_full() -> str:
+    """Full `git rev-parse HEAD`, best-effort. Returns "" (not a fabricated
+    value) if git is unavailable or this isn't a git checkout."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent,
+            capture_output=True, text=True, timeout=5,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except Exception:  # noqa: BLE001 - best-effort bookkeeping, never fatal to the sweep
+        return ""
+
+
+def compute_k_config_hash(k: int, resolved_reranker_model: str, keyword_map_enabled: bool,
+                           beam: int, stage1_mode: str, config_label: str) -> str:
+    """The SAME hash run_eval.py itself computes for every B0/B1/B2 run
+    (run_eval._config_hash()), applied to this K's actual configuration --
+    replaces the placeholder f"devsweep_k{k}" string with a real,
+    reproducible hash. branch_collapse is always False here (B2). Two
+    different K values legitimately get two different hashes (K is baked
+    into the hashed payload, same as every other run_eval.py invocation) --
+    this is provenance for what actually ran, not a cross-K equality check."""
+    fake_args = SimpleNamespace(
+        system="hierarchical", beam=beam, stage1_mode=stage1_mode,
+        reranker_candidates=k, branch_collapse=False, config=config_label,
+    )
+    return run_eval._config_hash(fake_args, resolved_reranker_model, keyword_map_enabled)
+
+
+# ---------------------------------------------------------------------------
+# Provenance (task D): environment facts recorded LIVE in every report --
+# unlike b1_frozen.json's frozen fields, these describe the CURRENT run and
+# would go stale if baked into the static baseline file.
+# ---------------------------------------------------------------------------
+
+def sha256_of_file(path: Path) -> Optional[str]:
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def check_git_tree_clean() -> tuple:
+    """Returns (clean: bool, porcelain_output: str). porcelain_output is ""
+    when clean; best-effort -- if git itself is unavailable, returns
+    (False, "<reason>") so the caller fails closed rather than silently
+    treating an unknown state as clean."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=Path(__file__).resolve().parent,
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return False, f"git status failed: {result.stderr.strip()}"
+        output = result.stdout.strip()
+        return (output == ""), output
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{type(exc).__name__}: {exc}"
+
+
+def resolve_qdrant_version() -> Optional[str]:
+    """GET the Qdrant root endpoint for its version string -- service info
+    only, not a /collections/*/points/search call, so this is NOT
+    'calling Qdrant for retrieval'. Returns None (best-effort) if
+    unreachable."""
+    try:
+        host = os.getenv("QDRANT_HOST", "localhost")
+        port = os.getenv("QDRANT_PORT", "6333")
+        req = urllib.request.Request(f"http://{host}:{port}/")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return json.loads(resp.read()).get("version")
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return None
+
+
+def resolve_environment_provenance(requirements_path: Optional[Path] = None) -> dict:
+    """Best-effort snapshot of the CURRENT execution environment (task D).
+    Every field is independently best-effort -- a failure resolving one
+    (e.g. no GPU, Qdrant not running) never raises or blocks the others.
+    This function does NOT gate execution by itself; check_git_tree_clean()
+    is what main() uses to decide whether to fail closed on a dirty tree."""
+    git_clean, git_porcelain = check_git_tree_clean()
+    requirements_path = requirements_path or (Path(__file__).resolve().parents[1] / "requirements.txt")
+
+    ram_gb = None
+    cpu = None
+    gpu = None
+    if _HAVE_PSUTIL:
+        try:
+            ram_gb = round(psutil.virtual_memory().total / (1024 ** 3), 1)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        import platform as _platform
+        cpu = _platform.processor() or _platform.machine()
+        os_summary = _platform.platform()
+    except Exception:  # noqa: BLE001
+        os_summary = None
+    try:
+        gpu_result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join '; '"],
+            capture_output=True, text=True, timeout=15,
+        )
+        gpu = gpu_result.stdout.strip() or None
+    except Exception:  # noqa: BLE001
+        gpu = None
+
+    return {
+        "current_b2_git_commit": resolve_git_commit_full(),
+        "git_tree_clean": git_clean,
+        "git_tree_dirty_files": git_porcelain,
+        "python_version": sys.version.split()[0],
+        "requirements_path": str(requirements_path),
+        "requirements_sha256": sha256_of_file(requirements_path),
+        "ollama_version": resolve_ollama_version(),
+        "qdrant_version": resolve_qdrant_version(),
+        "os": os_summary,
+        "cpu": cpu,
+        "ram_gb": ram_gb,
+        "gpu": gpu,
+    }
 
 
 @dataclass
@@ -420,18 +966,96 @@ def render_markdown_report(
     p95_ceiling_factor: float = DEFAULT_P95_CEILING_FACTOR,
     max_additional_timeout_or_invalid: int = DEFAULT_MAX_ADDITIONAL_TIMEOUT_OR_INVALID,
     memory_budget_mb: Optional[float] = None,
+    baseline_config_path: str = "",
+    baseline: Optional[dict] = None,
+    git_commit: str = "",
+    seed: Optional[int] = None,
+    dev_row_order: Optional[list] = None,
+    k_execution_order: Optional[list] = None,
+    beam_evidence_result: Optional[tuple] = None,
+    confirm_inferred_beam: Optional[int] = None,
+    environment: Optional[dict] = None,
 ) -> str:
+    baseline = baseline or {}
+    fingerprint = baseline.get("implementation_fingerprint", {})
+    identity = baseline.get("ollama_model_identity", {})
+    provenance = baseline.get("provenance", {})
+    environment = environment or {}
+    beam_ev = baseline.get("beam_evidence", {})
+    beam_evidence_ok, beam_evidence_msg = beam_evidence_result if beam_evidence_result else (None, "")
+
     lines = [
         "# B2 dev-set K-sweep report -- operational eligibility rule",
         "",
         f"- Dev set: `{dev_set_path}` ({n_dev_cases} cases)",
-        f"- Reranker model: `{reranker_model}`",
-        f"- Pooling: B1 (branch_collapse=False, hardcoded -- see module docstring)",
+        f"- Baseline config: `{baseline_config_path}`",
+        f"- Reranker model: `{reranker_model}` (sourced from baseline config)",
+        f"- Beam: {baseline.get('beam', 'n/a')} (sourced from baseline config)",
+        f"- Stage-1 mode: {baseline.get('stage1_mode', 'n/a')} (sourced from baseline config)",
+        f"- Keyword map enabled: {baseline.get('keyword_map_enabled', 'n/a')} (sourced from baseline config)",
+        f"- Pooling: B1 (branch_collapse=False, asserted against baseline config)",
+        f"- LLM temperature: {baseline.get('llm_temperature', 'n/a')} (asserted against hardcoded value)",
+        f"- Reranker timeout (s): {baseline.get('timeout_s', 'n/a')} (asserted against live constant)",
+        f"- Baseline source run: `{baseline.get('_source_csv', 'n/a')}` "
+        f"({baseline.get('_source_top1_accuracy', 'n/a')} top-1)",
+        f"- git commit (this sweep): `{git_commit or '(unresolved)'}`",
+        f"- Seed: {seed}",
         f"- Reference K: {decision.reference_k}",
         f"- P95 latency ceiling: {p95_ceiling_factor}x reference",
         f"- Max additional timeout+invalid_output events vs. reference: {max_additional_timeout_or_invalid}",
         f"- Memory budget: {memory_budget_mb if memory_budget_mb is not None else '(not set -- check skipped)'} MB",
         f"- Generated: {generated_at}",
+        "",
+        "## Beam-provenance gate",
+        "",
+        f"- beam_evidence.status (baseline config): `{beam_ev.get('status', 'n/a')}`",
+        f"- beam_evidence.source: {beam_ev.get('source', 'n/a')}",
+        f"- Gate result: {'PASS' if beam_evidence_ok else 'FAIL' if beam_evidence_ok is False else 'not evaluated'}",
+        f"- Gate message: {beam_evidence_msg or 'n/a'}",
+        f"- --confirm-inferred-beam override passed: "
+        f"{confirm_inferred_beam if confirm_inferred_beam is not None else '(not passed)'}"
+        + (" **-- HUMAN OVERRIDE IN EFFECT FOR THIS RUN**" if confirm_inferred_beam is not None else ""),
+        "",
+        "## Ollama model identity (task B)",
+        "",
+        f"- Baseline tag: `{identity.get('tag', 'n/a')}`",
+        f"- Baseline digest: `{identity.get('digest', 'n/a')}`",
+        f"- Baseline parameter_size / quantization: "
+        f"{identity.get('parameter_size', 'n/a')} / {identity.get('quantization_level', 'n/a')}",
+        f"- Live Ollama version (this run): {environment.get('ollama_version', 'n/a')}",
+        "",
+        "## Implementation fingerprint (task C)",
+        "",
+        f"- Composite SHA-256: `{fingerprint.get('composite_sha256', 'n/a')}`",
+        "- Components (sorted):",
+    ] + [
+        f"  - `{name}`: `{h}`" for name, h in sorted(fingerprint.get("components", {}).items())
+    ] + [
+        "",
+        "## Provenance (task D)",
+        "",
+        f"- b1_result_csv: `{provenance.get('b1_result_csv', 'n/a')}`",
+        f"- b1_result_csv_sha256: `{provenance.get('b1_result_csv_sha256', 'n/a')}`",
+        f"- b1_baseline_git_commit: {provenance.get('b1_baseline_git_commit') or '(unrecoverable -- see b1_frozen.json _notes)'}",
+        f"- current_b2_git_commit: `{environment.get('current_b2_git_commit', 'n/a')}`",
+        f"- git tree clean: {environment.get('git_tree_clean', 'n/a')}"
+        + (f" (dirty files:\n```\n{environment.get('git_tree_dirty_files')}\n```)"
+           if environment.get("git_tree_dirty_files") else ""),
+        f"- python_version: {environment.get('python_version', 'n/a')}",
+        f"- requirements_sha256: `{environment.get('requirements_sha256', 'n/a')}` "
+        f"({environment.get('requirements_path', 'n/a')})",
+        f"- qdrant_version: {environment.get('qdrant_version', 'n/a')}",
+        f"- os: {environment.get('os', 'n/a')}",
+        f"- cpu: {environment.get('cpu', 'n/a')}",
+        f"- ram_gb: {environment.get('ram_gb', 'n/a')}",
+        f"- gpu: {environment.get('gpu', 'n/a')}",
+        "",
+        "## Determinism",
+        "",
+        f"- K execution order (actual, seed-derived, not ascending): "
+        f"{k_execution_order if k_execution_order is not None else 'n/a'}",
+        f"- Dev-row execution order (seed-derived shuffle, same order used for every K): "
+        f"{', '.join(dev_row_order) if dev_row_order else 'n/a'}",
         "",
         "## Per-K metrics",
         "",
@@ -507,11 +1131,13 @@ def _peak_rss_mb() -> Optional[float]:
 
 
 def run_sweep_for_k(dev_rows: list[dict], k: int, reranker_model: str, beam: int,
-                     stage1_mode: str, disable_keyword_map: bool,
+                     stage1_mode: str, disable_keyword_map: bool, git_commit: str, seed: int,
                      warmup_cases: int = DEFAULT_WARMUP_CASES) -> tuple:
     """Runs the dev set once through B1's pooling pipeline with
     --reranker-candidates=k. branch_collapse is hardcoded False -- see
-    module docstring's experiment-separation constraints.
+    module docstring's experiment-separation constraints. dev_rows is
+    expected to already be in its final execution order (shuffled by the
+    caller via deterministic_shuffle()) -- this function does not reorder it.
 
     Returns (case_results, crashed, crash_message, peak_memory_mb). Catches
     exceptions at the sweep level (not just per-case, which run_one_case()
@@ -529,10 +1155,14 @@ def run_sweep_for_k(dev_rows: list[dict], k: int, reranker_model: str, beam: int
             disable_keyword_map=disable_keyword_map, beam=beam, stage1_mode=stage1_mode,
             reranker_candidates=k, branch_collapse=False, capture_pool_metadata=True,
         )
+        resolved_reranker_model = getattr(clf, "reranker_model_resolved", reranker_model)
+        keyword_map_enabled = not disable_keyword_map
         isic_clf = run_eval.ISICClassifier()
         isced_clf = run_eval.ISCEDClassifier()
         sre = run_eval.SemanticRelationEngine(use_llm=False)
-        cfg_hash = f"devsweep_k{k}"
+        cfg_hash = compute_k_config_hash(
+            k, resolved_reranker_model, keyword_map_enabled, beam, stage1_mode, f"devsweep_k{k}",
+        )
 
         # Warm-up phase: discarded entirely, never enters case_results, so it
         # cannot affect recall/top1/latency stats -- see rule #3.
@@ -543,8 +1173,9 @@ def run_sweep_for_k(dev_rows: list[dict], k: int, reranker_model: str, beam: int
                 case_id=f"warmup_{row['case_id']}", input_text=row["input_text"],
                 input_language=row["input_language"], gold_isco_4digit=row["gold_isco_4digit"],
                 gold_isic="", gold_isced="", config_hash=cfg_hash, system="hierarchical",
-                keyword_map_enabled=not disable_keyword_map, branch_collapse_enabled=False,
-                capture_pool_metadata_enabled=True, run_id=f"devsweep_k{k}_warmup", seed=run_eval.RANDOM_SEED,
+                keyword_map_enabled=keyword_map_enabled, branch_collapse_enabled=False,
+                capture_pool_metadata_enabled=True, run_id=f"devsweep_k{k}_warmup",
+                git_commit=git_commit, seed=seed,
             )
             sample = _peak_rss_mb()
             if sample is not None:
@@ -556,9 +1187,9 @@ def run_sweep_for_k(dev_rows: list[dict], k: int, reranker_model: str, beam: int
                 case_id=row["case_id"], input_text=row["input_text"],
                 input_language=row["input_language"], gold_isco_4digit=row["gold_isco_4digit"],
                 gold_isic="", gold_isced="", config_hash=cfg_hash, system="hierarchical",
-                keyword_map_enabled=not disable_keyword_map, branch_collapse_enabled=False,
+                keyword_map_enabled=keyword_map_enabled, branch_collapse_enabled=False,
                 capture_pool_metadata_enabled=True, run_id=f"devsweep_k{k}",
-                git_commit="", seed=run_eval.RANDOM_SEED, input_order_position=i,
+                git_commit=git_commit, seed=seed, input_order_position=i,
             )
             case_results.append(r)
             sample = _peak_rss_mb()
@@ -574,12 +1205,22 @@ def run_sweep_for_k(dev_rows: list[dict], k: int, reranker_model: str, beam: int
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dev-set", required=True, type=Path)
-    parser.add_argument("--reranker-model", required=True, type=str)
+    parser.add_argument(
+        "--baseline-config", required=True, type=Path,
+        help=(
+            "Mandatory. JSON file (see eval/configs/b1_frozen.json) recording the exact "
+            "frozen B1 configuration -- reranker_model/beam/stage1_mode/keyword_map_enabled "
+            "are read directly from this file (not separately CLI-configurable in this "
+            "script), and branch_collapse/llm_temperature/timeout_s/implementation_fingerprint/"
+            "ollama_model_identity are asserted against it before any case runs. See the module "
+            "docstring's 'Baseline config' section."
+        ),
+    )
     parser.add_argument("--k-values", type=str, default=",".join(str(k) for k in DEFAULT_K_VALUES))
     parser.add_argument("--reference-k", type=int, default=DEFAULT_REFERENCE_K)
-    parser.add_argument("--beam", type=int, default=2)
-    parser.add_argument("--stage1-mode", choices=["description", "leaf_vote"], default="description")
-    parser.add_argument("--disable-keyword-map", action="store_true")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SWEEP_SEED,
+                         help="Drives the deterministic dev-row shuffle and K execution order "
+                              "(both recorded in the report). See module docstring.")
     parser.add_argument("--warmup-cases", type=int, default=DEFAULT_WARMUP_CASES)
     parser.add_argument("--recall-close-threshold", type=float, default=DEFAULT_RECALL_CLOSE_THRESHOLD)
     parser.add_argument("--p95-ceiling-factor", type=float, default=DEFAULT_P95_CEILING_FACTOR)
@@ -588,11 +1229,32 @@ def main() -> None:
     parser.add_argument("--memory-budget-mb", type=float, default=None,
                          help="If omitted, the memory-budget eligibility check is skipped "
                               "(peak_memory_mb is still recorded for every K).")
+    parser.add_argument(
+        "--confirm-inferred-beam", type=int, default=None,
+        help=(
+            "Required to proceed if the baseline config's beam_evidence.status is 'inferred' "
+            "(see task A / eval/configs/b1_frozen.json's beam_evidence field). Must equal the "
+            "baseline's beam value EXACTLY -- pass this only after independently verifying the "
+            "beam width from your own run history. Recorded prominently in the report and "
+            "metadata JSONL."
+        ),
+    )
+    parser.add_argument(
+        "--allow-dirty-tree", action="store_true",
+        help=(
+            "By default, a dirty git working tree (uncommitted changes) fails closed before "
+            "any case runs -- a B2 run's code provenance must be traceable to a specific commit. "
+            "Pass this to override; the dirty-tree files are still recorded prominently in the "
+            "report."
+        ),
+    )
     parser.add_argument("--output-dir", type=Path, default=RESULTS_DIR)
     args = parser.parse_args()
 
     if not args.dev_set.exists():
         parser.error(f"Dev set not found: {args.dev_set}")
+    if not args.baseline_config.exists():
+        parser.error(f"--baseline-config not found: {args.baseline_config}")
     k_values = [int(k.strip()) for k in args.k_values.split(",") if k.strip()]
     if not k_values:
         parser.error("--k-values produced an empty list")
@@ -605,19 +1267,72 @@ def main() -> None:
         print("WARNING: psutil is not installed -- peak_memory_mb will be None for every K "
               "and the memory-budget eligibility check cannot be evaluated.", file=sys.stderr)
 
-    dev_rows = _load_dev_rows_as_test_set(args.dev_set)
+    baseline = load_baseline_config(args.baseline_config)
+    shape_errors = validate_baseline_shape(baseline)
+    if shape_errors:
+        parser.error(
+            f"--baseline-config {args.baseline_config} is malformed:\n" +
+            "\n".join(f"  - {e}" for e in shape_errors)
+        )
+    try:
+        assert_baseline_matches_codebase(baseline)
+    except BaselineMismatchError as exc:
+        print(f"FATAL: {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Baseline config OK: {args.baseline_config} matches the current codebase "
+          f"(branch_collapse=False, llm_temperature, timeout_s, implementation_fingerprint, "
+          f"and ollama_model_identity all verified).")
+
+    beam_evidence_ok, beam_evidence_msg = check_beam_evidence(baseline, args.confirm_inferred_beam)
+    print(f"Beam-provenance gate: {'PASS' if beam_evidence_ok else 'FAIL'} -- {beam_evidence_msg}")
+    if not beam_evidence_ok:
+        print(f"FATAL: {beam_evidence_msg}", file=sys.stderr)
+        sys.exit(1)
+    if args.confirm_inferred_beam is not None:
+        print(f"*** HUMAN OVERRIDE IN EFFECT: --confirm-inferred-beam {args.confirm_inferred_beam} ***")
+
+    git_clean, git_dirty_files = check_git_tree_clean()
+    if not git_clean and not args.allow_dirty_tree:
+        print(
+            f"FATAL: working tree is dirty -- refusing to run (code provenance for this B2 run "
+            f"would not be traceable to a single commit). Files:\n{git_dirty_files}\n"
+            f"Commit/stash your changes, or pass --allow-dirty-tree to override (recorded "
+            f"prominently in the report).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not git_clean and args.allow_dirty_tree:
+        print(f"*** WARNING: --allow-dirty-tree override in effect. Dirty files:\n{git_dirty_files} ***")
+
+    reranker_model = baseline["reranker_model"]
+    beam = baseline["beam"]
+    stage1_mode = baseline["stage1_mode"]
+    disable_keyword_map = not baseline["keyword_map_enabled"]
+
+    git_commit = resolve_git_commit_full()
+    if not git_commit:
+        print("WARNING: could not resolve `git rev-parse HEAD` -- git_commit will be blank "
+              "in every row and in the report.", file=sys.stderr)
+
+    dev_rows_loaded = _load_dev_rows_as_test_set(args.dev_set)
+    dev_rows = deterministic_shuffle(dev_rows_loaded, args.seed)
+    k_order = deterministic_k_order(k_values, args.seed)
+    dev_row_order = [r["case_id"] for r in dev_rows]
     print(f"Loaded {len(dev_rows)} dev case(s) from {args.dev_set}")
-    print(f"Sweeping K={k_values} (reference K={args.reference_k}) with reranker_model={args.reranker_model}")
+    print(f"seed={args.seed}  dev-row execution order (seed-derived shuffle): {dev_row_order}")
+    print(f"K execution order (seed-derived shuffle, not ascending): {k_order}  (reference K={args.reference_k})")
+    print(f"reranker_model={reranker_model} beam={beam} stage1_mode={stage1_mode} "
+          f"keyword_map_enabled={baseline['keyword_map_enabled']}  (all sourced from --baseline-config)")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     all_metrics = []
-    for k in k_values:
+    for k in k_order:
         print(f"\n=== K={k} ===")
         case_results, crashed, crash_message, peak_mb = run_sweep_for_k(
-            dev_rows, k, args.reranker_model, args.beam, args.stage1_mode,
-            args.disable_keyword_map, warmup_cases=args.warmup_cases,
+            dev_rows, k, reranker_model, beam, stage1_mode, disable_keyword_map,
+            git_commit, args.seed, warmup_cases=args.warmup_cases,
         )
         if crashed:
             print(f"K={k}: CRASHED -- {crash_message}")
@@ -661,18 +1376,50 @@ def main() -> None:
         memory_budget_mb=args.memory_budget_mb,
     )
 
+    environment = resolve_environment_provenance()
+
     report_md = render_markdown_report(
-        decision, all_metrics, str(args.dev_set), args.reranker_model,
+        decision, all_metrics, str(args.dev_set), reranker_model,
         len(dev_rows), datetime.now(timezone.utc).isoformat(),
         p95_ceiling_factor=args.p95_ceiling_factor,
         max_additional_timeout_or_invalid=args.max_additional_timeout_or_invalid,
         memory_budget_mb=args.memory_budget_mb,
+        baseline_config_path=str(args.baseline_config),
+        baseline=baseline,
+        git_commit=git_commit,
+        seed=args.seed,
+        dev_row_order=dev_row_order,
+        k_execution_order=k_order,
+        beam_evidence_result=(beam_evidence_ok, beam_evidence_msg),
+        confirm_inferred_beam=args.confirm_inferred_beam,
+        environment=environment,
     )
     report_path = args.output_dir / f"{timestamp}_devsweep_report.md"
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report_md)
 
+    metadata_path = args.output_dir / f"{timestamp}_devsweep_metadata.jsonl"
+    metadata_record = {
+        "timestamp": timestamp,
+        "dev_set": str(args.dev_set),
+        "baseline_config": str(args.baseline_config),
+        "baseline": baseline,
+        "seed": args.seed,
+        "dev_row_order": dev_row_order,
+        "k_execution_order": k_order,
+        "reference_k": args.reference_k,
+        "beam_evidence_status": baseline["beam_evidence"]["status"],
+        "confirm_inferred_beam_passed": args.confirm_inferred_beam,
+        "beam_override_used": args.confirm_inferred_beam is not None,
+        "allow_dirty_tree_used": (not git_clean) and args.allow_dirty_tree,
+        "environment": environment,
+        "chosen_k": decision.chosen_k,
+    }
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(metadata_record, ensure_ascii=False) + "\n")
+
     print(f"\nWrote report to {report_path}")
+    print(f"Wrote metadata JSONL to {metadata_path}")
     print(f"Chosen K: {decision.chosen_k}")
 
 
