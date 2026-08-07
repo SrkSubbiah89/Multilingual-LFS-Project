@@ -170,6 +170,20 @@ no per-case LLM latency):
 1. **Flat retrieval baseline, no reranking**: `--system flat --use-llm-reranker off`
 2. **Hierarchical retrieval, no reranking**: `--system hierarchical --use-llm-reranker off`
 
+**Note (Task 09 correction, applied before Step 7B runs)**: prior to Task
+09, `--use-llm-reranker off` still required `--reranker-model` at the CLI
+preflight (an inconsistency, not a real dependency) and still constructed
+an `ISCOClassifier` that initialised an LLM object in `__init__` even
+though it was never called during classification. Task 09 made this
+genuinely model-free: `--reranker-model` is no longer required (and is
+ignored if passed) when `--use-llm-reranker off`, and no LLM/agent is
+constructed at all in that mode. The exact commands below (Tier 1) already
+omit `--reranker-model`, which is now valid; a retrieval-only run is a
+retrieval measurement, not a reranking comparison, and it exercises
+ISCO-08 classification only (ISIC/ISCED/SRE remain gated on whether the
+input rows carry paired industry_text/education_text, which this
+ISCO-only WISCO CSV does not).
+
 Neither matches one of `eval/ablation_runner.py`'s 5 named `CONFIGS`
 exactly as a rerank-off flat baseline (`flat_baseline` there has
 reranking **on**) — Step 7B should invoke `eval/run_eval.py` directly for

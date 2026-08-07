@@ -80,9 +80,10 @@ test_set_smoke20.csv has industry_text/education_text populated as of
 this revision -- SRE columns will be empty for every row of a CSV that
 lacks them.
 
-Reranker pinning (--reranker-model)
---------------------------------------
-Required for --system hierarchical/flat. Passed to
+Reranker pinning (--reranker-model) and retrieval-only mode (--use-llm-reranker off)
+--------------------------------------------------------------------------------------
+--reranker-model is required for --system hierarchical/flat ONLY when
+--use-llm-reranker is 'on' (the default). Passed to
 ISCOClassifier(reranker_model=...), which resolves it via
 backend.llm.get_llm_strict() -- health-checked once at startup, hard
 failure (run aborts, no cases run) if the pinned model is unavailable,
@@ -96,6 +97,22 @@ the paper's reranker -- the paper attributes reranking to GPT-4o and
 Claude 3.5 Sonnet, so any number destined for the manuscript must be run
 with --reranker-model anthropic/claude-3-5-sonnet-20241022 (requires
 ANTHROPIC_API_KEY with available credit).
+
+Task 09: --use-llm-reranker off makes a hierarchical/flat run genuinely
+retrieval-only, not merely a run that skips calling the reranker.
+ISCOClassifier is constructed with enable_llm=False, which skips Stage 2
+of __init__ entirely -- no get_llm_strict(), get_llm(), or
+_build_reranker_agent() call, no LLM/agent object exists, and
+reranker_model_resolved reports the explicit string "none (reranking
+disabled)". --reranker-model is neither required nor consulted in this
+mode. This is NOT a reranking comparison (there is nothing to compare --
+no reranking runs at all) and it supports ISCO-08 classification only;
+ISICClassifier/ISCEDClassifier/SemanticRelationEngine are separately
+gated on whether the loaded test-set rows actually carry paired
+industry_text/education_text (see "Test-set CSV columns" above) --
+independent of --use-llm-reranker, but for a WISCO-style ISCO-only CSV
+neither condition holds, so a retrieval-only WISCO run constructs no LLM
+and no ISIC/ISCED/SRE component at all.
 
 degraded column
 ------------------
@@ -111,6 +128,9 @@ Usage
     python eval/run_eval.py --test-set path/to/test_set.csv --system flat --reranker-model ollama/llama3.2:1b
     python eval/run_eval.py --test-set path/to/test_set.csv --system bm25
     python eval/run_eval.py --test-set path/to/test_set.csv --system hierarchical --reranker-model anthropic/claude-3-5-sonnet-20241022 --limit 20
+
+    # Retrieval-only (Task 09) -- no --reranker-model, no LLM constructed:
+    python eval/run_eval.py --test-set path/to/test_set.csv --system hierarchical --use-llm-reranker off
 """
 
 from __future__ import annotations
@@ -239,37 +259,48 @@ class _BM25Adapter:
 def build_system(system: str, reranker_model: Optional[str] = None, disable_keyword_map: bool = False,
                   beam: int = 2, stage1_mode: str = "description",
                   reranker_candidates: int = 5, branch_collapse: bool = False,
-                  capture_pool_metadata: bool = False):
+                  capture_pool_metadata: bool = False, use_llm_reranker: bool = True):
     """Return a classifier object exposing .classify(...) for the requested
     --system value. hierarchical and flat share ISCOClassifier (same class,
     force_flat toggles the retrieval path); bm25 uses the adapter above.
 
-    reranker_model is required (non-None) for hierarchical/flat -- see
-    ISCOClassifier's reranker_model parameter: it pins the reranking LLM via
-    get_llm_strict() (hard-fail if unavailable, no silent substitution) and
-    the exception from an unavailable pinned model propagates out of this
-    call, aborting the run before any case is classified. Ignored for bm25,
-    which has no reranking stage at all. beam/stage1_mode/reranker_candidates/
+    reranker_model is required (non-None) for hierarchical/flat WHEN
+    use_llm_reranker=True -- see ISCOClassifier's reranker_model parameter:
+    it pins the reranking LLM via get_llm_strict() (hard-fail if
+    unavailable, no silent substitution) and the exception from an
+    unavailable pinned model propagates out of this call, aborting the run
+    before any case is classified. Ignored for bm25, which has no
+    reranking stage at all. beam/stage1_mode/reranker_candidates/
     branch_collapse are likewise ignored for bm25 (no stages) and unused by
     flat (single-stage retrieval, no branches to pool across).
+
+    use_llm_reranker=False (Task 09): for hierarchical/flat, constructs
+    ISCOClassifier(enable_llm=False, reranker_model=None) -- no LLM/agent
+    is initialised at all (not just skipped per-call), reranker_model is
+    ignored entirely (never passed to get_llm_strict), and
+    reranker_model_resolved reports the explicit "none (reranking
+    disabled)" string rather than any model identity. This is what makes
+    a --use-llm-reranker off run genuinely retrieval-only, not merely
+    reranker-call-skipping.
 
     capture_pool_metadata (B2, default False): opt-in, observational only --
     see HierarchicalISCOStore.search()'s capture_pool_metadata docstring.
     Ignored for bm25 (no stage4 pool to capture)."""
+    common_kwargs = dict(
+        llm_temperature=0.0, disable_keyword_map=disable_keyword_map,
+        beam=beam, stage1_mode=stage1_mode,
+        reranker_candidates=reranker_candidates,
+        branch_collapse=branch_collapse,
+        capture_pool_metadata=capture_pool_metadata,
+    )
     if system == "hierarchical":
-        return ISCOClassifier(llm_temperature=0.0, reranker_model=reranker_model,
-                               disable_keyword_map=disable_keyword_map,
-                               beam=beam, stage1_mode=stage1_mode,
-                               reranker_candidates=reranker_candidates,
-                               branch_collapse=branch_collapse,
-                               capture_pool_metadata=capture_pool_metadata)
+        if use_llm_reranker:
+            return ISCOClassifier(reranker_model=reranker_model, **common_kwargs)
+        return ISCOClassifier(reranker_model=None, enable_llm=False, **common_kwargs)
     if system == "flat":
-        return ISCOClassifier(llm_temperature=0.0, force_flat=True, reranker_model=reranker_model,
-                               disable_keyword_map=disable_keyword_map,
-                               beam=beam, stage1_mode=stage1_mode,
-                               reranker_candidates=reranker_candidates,
-                               branch_collapse=branch_collapse,
-                               capture_pool_metadata=capture_pool_metadata)
+        if use_llm_reranker:
+            return ISCOClassifier(force_flat=True, reranker_model=reranker_model, **common_kwargs)
+        return ISCOClassifier(force_flat=True, reranker_model=None, enable_llm=False, **common_kwargs)
     if system == "bm25":
         return _BM25Adapter()
     raise ValueError(f"Unknown --system {system!r}; expected hierarchical, flat, or bm25")
@@ -461,9 +492,9 @@ class CaseResult:
 
 def run_one_case(
     clf,  # ISCOClassifier (hierarchical/flat) or _BM25Adapter -- duck-typed on .classify()
-    sre: SemanticRelationEngine,
-    isic_clf: ISICClassifier,
-    isced_clf: ISCEDClassifier,
+    sre: Optional[SemanticRelationEngine],
+    isic_clf: Optional[ISICClassifier],
+    isced_clf: Optional[ISCEDClassifier],
     row_index: int,
     case_id: str,
     input_text: str,
@@ -485,6 +516,11 @@ def run_one_case(
     sre_enabled: bool = True,
     use_llm_reranker: bool = True,
 ) -> CaseResult:
+    """sre/isic_clf/isced_clf may all be None (Task 09) -- main() only
+    constructs them when at least one selected row has both non-blank
+    industry_text and education_text; when None, every row's ISIC/ISCED/SRE
+    block below takes the "not_applicable" branch, matching the guard's
+    own per-row industry_text/education_text check."""
     result = CaseResult(
         case_id=case_id,
         input_text=input_text,
@@ -622,7 +658,13 @@ def run_one_case(
     # Reviewer_2/SRE_COUPLING_BUGFIX.md. Prior to this fix, ISIC/ISCED
     # classification was incorrectly gated on sre_enabled too, so --sre off
     # silently produced blank ISIC/ISCED predictions for every case.
-    if industry_text.strip() and education_text.strip():
+    #
+    # Task 09: isic_clf/isced_clf are None whenever main() determined no
+    # selected row has both texts -- guarded explicitly here (not just
+    # inferred from the text check) so this block can never be reached
+    # with a None classifier even if a future caller's row population
+    # diverges from the one main() inspected.
+    if isic_clf is not None and isced_clf is not None and industry_text.strip() and education_text.strip():
         try:
             isic_result = isic_clf.classify(industry_text)
             isced_result = isced_clf.classify(education_text)
@@ -642,7 +684,7 @@ def run_one_case(
             # *predicted* ISCO/ISIC/ISCED that are jointly implausible
             # despite each looking individually confident -- disabling it
             # must never affect the base classifications above.
-            if sre_enabled:
+            if sre_enabled and sre is not None:
                 coherence = sre.analyse(
                     isco_code=result.pred_isco_4digit,
                     isic_section=result.pred_isic_section,
@@ -698,12 +740,19 @@ def _config_hash(args: argparse.Namespace, resolved_reranker_model: str, keyword
     HierarchicalISCOStore.search() (args.beam / args.stage1_mode) as of
     the retrieval-fix session -- previously "beam": 2 was recorded here
     despite no parameter of classify() ever setting it; that was fixed by
-    actually wiring the parameter through, not by removing the field."""
+    actually wiring the parameter through, not by removing the field.
+
+    Task 09: "use_llm" used to be hardcoded True regardless of
+    --use-llm-reranker -- a retrieval-only run's hash still claimed
+    use_llm=True even though no LLM was constructed. Now derived from the
+    actual flag, so a retrieval-only run's hash (together with
+    resolved_reranker_model reporting "none (reranking disabled)" instead
+    of a model string) cannot be mistaken for a reranked run's."""
     payload = json.dumps(
         {
             "system": args.system,
             "top_k": 5,
-            "use_llm": True,
+            "use_llm": args.use_llm_reranker == "on",
             "llm_temperature": 0.0,
             "beam": args.beam,
             "stage1_mode": args.stage1_mode,
@@ -734,10 +783,13 @@ def main() -> None:
             "(free, local -- NOT the model the paper attributes reranking to) "
             "or 'anthropic/claude-3-5-sonnet-20241022' (matches the paper, "
             "costs money, requires ANTHROPIC_API_KEY with available credit). "
-            "Required for --system hierarchical/flat. Health-checked before "
-            "any case runs; the run aborts (does NOT silently substitute a "
-            "different model) if the pinned model is unavailable. Ignored "
-            "for --system bm25 (no reranking stage)."
+            "Required for --system hierarchical/flat ONLY when "
+            "--use-llm-reranker is 'on' (the default) -- with 'off', this "
+            "flag is ignored entirely and no LLM is constructed at all "
+            "(a genuinely retrieval-only run, not just a skipped call). "
+            "Health-checked before any case runs; the run aborts (does NOT "
+            "silently substitute a different model) if the pinned model is "
+            "unavailable. Ignored for --system bm25 (no reranking stage)."
         ),
     )
     parser.add_argument(
@@ -835,9 +887,14 @@ def main() -> None:
         help=(
             "Whether the LLM reranking stage runs at all (default: on, "
             "unchanged prior behaviour -- previously hardcoded True with no "
-            "flag). 'off' passes use_llm=False to the classifier, so the "
-            "top pre-rerank candidate is returned directly (method suffix "
-            "'_semantic' instead of '_llm'/hierarchical_llm) -- used by "
+            "flag). 'off' (Task 09: genuinely retrieval-only, not merely "
+            "reranker-call-skipping) builds ISCOClassifier with "
+            "enable_llm=False -- no LLM/agent is constructed in __init__ at "
+            "all, --reranker-model is neither required nor consulted, and "
+            "the top pre-rerank candidate is returned directly (method "
+            "suffix '_semantic' instead of '_llm'/'hierarchical_llm'). This "
+            "is a retrieval-only run, not a reranking comparison, and "
+            "supports ISCO-08 classification only -- used by "
             "eval/ablation_runner.py's hierarchical-no-rerank vs "
             "hierarchical-with-rerank configs (Conference I Reviewer #2 "
             "response, Section E). Ignored for --system bm25 (no reranking "
@@ -887,12 +944,20 @@ def main() -> None:
     args = parser.parse_args()
     if args.config is None:
         args.config = args.system
-    if args.system in ("hierarchical", "flat") and not args.reranker_model and not args.dry_run:
+    if (
+        args.system in ("hierarchical", "flat")
+        and not args.reranker_model
+        and not args.dry_run
+        and args.use_llm_reranker == "on"
+    ):
         parser.error(
             "--reranker-model is required for --system hierarchical/flat "
-            "(no default -- the choice of reranker changes what the run's "
-            "numbers mean; pass e.g. 'ollama/llama3.2:1b' for a smoke test "
-            "or 'anthropic/claude-3-5-sonnet-20241022' to match the paper)."
+            "when --use-llm-reranker is 'on' (the default) -- no default "
+            "reranker (the choice changes what the run's numbers mean); "
+            "pass e.g. 'ollama/llama3.2:1b' for a smoke test or "
+            "'anthropic/claude-3-5-sonnet-20241022' to match the paper. "
+            "Pass --use-llm-reranker off for a genuinely retrieval-only "
+            "run that needs no reranker model at all."
         )
 
     if not args.test_set.exists():
@@ -995,12 +1060,36 @@ def main() -> None:
                         beam=args.beam, stage1_mode=args.stage1_mode,
                         reranker_candidates=args.reranker_candidates,
                         branch_collapse=args.branch_collapse,
-                        capture_pool_metadata=args.capture_pool_metadata)
+                        capture_pool_metadata=args.capture_pool_metadata,
+                        use_llm_reranker=(args.use_llm_reranker == "on"))
     resolved_reranker_model = getattr(clf, "reranker_model_resolved", "")
     keyword_map_enabled = not args.disable_keyword_map
-    isic_clf = ISICClassifier()
-    isced_clf = ISCEDClassifier()
-    sre = SemanticRelationEngine(use_llm=False)  # deterministic crosswalk only, no LLM disambiguation
+
+    # Task 09: ISICClassifier/ISCEDClassifier/SemanticRelationEngine are
+    # only constructed when at least one selected row (post --limit, same
+    # population the loop below iterates) has both non-blank industry_text
+    # and education_text -- otherwise every row would hit run_one_case()'s
+    # "not_applicable" branch anyway, so constructing them (which, for
+    # ISICClassifier, initialises an LLM -- see get_llm(TaskType.GENERAL)
+    # in its __init__) would be pure unused overhead for a WISCO-style,
+    # ISCO-only test set. Both are set to the *same* condition; see
+    # run_one_case()'s own None-guard for the corresponding per-row check.
+    any_row_has_paired_industry_education = any(
+        row.get("industry_text", "").strip() and row.get("education_text", "").strip()
+        for row in rows
+    )
+    if any_row_has_paired_industry_education:
+        isic_clf = ISICClassifier()
+        isced_clf = ISCEDClassifier()
+        sre = SemanticRelationEngine(use_llm=False)  # deterministic crosswalk only, no LLM disambiguation
+    else:
+        isic_clf = None
+        isced_clf = None
+        sre = None
+        print("No row has both industry_text and education_text -- ISICClassifier/"
+              "ISCEDClassifier/SemanticRelationEngine will not be constructed; "
+              "this is an ISCO-08-only retrieval run.")
+
     cfg_hash = _config_hash(args, resolved_reranker_model, keyword_map_enabled)
     print(f"config_hash={cfg_hash}  reranker_model={resolved_reranker_model or '(none)'}  "
           f"keyword_map_enabled={keyword_map_enabled}  run_id={run_id}")

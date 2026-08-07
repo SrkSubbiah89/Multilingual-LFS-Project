@@ -461,6 +461,7 @@ class ISCOClassifier:
         reranker_candidates: int = 5,
         branch_collapse: bool = False,
         capture_pool_metadata: bool = False,
+        enable_llm: bool = True,
     ) -> None:
         """
         Parameters
@@ -534,6 +535,23 @@ class ISCOClassifier:
             capture_pool_metadata=). B2 instrumentation, observational
             only -- see that method's docstring. Existing callers that
             omit this (default False) see identical behaviour to before.
+        enable_llm : bool, default True
+            Task 09: when False, Stage 2 (LLM agent for re-ranking) is
+            skipped entirely -- get_llm_strict(), get_llm(), and
+            _build_reranker_agent() are never called, no LLM/agent is
+            constructed, _agent_available stays False, and
+            reranker_model_resolved is set to the explicit, non-model
+            string "none (reranking disabled)" (never a fabricated model
+            identity). classify() already only takes its LLM re-ranking
+            branch when self._agent_available is True, so this alone makes
+            every classify() call route through the existing semantic-only
+            retrieval path -- no new retrieval algorithm, no fabricated
+            reranking trace. Retrieval store initialisation (Stage 1a/1b)
+            is unaffected either way. Existing callers that omit this
+            (default True) see identical behaviour to before -- added for
+            the evaluation harness's genuinely retrieval-only runs
+            (eval/run_eval.py --use-llm-reranker off), which must not
+            initialise an LLM at all, not just skip calling it.
         """
         self._disable_keyword_map   = disable_keyword_map
         self._beam                  = beam
@@ -574,7 +592,13 @@ class ISCOClassifier:
                 return  # no point loading LLM if there is no store at all
 
         # Stage 2: LLM agent for re-ranking
-        if self._reranker_model_pin:
+        if not enable_llm:
+            # Retrieval-only mode (Task 09): never construct an LLM/agent.
+            # _agent_available stays False (its __init__ default), so
+            # classify() always takes the existing semantic-only path --
+            # see this constructor's enable_llm docstring.
+            self.reranker_model_resolved = "none (reranking disabled)"
+        elif self._reranker_model_pin:
             # Strict mode (eval harness): no fallback, no swallowed
             # exception — an unavailable pinned model aborts __init__.
             self._llm = get_llm_strict(

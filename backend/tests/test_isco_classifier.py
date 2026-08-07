@@ -307,3 +307,133 @@ class TestClassifyResultShape:
     def test_min_usable_confidence_constant_exposed(self):
         assert ISCOClassifier.MIN_USABLE_CONFIDENCE == MIN_USABLE_CONFIDENCE
         assert 0.0 < MIN_USABLE_CONFIDENCE < 1.0
+
+
+# ---------------------------------------------------------------------------
+# enable_llm (Task 09) -- retrieval-only construction, no LLM/agent init
+# ---------------------------------------------------------------------------
+
+def _make_clf(monkeypatch, mock_store, *, enable_llm=True, reranker_model=None,
+              get_llm=None, get_llm_strict=None, agent=None):
+    """Same store-forcing pattern as the module-level `clf` fixture, but
+    parameterized so enable_llm/reranker_model/get_llm*/Agent can be
+    controlled per test. get_llm/get_llm_strict default to a call-tracking
+    MagicMock so tests can assert they were (not) called; Agent defaults to
+    a plain MagicMock unless a fake needs to raise."""
+    get_llm = get_llm if get_llm is not None else MagicMock(return_value=MagicMock())
+    get_llm_strict = get_llm_strict if get_llm_strict is not None else MagicMock(return_value=MagicMock())
+    monkeypatch.setattr("backend.agents.isco_classifier.get_llm", get_llm)
+    monkeypatch.setattr("backend.agents.isco_classifier.get_llm_strict", get_llm_strict)
+    monkeypatch.setattr("backend.agents.isco_classifier.Agent", agent or MagicMock())
+    monkeypatch.setattr("backend.agents.isco_classifier.Task", MagicMock())
+    monkeypatch.setattr(
+        "backend.agents.isco_classifier.get_hierarchical_store",
+        lambda: (_ for _ in ()).throw(RuntimeError("no hierarchical store in tests")),
+    )
+    monkeypatch.setattr(
+        "backend.agents.isco_classifier.get_vector_store",
+        lambda **kw: mock_store,
+    )
+    return ISCOClassifier(enable_llm=enable_llm, reranker_model=reranker_model)
+
+
+class TestEnableLlmFalse:
+    """Task 09: ISCOClassifier(enable_llm=False) must never construct an
+    LLM/agent, must leave _agent_available False, and must still produce a
+    real semantic-only classification against a ready fake store."""
+
+    def test_does_not_call_get_llm_or_get_llm_strict(self, monkeypatch, mock_store):
+        get_llm = MagicMock(return_value=MagicMock())
+        get_llm_strict = MagicMock(return_value=MagicMock())
+        clf = _make_clf(monkeypatch, mock_store, enable_llm=False,
+                         get_llm=get_llm, get_llm_strict=get_llm_strict)
+        get_llm.assert_not_called()
+        get_llm_strict.assert_not_called()
+        assert clf._agent_available is False
+
+    def test_does_not_construct_agent(self, monkeypatch, mock_store):
+        agent = MagicMock(side_effect=AssertionError("Agent() must not be constructed when enable_llm=False"))
+        _make_clf(monkeypatch, mock_store, enable_llm=False, agent=agent)
+        agent.assert_not_called()
+
+    def test_reranker_model_resolved_is_explicit_disabled_string(self, monkeypatch, mock_store):
+        clf = _make_clf(monkeypatch, mock_store, enable_llm=False)
+        assert clf.reranker_model_resolved == "none (reranking disabled)"
+
+    def test_reranker_model_pin_is_ignored_when_enable_llm_false(self, monkeypatch, mock_store):
+        """enable_llm=False must win even if a reranker_model pin is also
+        passed -- eval/run_eval.py's build_system() never does this (it
+        passes reranker_model=None), but the classifier itself must not
+        rely on that caller discipline alone."""
+        get_llm_strict = MagicMock(return_value=MagicMock())
+        clf = _make_clf(monkeypatch, mock_store, enable_llm=False,
+                         reranker_model="ollama/llama3.2:1b", get_llm_strict=get_llm_strict)
+        get_llm_strict.assert_not_called()
+        assert clf._agent_available is False
+        assert clf.reranker_model_resolved == "none (reranking disabled)"
+
+    def test_still_makes_semantic_only_classification_with_ready_store(self, monkeypatch, mock_store):
+        clf = _make_clf(monkeypatch, mock_store, enable_llm=False)
+        result = clf.classify("software developer")
+        assert isinstance(result, ISCOClassification)
+        assert result.primary.code == "2512"
+        assert "llm" not in result.method
+
+    def test_classify_never_produces_an_llm_reranker_trace(self, monkeypatch, mock_store):
+        mock_store.search.return_value = [make_match(confidence=0.55)]  # low confidence -- would trigger rerank if enabled
+        clf = _make_clf(monkeypatch, mock_store, enable_llm=False)
+        trace: dict = {}
+        clf.classify("I do stuff with computers", trace=trace)
+        assert not trace.get("reranker_fired")
+        assert "reranker_output" not in trace
+        assert "reranker_model" not in trace
+
+    def test_no_vector_store_available_still_constructs_without_llm(self, monkeypatch):
+        get_llm = MagicMock(return_value=MagicMock())
+        get_llm_strict = MagicMock(return_value=MagicMock())
+        monkeypatch.setattr("backend.agents.isco_classifier.get_llm", get_llm)
+        monkeypatch.setattr("backend.agents.isco_classifier.get_llm_strict", get_llm_strict)
+        monkeypatch.setattr(
+            "backend.agents.isco_classifier.get_hierarchical_store",
+            lambda: (_ for _ in ()).throw(RuntimeError("no hierarchical store")),
+        )
+        monkeypatch.setattr(
+            "backend.agents.isco_classifier.get_vector_store",
+            lambda **kw: (_ for _ in ()).throw(RuntimeError("no flat store either")),
+        )
+        clf = ISCOClassifier(enable_llm=False)
+        get_llm.assert_not_called()
+        get_llm_strict.assert_not_called()
+        assert clf._agent_available is False
+
+
+class TestEnableLlmTrueUnchanged:
+    """Task 09 regression guard: enable_llm's default (True) must retain
+    every existing behaviour byte-for-byte, including the strict pinned-
+    model path."""
+
+    def test_default_omitted_still_calls_get_llm(self, clf, mock_store, mock_crew):
+        # `clf` fixture already constructs with enable_llm defaulted (True)
+        # and get_llm patched to return a MagicMock -- _agent_available
+        # being True is the existing, unchanged contract.
+        assert clf._agent_available is True
+        assert clf.reranker_model_resolved != "none (reranking disabled)"
+
+    def test_reranker_model_pin_still_uses_get_llm_strict(self, monkeypatch, mock_store):
+        get_llm = MagicMock(return_value=MagicMock())
+        get_llm_strict = MagicMock(return_value=MagicMock())
+        clf = _make_clf(monkeypatch, mock_store, enable_llm=True,
+                         reranker_model="ollama/llama3.2:1b",
+                         get_llm=get_llm, get_llm_strict=get_llm_strict)
+        get_llm_strict.assert_called_once()
+        get_llm.assert_not_called()  # strict mode never falls back to get_llm()
+        assert clf._agent_available is True
+
+    def test_no_reranker_model_pin_uses_plain_get_llm(self, monkeypatch, mock_store):
+        get_llm = MagicMock(return_value=MagicMock())
+        get_llm_strict = MagicMock(return_value=MagicMock())
+        clf = _make_clf(monkeypatch, mock_store, enable_llm=True,
+                         reranker_model=None, get_llm=get_llm, get_llm_strict=get_llm_strict)
+        get_llm.assert_called_once()
+        get_llm_strict.assert_not_called()
+        assert clf._agent_available is True
