@@ -55,10 +55,13 @@ print(r.detailed_code)  # "0912"
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
-from backend.agents.classifier_methods import NOT_IMPLEMENTED_METHODS, NOT_IMPLEMENTED_REASON
+from backend.agents.classifier_methods import (
+    ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD,
+    ISCEDF_HIERARCHICAL_RETRIEVAL,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -387,6 +390,16 @@ for _fld_entry in _ISCED_FIELDS:
     for _tok in re.findall(r"[a-z\u0600-\u06ff]{2,}", _fld_entry["keywords"].lower()):
         _FIELD_TOKEN_INDEX.setdefault(_tok, []).append(_fld_entry)
 
+# Per-level title lookups, used only by the hierarchical-retrieval path
+# (_from_hierarchical_result) to attach broad/narrow titles to a
+# hierarchy_path that only carries codes for the non-final stages. Built
+# from the same _ISCED_FIELDS table the keyword pipeline already uses.
+_BROAD_TITLES: dict[str, str] = {}
+_NARROW_TITLES: dict[str, str] = {}
+for _fld_entry in _ISCED_FIELDS:
+    _BROAD_TITLES.setdefault(_fld_entry["broad_code"], _fld_entry["broad_title"])
+    _NARROW_TITLES.setdefault(_fld_entry["narrow_code"], _fld_entry["narrow_title"])
+
 # Default field for generic/pre-tertiary education
 _DEFAULT_FIELD = {
     "broad_code": "00", "broad_title": "Generic programmes and qualifications",
@@ -413,8 +426,17 @@ class ISCEDClassification:
     detailed_title: str               # "Software and applications development and analysis"
     # Confidence / meta
     confidence:     float
-    method:         str               # "keyword" | "rule"
+    method:         str               # "keyword" | "rule" | see classifier_methods.py for hierarchical/fallback labels
     raw_text:       Optional[str] = None
+    # Populated only by the hierarchical-retrieval path (method=iscedf_hierarchical_retrieval);
+    # left at these defaults for every other path (legacy keyword/rule and fallback results).
+    # ISCED 2011 level/level_title above are ALWAYS independently classified regardless of path.
+    hierarchy_path:      list = field(default_factory=list)      # e.g. ["06", "061", "0613"]
+    stage_confidences:   dict = field(default_factory=dict)      # {"stage1": .., "stage2": .., "stage3": ..}
+    top_candidates:       list = field(default_factory=list)
+    hitl_required:        Optional[bool] = None
+    fallback_used:        bool = False
+    fallback_reason:      Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -437,17 +459,30 @@ class ISCEDClassifier:
         method : str, optional
             Default ``None`` runs today's unchanged keyword/rule pipeline
             (identical to calling ``classify(text)`` before this parameter
-            existed). Passing a value from
-            ``backend.agents.classifier_methods.NOT_IMPLEMENTED_METHODS``
-            (currently just ``"iscedf_hierarchical_retrieval"``) returns a
-            structured not-implemented result instead of running any
-            classification -- ISCED-F hierarchical retrieval is deferred
-            scope, not yet built. See
-            Documentation/Conference_I_Reviewer_2/CLASSIFIER_METHOD_REGISTRY.md.
+            existed). Passing
+            ``backend.agents.classifier_methods.ISCEDF_HIERARCHICAL_RETRIEVAL``
+            runs the real parent-filtered hierarchical retrieval engine
+            (backend/rag/standard_hierarchical_store.py) for the ISCED-F
+            broad/narrow/detailed FIELD dimension only -- the independent
+            ISCED 2011 attainment LEVEL is always computed by
+            ``_score_level()`` regardless of which path runs; it is never
+            part of the hierarchical retrieval. If the required Qdrant
+            collections are unavailable or the search returns no usable
+            result, this falls back to the legacy keyword/rule pipeline --
+            but the returned result's ``method`` is set to
+            ``ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD`` (never silently
+            reported as ``ISCEDF_HIERARCHICAL_RETRIEVAL``), with
+            ``fallback_used=True`` and a non-empty ``fallback_reason``. See
+            Documentation/Conference_I_Reviewer_2/
+            ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md.
         """
-        if method is not None and method in NOT_IMPLEMENTED_METHODS:
-            return self._not_implemented(method, text)
+        if method == ISCEDF_HIERARCHICAL_RETRIEVAL:
+            return self._classify_hierarchical(text)
+        return self._classify_legacy(text)
 
+    # ── Legacy keyword/rule pipeline (unchanged behaviour) ──────────────────────
+
+    def _classify_legacy(self, text: str) -> ISCEDClassification:
         text = (text or "").strip()
         if not text:
             return self._fallback(text)
@@ -470,6 +505,72 @@ class ISCEDClassifier:
             confidence=combined_conf,
             method="keyword",
             raw_text=text,
+        )
+
+    # ── Hierarchical field retrieval, with explicit fallback labelling ──────────
+
+    def _classify_hierarchical(self, text: str) -> ISCEDClassification:
+        from backend.rag.standard_hierarchical_store import get_iscedf_hierarchical_store
+
+        stripped = (text or "").strip()
+        if not stripped:
+            return self._fallback(text)
+
+        # ISCED 2011 level is independently classified regardless of path.
+        level_entry, level_conf = self._score_level(stripped)
+
+        store = get_iscedf_hierarchical_store()
+        result = store.search(stripped)
+
+        if result.ready and not result.unavailable_reason and result.code:
+            return self._from_hierarchical_result(result, level_entry, level_conf, text)
+
+        field_entry, field_conf = self._score_field(stripped)
+        combined_conf = round(min((level_conf * 0.4 + field_conf * 0.6), 1.0), 4)
+        return ISCEDClassification(
+            level=level_entry["level"],
+            level_title=level_entry["level_title"],
+            broad_code=field_entry["broad_code"],
+            broad_title=field_entry["broad_title"],
+            narrow_code=field_entry["narrow_code"],
+            narrow_title=field_entry["narrow_title"],
+            detailed_code=field_entry["detailed_code"],
+            detailed_title=field_entry["detailed_title"],
+            confidence=combined_conf,
+            method=ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD,
+            raw_text=text,
+            fallback_used=True,
+            fallback_reason=(
+                result.unavailable_reason or "ISCED-F hierarchical store returned no usable result"
+            ),
+        )
+
+    def _from_hierarchical_result(self, result, level_entry: dict, level_conf: float, text: str) -> ISCEDClassification:
+        path = list(result.hierarchy_path)
+        broad = path[0] if len(path) > 0 else ""
+        narrow = path[1] if len(path) > 1 else ""
+        detailed = path[2] if len(path) > 2 else result.code
+
+        combined_conf = round(min((level_conf * 0.4 + result.confidence * 0.6), 1.0), 4)
+
+        return ISCEDClassification(
+            level=level_entry["level"],
+            level_title=level_entry["level_title"],
+            broad_code=broad,
+            broad_title=_BROAD_TITLES.get(broad, ""),
+            narrow_code=narrow,
+            narrow_title=_NARROW_TITLES.get(narrow, ""),
+            detailed_code=detailed,
+            detailed_title=result.label_en,
+            confidence=combined_conf,
+            method=ISCEDF_HIERARCHICAL_RETRIEVAL,
+            raw_text=text,
+            hierarchy_path=path,
+            stage_confidences=dict(result.stage_confidences),
+            top_candidates=list(result.top_candidates),
+            hitl_required=result.hitl_required,
+            fallback_used=False,
+            fallback_reason=None,
         )
 
     # ── Level scoring ──────────────────────────────────────────────────────────
@@ -505,27 +606,6 @@ class ISCEDClassifier:
         max_h = max(hit_counts.values())
         best_code = max(hit_counts, key=hit_counts.__getitem__)
         return hit_entries[best_code], round(hit_counts[best_code] / max_h, 4)
-
-    # ── Not-implemented stub (deferred scope, see classifier_methods.py) ───────
-
-    @staticmethod
-    def _not_implemented(method: str, text: str) -> ISCEDClassification:
-        """
-        Structured "not implemented" result for a ``method`` value in
-        ``NOT_IMPLEMENTED_METHODS`` -- returned instead of raising so
-        CLI/eval callers that don't expect an exception stay safe, and
-        instead of silently running the default keyword/rule pipeline
-        (which would misreport which method actually produced the result).
-        Level/field fields are deliberately empty/zeroed rather than a
-        fabricated or borrowed classification.
-        """
-        return ISCEDClassification(
-            level=-1, level_title="",
-            broad_code="", broad_title="", narrow_code="", narrow_title="",
-            detailed_code="", detailed_title="",
-            confidence=0.0, method=method,
-            raw_text=f"{NOT_IMPLEMENTED_REASON} (requested method={method!r}, input={text!r})",
-        )
 
     # ── Fallback ───────────────────────────────────────────────────────────────
 

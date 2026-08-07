@@ -51,7 +51,11 @@ from typing import Optional
 
 from crewai import Agent, Crew, Task
 
-from backend.agents.classifier_methods import NOT_IMPLEMENTED_METHODS, NOT_IMPLEMENTED_REASON
+from backend.agents.classifier_methods import (
+    ISIC_HIERARCHICAL_FALLBACK_KEYWORD,
+    ISIC_HIERARCHICAL_FALLBACK_LLM,
+    ISIC_HIERARCHICAL_RETRIEVAL,
+)
 from backend.llm.llm_client import TaskType, get_llm
 
 log = logging.getLogger(__name__)
@@ -782,6 +786,21 @@ for _entry in _ISIC_DATA:
     for _tok in re.findall(r"[a-z\u0600-\u06ff]{3,}", _entry["keywords"].lower()):
         _TOKEN_INDEX.setdefault(_tok, []).append(_entry)
 
+# Per-level title lookups, used only by the hierarchical-retrieval path
+# (_from_hierarchical_result) to attach section/division/group titles to a
+# hierarchy_path that -- like ISCO's own HierarchicalResult -- only carries
+# codes for the non-final stages. Built from the same _ISIC_DATA table the
+# keyword pipeline already uses; not a second source of truth.
+_SECTION_TITLES: dict[str, str] = {}
+_DIVISION_TITLES: dict[str, str] = {}
+_GROUP_TITLES: dict[str, str] = {}
+_ENTRY_BY_CLASS: dict[str, dict] = {}
+for _entry in _ISIC_DATA:
+    _SECTION_TITLES.setdefault(_entry["section"], _entry["section_title"])
+    _DIVISION_TITLES.setdefault(_entry["division_code"], _entry["division_title"])
+    _GROUP_TITLES.setdefault(_entry["group_code"], _entry["group_title"])
+    _ENTRY_BY_CLASS.setdefault(_entry["class_code"], _entry)
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -798,9 +817,16 @@ class ISICClassification:
     class_code:      str
     class_title:     str
     confidence:      float
-    method:          str                    # "keyword" | "llm"
+    method:          str                    # "keyword" | "llm" | see classifier_methods.py for hierarchical/fallback labels
     alternatives:    list[dict] = field(default_factory=list)
     raw_text:        Optional[str] = None
+    # Populated only by the hierarchical-retrieval path (method=isic_hierarchical_retrieval);
+    # left at these defaults for every other path (legacy keyword/LLM and fallback results).
+    hierarchy_path:      list = field(default_factory=list)      # e.g. ["J", "62", "620", "6201"]
+    stage_confidences:   dict = field(default_factory=dict)      # {"stage1": .., .., "stage4": ..}
+    hitl_required:        Optional[bool] = None
+    fallback_used:        bool = False
+    fallback_reason:      Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -829,17 +855,27 @@ class ISICClassifier:
         method : str, optional
             Default ``None`` runs today's unchanged keyword+LLM pipeline
             (identical to calling ``classify(text)`` before this parameter
-            existed). Passing a value from
-            ``backend.agents.classifier_methods.NOT_IMPLEMENTED_METHODS``
-            (currently just ``"isic_hierarchical_retrieval"``) returns a
-            structured not-implemented result instead of running any
-            classification -- hierarchical retrieval for ISIC is deferred
-            scope, not yet built. See
-            Documentation/Conference_I_Reviewer_2/CLASSIFIER_METHOD_REGISTRY.md.
+            existed). Passing
+            ``backend.agents.classifier_methods.ISIC_HIERARCHICAL_RETRIEVAL``
+            runs the real parent-filtered hierarchical retrieval engine
+            (backend/rag/standard_hierarchical_store.py) instead. If the
+            required Qdrant collections are unavailable or the search
+            returns no usable result, this falls back to the legacy
+            keyword/LLM pipeline -- but the returned result's ``method`` is
+            set to ``ISIC_HIERARCHICAL_FALLBACK_KEYWORD`` or
+            ``ISIC_HIERARCHICAL_FALLBACK_LLM`` (never silently reported as
+            ``ISIC_HIERARCHICAL_RETRIEVAL``), with ``fallback_used=True``
+            and a non-empty ``fallback_reason``. See
+            Documentation/Conference_I_Reviewer_2/
+            ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md.
         """
-        if method is not None and method in NOT_IMPLEMENTED_METHODS:
-            return self._not_implemented(method, text)
+        if method == ISIC_HIERARCHICAL_RETRIEVAL:
+            return self._classify_hierarchical(text)
+        return self._classify_legacy(text)
 
+    # ── Legacy keyword/LLM pipeline (unchanged behaviour) ───────────────────────
+
+    def _classify_legacy(self, text: str) -> ISICClassification:
         text = (text or "").strip()
         if not text:
             return self._fallback(text)
@@ -860,6 +896,70 @@ class ISICClassifier:
 
         # LLM failed — fall back to best keyword match with deflated confidence
         return self._make_result(best_entry, best_score * 0.8, "keyword", [], text)
+
+    # ── Hierarchical retrieval, with explicit fallback labelling ────────────────
+
+    def _classify_hierarchical(self, text: str) -> ISICClassification:
+        from backend.rag.standard_hierarchical_store import get_isic_hierarchical_store
+
+        store = get_isic_hierarchical_store()
+        result = store.search(text)
+
+        if result.ready and not result.unavailable_reason and result.code:
+            return self._from_hierarchical_result(result, text)
+
+        legacy = self._classify_legacy(text)
+        legacy.method = (
+            ISIC_HIERARCHICAL_FALLBACK_LLM if legacy.method == "llm"
+            else ISIC_HIERARCHICAL_FALLBACK_KEYWORD
+        )
+        legacy.fallback_used = True
+        legacy.fallback_reason = (
+            result.unavailable_reason or "ISIC hierarchical store returned no usable result"
+        )
+        return legacy
+
+    def _from_hierarchical_result(self, result, text: str) -> ISICClassification:
+        path = list(result.hierarchy_path)
+        section = path[0] if len(path) > 0 else ""
+        division = path[1] if len(path) > 1 else ""
+        group = path[2] if len(path) > 2 else ""
+        cls = path[3] if len(path) > 3 else result.code
+
+        alternatives = []
+        for cand in result.top_candidates:
+            if cand.code == cls:
+                continue
+            entry = _ENTRY_BY_CLASS.get(cand.code)
+            alternatives.append({
+                "class_code": cand.code,
+                "class_title": cand.label_en,
+                "division_code": entry["division_code"] if entry else "",
+                "section": entry["section"] if entry else "",
+                "confidence": round(cand.score, 4),
+            })
+            if len(alternatives) >= self._TOP_K - 1:
+                break
+
+        return ISICClassification(
+            section=section,
+            section_title=_SECTION_TITLES.get(section, ""),
+            division_code=division,
+            division_title=_DIVISION_TITLES.get(division, ""),
+            group_code=group,
+            group_title=_GROUP_TITLES.get(group, ""),
+            class_code=cls,
+            class_title=result.label_en,
+            confidence=result.confidence,
+            method=ISIC_HIERARCHICAL_RETRIEVAL,
+            alternatives=alternatives,
+            raw_text=text,
+            hierarchy_path=path,
+            stage_confidences=dict(result.stage_confidences),
+            hitl_required=result.hitl_required,
+            fallback_used=False,
+            fallback_reason=None,
+        )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -1009,26 +1109,6 @@ class ISICClassifier:
             confidence=round(min(conf, 1.0), 4),
             method="llm",
             raw_text=original_text,
-        )
-
-    # ── Not-implemented stub (deferred scope, see classifier_methods.py) ───────
-
-    @staticmethod
-    def _not_implemented(method: str, text: str) -> ISICClassification:
-        """
-        Structured "not implemented" result for a ``method`` value in
-        ``NOT_IMPLEMENTED_METHODS`` -- returned instead of raising so
-        CLI/eval callers that don't expect an exception stay safe, and
-        instead of silently running the default keyword/LLM pipeline (which
-        would misreport which method actually produced the result). All
-        hierarchy fields are deliberately empty rather than a fabricated or
-        borrowed classification.
-        """
-        return ISICClassification(
-            section="", section_title="", division_code="", division_title="",
-            group_code="", group_title="", class_code="", class_title="",
-            confidence=0.0, method=method, alternatives=[],
-            raw_text=f"{NOT_IMPLEMENTED_REASON} (requested method={method!r}, input={text!r})",
         )
 
     # ── Fallback ──────────────────────────────────────────────────────────────

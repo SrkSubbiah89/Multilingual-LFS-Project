@@ -3,10 +3,10 @@ ISCO-08,1,major,isco08_major_groups,0.1,implemented,isco_hierarchical_rag
 ISCO-08,2,submajor,isco08_submajor_groups,0.2,implemented,isco_hierarchical_rag
 ISCO-08,3,minor,isco08_minor_groups,0.2,implemented,isco_hierarchical_rag
 ISCO-08,4,unit,isco08_unit_groups,0.5,implemented,isco_hierarchical_rag
-ISIC Rev.4,1,section,(not yet implemented),0.0,planned,isic_hierarchical_retrieval
-ISIC Rev.4,2,division,(not yet implemented),0.0,planned,isic_hierarchical_retrieval
-ISIC Rev.4,3,group,(not yet implemented),0.0,planned,isic_hierarchical_retrieval
-ISIC Rev.4,4,class,(not yet implemented),0.0,planned,isic_hierarchical_retrieval
-ISCED-F 2013,1,broad,(not yet implemented),0.0,planned,iscedf_hierarchical_retrieval
-ISCED-F 2013,2,narrow,(not yet implemented),0.0,planned,iscedf_hierarchical_retrieval
-ISCED-F 2013,3,detailed,(not yet implemented),0.0,planned,iscedf_hierarchical_retrieval
+ISIC Rev.4,1,section,isic_rev4_sections,0.1,implemented_unevaluated,isic_hierarchical_retrieval
+ISIC Rev.4,2,division,isic_rev4_divisions,0.2,implemented_unevaluated,isic_hierarchical_retrieval
+ISIC Rev.4,3,group,isic_rev4_groups,0.25,implemented_unevaluated,isic_hierarchical_retrieval
+ISIC Rev.4,4,class,isic_rev4_classes,0.45,implemented_unevaluated,isic_hierarchical_retrieval
+ISCED-F 2013,1,broad,iscedf2013_broad_fields,0.2,implemented_unevaluated,iscedf_hierarchical_retrieval
+ISCED-F 2013,2,narrow,iscedf2013_narrow_fields,0.3,implemented_unevaluated,iscedf_hierarchical_retrieval
+ISCED-F 2013,3,detailed,iscedf2013_detailed_fields,0.5,implemented_unevaluated,iscedf_hierarchical_retrieval

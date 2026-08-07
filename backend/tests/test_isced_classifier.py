@@ -4,19 +4,81 @@ Tests for backend/agents/isced_classifier.py
 Fully offline — keyword-only classifier, no LLM required.
 """
 
+from types import SimpleNamespace
+
 import pytest
 
-from backend.agents.classifier_methods import ISCEDF_HIERARCHICAL_RETRIEVAL
+from backend.agents.classifier_methods import (
+    ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD,
+    ISCEDF_HIERARCHICAL_RETRIEVAL,
+)
 from backend.agents.isced_classifier import (
     ISCEDClassifier,
     ISCEDClassification,
     _ISCED_LEVELS,
+)
+from backend.rag.standard_hierarchical_store import (
+    HITL_THRESHOLD,
+    ISCEDF_COLLECTIONS,
+    StandardHierarchicalStore,
+    iscedf_stages,
 )
 
 
 @pytest.fixture
 def clf():
     return ISCEDClassifier()
+
+
+class _FakeQdrantClient:
+    """Same fake-client pattern as test_standard_hierarchical_store.py --
+    table: dict[(collection, parent_code)] -> list[(code, label_en, label_ar, score)]."""
+
+    def __init__(self, table, existing_collections):
+        self.table = table
+        self.existing_collections = set(existing_collections)
+        self.calls = []
+
+    def get_collections(self):
+        return SimpleNamespace(collections=[SimpleNamespace(name=n) for n in self.existing_collections])
+
+    def query_points(self, collection_name, query, query_filter, limit, with_payload):
+        parent_code = None
+        if query_filter is not None:
+            parent_code = query_filter.must[0].match.value
+        self.calls.append((collection_name, parent_code, limit))
+        rows = self.table.get((collection_name, parent_code), [])
+        points = [
+            SimpleNamespace(score=score, payload={"code": code, "label_en": label_en, "label_ar": label_ar})
+            for code, label_en, label_ar, score in rows[:limit]
+        ]
+        return SimpleNamespace(points=points)
+
+
+class _FakeEmbedder:
+    def encode(self, texts, normalize_embeddings=True, show_progress_bar=False, batch_size=1):
+        import numpy as np
+        return np.zeros((len(texts), 384))
+
+
+_ISCEDF_HIT_TABLE = {
+    ("iscedf2013_broad_fields", None): [("06", "Information and Communication Technologies", "", 0.92)],
+    ("iscedf2013_narrow_fields", "06"): [("061", "Information and communication technologies", "", 0.88)],
+    ("iscedf2013_detailed_fields", "061"): [("0613", "Software and applications development and analysis", "", 0.83)],
+}
+
+
+def _patch_iscedf_store(monkeypatch, table, existing_collections):
+    client = _FakeQdrantClient(table, existing_collections)
+    store = StandardHierarchicalStore(
+        standard="ISCED-F 2013", stages=iscedf_stages(), hitl_threshold=HITL_THRESHOLD,
+        client=client, embedder=_FakeEmbedder(),
+    )
+    monkeypatch.setattr(
+        "backend.rag.standard_hierarchical_store.get_iscedf_hierarchical_store",
+        lambda: store,
+    )
+    return client
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +180,9 @@ def test_raw_text_preserved(clf):
 
 
 # ---------------------------------------------------------------------------
-# 3. method= stub: iscedf_hierarchical_retrieval is not yet implemented
+# 3. method="iscedf_hierarchical_retrieval": real hierarchical retrieval +
+#    explicit fallback labelling (hermetic: FakeQdrantClient/FakeEmbedder,
+#    no live Qdrant, no embedding-model load)
 # ---------------------------------------------------------------------------
 
 def test_method_none_default_path_unchanged(clf):
@@ -129,35 +193,67 @@ def test_method_none_default_path_unchanged(clf):
     assert r_default == r_explicit_none
 
 
-def test_hierarchical_retrieval_method_returns_structured_not_implemented(clf):
-    result = clf.classify("Bachelor of Science", method=ISCEDF_HIERARCHICAL_RETRIEVAL)
-    assert isinstance(result, ISCEDClassification)
-    assert result.method == ISCEDF_HIERARCHICAL_RETRIEVAL
-    assert result.confidence == 0.0
-    assert result.level == -1
-    assert result.broad_code == ""
-    assert result.detailed_code == ""
-    assert "not yet implemented" in (result.raw_text or "").lower() \
-        or "deferred" in (result.raw_text or "").lower()
-
-
-def test_hierarchical_retrieval_method_does_not_call_scoring(clf):
-    """The stub path must short-circuit before any real classification work."""
-    with pytest.MonkeyPatch.context() as mp:
-        called = {"level": False, "field": False}
-
-        def fake_score_level(text):
-            called["level"] = True
-            return _ISCED_LEVELS[3], 0.3
-
-        mp.setattr(clf, "_score_level", fake_score_level)
-        clf.classify("Bachelor of Science", method=ISCEDF_HIERARCHICAL_RETRIEVAL)
-        assert called["level"] is False
-
-
-def test_unknown_method_value_falls_through_to_default_pipeline(clf):
-    """A method= value that is NOT in NOT_IMPLEMENTED_METHODS is not a stub
-    trigger -- it's ignored and the default pipeline runs."""
+def test_unrelated_method_value_runs_default_legacy_pipeline(clf):
     result = clf.classify("Bachelor of Science BSc university", method="some_other_value")
     assert result.method == "keyword"
     assert result.level == 6
+
+
+def test_hierarchical_retrieval_runs_real_parent_filtered_search_and_keeps_independent_level(clf, monkeypatch):
+    """With the required collections present, method=iscedf_hierarchical_retrieval
+    must run the actual generic engine through a real parent-filtered query
+    chain, populate broad/narrow/detailed from it, AND still report the
+    ISCED 2011 attainment level from the independent _score_level() scorer
+    (never zeroed/blank, never derived from the hierarchical field search)."""
+    client = _patch_iscedf_store(monkeypatch, _ISCEDF_HIT_TABLE, set(ISCEDF_COLLECTIONS.values()))
+
+    result = clf.classify("Bachelor of Science in software development", method=ISCEDF_HIERARCHICAL_RETRIEVAL)
+
+    assert isinstance(result, ISCEDClassification)
+    assert result.method == ISCEDF_HIERARCHICAL_RETRIEVAL
+    assert result.fallback_used is False
+    assert result.fallback_reason is None
+    assert result.broad_code == "06"
+    assert result.narrow_code == "061"
+    assert result.detailed_code == "0613"
+    assert result.hierarchy_path == ["06", "061", "0613"]
+    assert set(result.stage_confidences) == {"stage1", "stage2", "stage3"}
+    # Independent level dimension: "Bachelor of Science" keywords -> level 6,
+    # scored by _score_level(), never touched by the hierarchical field path.
+    assert result.level == 6
+    assert client.calls == [
+        ("iscedf2013_broad_fields", None, 2),
+        ("iscedf2013_narrow_fields", "06", 2),
+        ("iscedf2013_detailed_fields", "061", 5),
+    ]
+
+
+def test_hierarchical_retrieval_falls_back_when_collections_missing(clf, monkeypatch):
+    _patch_iscedf_store(monkeypatch, table={}, existing_collections=set())
+
+    result = clf.classify("Bachelor of Science BSc university", method=ISCEDF_HIERARCHICAL_RETRIEVAL)
+
+    assert result.method == ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert "missing" in result.fallback_reason.lower()
+    # The legacy pipeline still ran for real -- level is populated correctly.
+    assert result.level == 6
+
+
+def test_hierarchical_retrieval_falls_back_when_search_finds_nothing(clf, monkeypatch):
+    _patch_iscedf_store(monkeypatch, table={}, existing_collections=set(ISCEDF_COLLECTIONS.values()))
+
+    result = clf.classify("Bachelor of Science BSc university", method=ISCEDF_HIERARCHICAL_RETRIEVAL)
+
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert "no candidates" in result.fallback_reason.lower()
+    assert result.method != ISCEDF_HIERARCHICAL_RETRIEVAL
+
+
+def test_hierarchical_retrieval_empty_text_is_plain_fallback(clf, monkeypatch):
+    _patch_iscedf_store(monkeypatch, _ISCEDF_HIT_TABLE, set(ISCEDF_COLLECTIONS.values()))
+    result = clf.classify("", method=ISCEDF_HIERARCHICAL_RETRIEVAL)
+    assert result.confidence == 0.0
+    assert result.method != ISCEDF_HIERARCHICAL_RETRIEVAL

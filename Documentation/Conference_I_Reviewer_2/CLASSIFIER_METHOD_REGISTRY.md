@@ -48,12 +48,20 @@ would go stale the moment `REGISTRY` changes).
   ISCO-digit accuracy only. Every ISIC/ISCED/SRE/HITL row is
   `evaluated=False` until Section D/E of this work produces a real,
   citable run manifest.
-- **Stub rows** (`isic_hierarchical_retrieval`,
-  `iscedf_hierarchical_retrieval`) have `input_fields`/`output_schema`
-  populated with the *intended future* schema, clearly marked
-  `(planned)` in every value and `evaluated=False` — useful for the
-  agent-role diagram export, but never implying current capability. See
-  `backend/agents/classifier_methods.py`'s `NOT_IMPLEMENTED_METHODS`.
+- **`isic_hierarchical_retrieval` / `iscedf_hierarchical_retrieval`** (Task
+  05) describe real, tested parent-filtered retrieval code
+  (`backend/rag/standard_hierarchical_store.py`, built on the same generic
+  engine ISCO uses), with real collection names and stage weights in
+  `output_schema`/`decoding_config` — but `evaluated=False`, since no
+  accuracy measurement exists yet, and the code only produces a live result
+  once an operator has built the Qdrant collections (a separate, explicit
+  action; see `build_standard_hierarchical_collections.py` and
+  `ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md`). Until then — or
+  whenever a search finds nothing — the classifier falls back to its
+  existing keyword/rule pipeline under an explicit
+  `isic_hierarchical_fallback_keyword` / `..._fallback_llm` /
+  `iscedf_hierarchical_fallback_keyword` label, never silently reported as
+  the hierarchical-retrieval method id itself.
 
 ## Safe access surface
 
@@ -66,6 +74,7 @@ whatever auth the rest of `backend/api/` uses for internal/admin routes.
 ## Tests
 
 `backend/tests/test_method_registry.py` — covers row coverage per named
-component, the honesty checks above (not-implemented rows never claim
-evaluation), the `affects_hitl_escalation` regression guard, and JSON/
-Markdown export round-trips.
+component, the honesty checks above (the ISIC/ISCED-F hierarchical-retrieval
+rows stay `evaluated=False` and document their explicit fallback labels),
+the `affects_hitl_escalation` regression guard, and JSON/Markdown export
+round-trips.

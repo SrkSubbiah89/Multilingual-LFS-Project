@@ -4,9 +4,9 @@ LanguageProcessor,ner_llm,llm,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to
 ConversationManager,fsm_dialogue_llm,llm,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",True
 ISCOClassifier,isco_hierarchical_rag,hybrid,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",True
 ISICClassifier,isic_keyword_llm,hybrid,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",True
-ISICClassifier,isic_hierarchical_retrieval,retrieval,,False
+ISICClassifier,isic_hierarchical_retrieval,retrieval,,True
 ISCEDClassifier,isced_rule_keyword,deterministic,,True
-ISCEDClassifier,iscedf_hierarchical_retrieval,retrieval,,False
+ISCEDClassifier,iscedf_hierarchical_retrieval,retrieval,,True
 SemanticRelationEngine,isco_isic_isced_crosswalk,hybrid,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",True
 ValidationAgent,rule_based_r01_r10,deterministic,,True
 ValidationAgent,semantic_check_llm,llm,anthropic/claude-3-5-sonnet-20241022,True

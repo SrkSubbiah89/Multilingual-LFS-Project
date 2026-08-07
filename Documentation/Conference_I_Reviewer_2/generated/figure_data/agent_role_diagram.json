@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-08-06T21:04:27.045710+00:00",
+  "generated_at_utc": "2026-08-07T21:28:15.086588+00:00",
   "nodes": [
     {
       "component": "LanguageProcessor",
@@ -97,7 +97,7 @@
       "method_id": "isic_hierarchical_retrieval",
       "category": "retrieval",
       "model_name": "",
-      "is_implemented": false
+      "is_implemented": true
     },
     {
       "component": "ISCEDClassifier",
@@ -111,7 +111,7 @@
       "method_id": "iscedf_hierarchical_retrieval",
       "category": "retrieval",
       "model_name": "",
-      "is_implemented": false
+      "is_implemented": true
     },
     {
       "component": "SemanticRelationEngine",

@@ -10,9 +10,12 @@ at what the system's components are).
 nodes  : one row per component (LanguageProcessor, ISCOClassifier, ...)
 edges  : one row per (component, method) -- carries category/model so the
          diagram can style edges by whether a method is deterministic/
-         retrieval/llm/hybrid, and can visually distinguish "not yet
-         implemented" methods (see classifier_methods.NOT_IMPLEMENTED_METHODS)
-         from real ones.
+         retrieval/llm/hybrid. Every REGISTRY row describes real, tested
+         code as of Task 05 (the last "not yet implemented" stub -- ISIC/
+         ISCED-F hierarchical retrieval -- was replaced with a genuine
+         implementation); ``is_implemented`` is kept as an explicit,
+         always-True field so the diagram schema doesn't silently change
+         shape if a future stub is ever added again.
 
 See Documentation/Conference_I_Reviewer_2/FIGURE_DATA_EXPORT_GUIDE.md for
 how to turn this into a vector PDF/SVG/TikZ diagram -- no screenshots.
@@ -31,7 +34,6 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parents[1]))
 
-from backend.agents.classifier_methods import NOT_IMPLEMENTED_METHODS  # noqa: E402
 from backend.agents.method_registry import REGISTRY  # noqa: E402
 
 
@@ -71,7 +73,7 @@ def build_edges() -> list[EdgeRow]:
     return [
         EdgeRow(
             component=e.component, method_id=e.method_id, category=e.category,
-            model_name=e.model_name or "", is_implemented=e.method_id not in NOT_IMPLEMENTED_METHODS,
+            model_name=e.model_name or "", is_implemented=True,
         )
         for e in REGISTRY
     ]

@@ -10,7 +10,12 @@ import json
 import pytest
 
 from backend.agents import method_registry as mr
-from backend.agents.classifier_methods import NOT_IMPLEMENTED_METHODS
+from backend.agents.classifier_methods import (
+    ISCEDF_HIERARCHICAL_RETRIEVAL,
+    ISIC_HIERARCHICAL_RETRIEVAL,
+)
+
+_HIERARCHICAL_RETRIEVAL_METHODS = {ISIC_HIERARCHICAL_RETRIEVAL, ISCEDF_HIERARCHICAL_RETRIEVAL}
 
 _NAMED_COMPONENTS = {
     "LanguageProcessor", "ConversationManager", "ISCOClassifier",
@@ -52,20 +57,44 @@ def test_isced_classifier_has_both_current_and_stub_rows():
 
 
 # ---------------------------------------------------------------------------
-# Honesty checks: not-implemented rows never claim evaluation
+# Honesty checks: the ISIC/ISCED-F hierarchical-retrieval rows describe a
+# REAL, tested code path (Task 05) but must not overclaim -- no accuracy
+# measurement exists yet, and the registry must not silently start claiming
+# affects_hitl_escalation without survey_orchestrator.py actually being
+# rewired for it. These directly replace the old "stub is never marked
+# evaluated" tests now that the stub no longer exists.
 # ---------------------------------------------------------------------------
 
-def test_not_implemented_methods_are_never_marked_evaluated():
+def test_hierarchical_retrieval_rows_are_real_but_unevaluated():
     for e in mr.REGISTRY:
-        if e.method_id in NOT_IMPLEMENTED_METHODS:
-            assert e.evaluated is False, f"{e.component}/{e.method_id} claims evaluated=True but is not implemented"
+        if e.method_id in _HIERARCHICAL_RETRIEVAL_METHODS:
+            assert e.category == "retrieval"
+            assert e.evaluated is False, f"{e.component}/{e.method_id}: no accuracy measurement exists yet -- must stay evaluated=False"
             assert e.evaluated_ref is None
+            assert e.embedding_model, f"{e.component}/{e.method_id}: real retrieval path must declare its embedding model"
 
 
-def test_not_implemented_methods_never_affect_hitl_escalation():
+def test_hierarchical_retrieval_rows_never_affect_hitl_escalation():
     for e in mr.REGISTRY:
-        if e.method_id in NOT_IMPLEMENTED_METHODS:
+        if e.method_id in _HIERARCHICAL_RETRIEVAL_METHODS:
             assert e.affects_hitl_escalation is False
+
+
+def test_hierarchical_retrieval_rows_document_explicit_fallback_labels():
+    """The registry text itself must name the *_hierarchical_fallback_*
+    labels -- a reader must not be able to conclude from this row alone that
+    method=isic_hierarchical_retrieval / iscedf_hierarchical_retrieval is
+    always what gets returned."""
+    for e in mr.REGISTRY:
+        if e.method_id in _HIERARCHICAL_RETRIEVAL_METHODS:
+            assert "fallback" in e.fallback_behaviour.lower()
+            assert "not yet evaluated" in e.fallback_behaviour.lower() or "NOT YET EVALUATED" in e.fallback_behaviour
+
+
+def test_isced_hierarchical_retrieval_row_documents_independent_level():
+    entry = next(e for e in mr.REGISTRY if e.method_id == ISCEDF_HIERARCHICAL_RETRIEVAL)
+    assert "level" in entry.output_schema
+    assert "independent" in entry.output_schema["level"].lower()
 
 
 # ---------------------------------------------------------------------------

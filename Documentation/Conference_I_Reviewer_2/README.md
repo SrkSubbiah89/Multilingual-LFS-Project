@@ -25,6 +25,7 @@ and current closure status.
 | [REVIEWER_RESPONSE_IMPLEMENTATION_MATRIX.md](REVIEWER_RESPONSE_IMPLEMENTATION_MATRIX.md) | Comment-by-comment status (5 allowed labels only) — **the authoritative index of every Step's outcome, read this first** |
 | [FINAL_QA_BASELINE.md](FINAL_QA_BASELINE.md) | Historical point-in-time QA baseline (Step 1) — test counts there are superseded by whatever `pytest backend/tests eval/ -q` reports now; see the matrix for current status |
 | [CLASSIFIER_METHOD_REGISTRY.md](CLASSIFIER_METHOD_REGISTRY.md) | How to (re)generate and read the classifier/agent method registry |
+| [ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md](ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md) | Task 05: real (but unevaluated) ISIC Rev.4 / ISCED-F 2013 hierarchical retrieval — architecture, collection names, explicit fallback semantics, operator build commands, safe/unsafe manuscript wording |
 | [EVALUATION_PROTOCOL.md](EVALUATION_PROTOCOL.md) | Manifest schema, dev/held-out split discipline, relationship to the pre-existing thesis evaluation framework |
 | [EVALUATION_READINESS_AND_DRY_RUN.md](EVALUATION_READINESS_AND_DRY_RUN.md) | Step 4: `--dry-run` mode for `run_eval.py`/`ablation_runner.py`, verified with zero live model/DB calls |
 | [REAL_LFS_VALIDATION_DATASET_CARD_TEMPLATE.md](REAL_LFS_VALIDATION_DATASET_CARD_TEMPLATE.md) | Template + governance rules for any future real LFS dataset |
@@ -44,7 +45,7 @@ and current closure status.
 ## Code added (by section)
 
 - **Section A** — `backend/agents/method_registry.py`, `backend/agents/classifier_methods.py`
-- **Section B (generic engine only)** — `backend/rag/hierarchy_engine.py`; `backend/rag/hierarchical_store.py` refactored to use it (behavior-preserving); `ISICClassifier`/`ISCEDClassifier` gained a `method=` stub parameter for the (not yet implemented) hierarchical-retrieval modes
+- **Section B** — `backend/rag/hierarchy_engine.py`; `backend/rag/hierarchical_store.py` refactored to use it (behavior-preserving). Extended by Task 05: `backend/rag/hierarchy_nodes.py`, `backend/rag/standard_hierarchical_store.py`, `backend/rag/build_standard_hierarchical_collections.py` — real, tested (but unevaluated, and not yet built against a live Qdrant instance) ISIC Rev.4 / ISCED-F 2013 hierarchical retrieval, reusing the same generic engine; see [ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md](ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md)
 - **Section C** — `eval/coverage_audit.py`, `eval/standards_reference.yaml`, `eval/catalogue_importer.py` (validates a user-supplied official catalogue file and produces `eval/verified_catalogue_counts.yaml`, the only source of a citable `coverage_percentage`)
 - **Section D** — `eval/manifest.py`, `eval/analyze.py`; `eval/run_eval.py`'s `CaseResult` gained additive ISIC/ISCED-F full-depth prediction columns
 - **Section E** — `eval/ablation_runner.py`; `eval/run_eval.py` gained `--use-llm-reranker` and `--sre` flags
@@ -77,15 +78,29 @@ benchmark run, has not happened yet). New modules: `eval/manifest.py`,
 plus the `eval/local_runs/` and `eval/local_benchmarks/` gitignored output
 conventions.
 
-## What is explicitly out of scope for this pass
+## What is explicitly out of scope, still
 
-Full ISIC Rev.4 and ISCED-F 2013 **hierarchical retrieval** (new Qdrant
-collections, a loader, live multi-stage search) was not built in this pass —
-only method-label stubs that clearly report "not yet implemented"
-(`ISICClassifier.classify(text, method="isic_hierarchical_retrieval")` /
-`ISCEDClassifier.classify(text, method="iscedf_hierarchical_retrieval")`).
-The generic `backend/rag/hierarchy_engine.py` built for ISCO is designed so
-that building these later is a natural extension (new `StageConfig` list +
-a loader, following `backend/rag/load_full_isco.py`'s template), not a
-rewrite. Never describe ISIC/ISCED as "hierarchical RAG" in the manuscript
-until that future work lands and is tested.
+Task 05 implemented real ISIC Rev.4 / ISCED-F 2013 **hierarchical
+retrieval** code (`ISICClassifier.classify(text,
+method="isic_hierarchical_retrieval")` / `ISCEDClassifier.classify(text,
+method="iscedf_hierarchical_retrieval")`), reusing the same generic
+`backend/rag/hierarchy_engine.py` built for ISCO — see
+[ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md](ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md).
+Still out of scope:
+
+- **No live Qdrant collections have been built or populated.** The code
+  path exists and is hermetically tested, but until an operator runs
+  `python -m backend.rag.build_standard_hierarchical_collections --standard
+  {isic,iscedf} --execute`, every real call falls back to the existing
+  keyword/rule pipeline under an explicit `*_hierarchical_fallback_*` label.
+- **No accuracy measurement.** `evaluated=False` in the method registry for
+  both methods; no manuscript claim about ISIC/ISCED-F hierarchical-RAG
+  accuracy, latency, or improvement is supported yet.
+- **No official-catalogue coverage claim.** The indexed node counts
+  (21/68/118/134 for ISIC; 11/25/63 for ISCED-F) reflect this repository's
+  currently embedded classifier tables only, not verified official-standard
+  completeness — see `COVERAGE_AUDIT_GUIDE.md`.
+
+Never describe ISIC/ISCED-F hierarchical retrieval as "validated",
+"evaluated", or "run on real LFS data" in the manuscript until a future
+build + evaluation pass produces a real, citable run manifest.
