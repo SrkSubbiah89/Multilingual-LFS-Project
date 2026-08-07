@@ -1,0 +1,13 @@
+standard_name,level_name,official_count_verified,official_count_unverified,implemented_count,coverage_percentage,coverage_percentage_status,duplicate_count,malformed_count
+ISCED 2011,level,,9,9,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",0,0
+ISCED-F 2013,broad,,11,11,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",11,0
+ISCED-F 2013,narrow,,29,25,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",14,0
+ISCED-F 2013,detailed,,,63,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",0,0
+ISCO-08,major,,10,10,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",0,0
+ISCO-08,submajor,,43,43,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",0,0
+ISCO-08,minor,,130,131,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",0,0
+ISCO-08,unit,,436,441,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",0,0
+ISIC Rev.4,section,,21,21,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",19,0
+ISIC Rev.4,division,,88,68,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",45,0
+ISIC Rev.4,group,,238,118,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",13,0
+ISIC Rev.4,class,,419,134,,"unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",0,0

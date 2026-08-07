@@ -58,6 +58,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from backend.agents.classifier_methods import NOT_IMPLEMENTED_METHODS, NOT_IMPLEMENTED_REASON
+
 
 # ---------------------------------------------------------------------------
 # ISCED 2011 — level definitions (level-only scoring)
@@ -428,7 +430,24 @@ class ISCEDClassifier:
     Fully offline — no LLM required.
     """
 
-    def classify(self, text: str) -> ISCEDClassification:
+    def classify(self, text: str, *, method: Optional[str] = None) -> ISCEDClassification:
+        """
+        Parameters
+        ----------
+        method : str, optional
+            Default ``None`` runs today's unchanged keyword/rule pipeline
+            (identical to calling ``classify(text)`` before this parameter
+            existed). Passing a value from
+            ``backend.agents.classifier_methods.NOT_IMPLEMENTED_METHODS``
+            (currently just ``"iscedf_hierarchical_retrieval"``) returns a
+            structured not-implemented result instead of running any
+            classification -- ISCED-F hierarchical retrieval is deferred
+            scope, not yet built. See
+            Documentation/Conference_I_Reviewer_2/CLASSIFIER_METHOD_REGISTRY.md.
+        """
+        if method is not None and method in NOT_IMPLEMENTED_METHODS:
+            return self._not_implemented(method, text)
+
         text = (text or "").strip()
         if not text:
             return self._fallback(text)
@@ -486,6 +505,27 @@ class ISCEDClassifier:
         max_h = max(hit_counts.values())
         best_code = max(hit_counts, key=hit_counts.__getitem__)
         return hit_entries[best_code], round(hit_counts[best_code] / max_h, 4)
+
+    # ── Not-implemented stub (deferred scope, see classifier_methods.py) ───────
+
+    @staticmethod
+    def _not_implemented(method: str, text: str) -> ISCEDClassification:
+        """
+        Structured "not implemented" result for a ``method`` value in
+        ``NOT_IMPLEMENTED_METHODS`` -- returned instead of raising so
+        CLI/eval callers that don't expect an exception stay safe, and
+        instead of silently running the default keyword/rule pipeline
+        (which would misreport which method actually produced the result).
+        Level/field fields are deliberately empty/zeroed rather than a
+        fabricated or borrowed classification.
+        """
+        return ISCEDClassification(
+            level=-1, level_title="",
+            broad_code="", broad_title="", narrow_code="", narrow_title="",
+            detailed_code="", detailed_title="",
+            confidence=0.0, method=method,
+            raw_text=f"{NOT_IMPLEMENTED_REASON} (requested method={method!r}, input={text!r})",
+        )
 
     # ── Fallback ───────────────────────────────────────────────────────────────
 

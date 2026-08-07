@@ -49,8 +49,13 @@ The crosswalk is encoded as two authoritative mapping tables built from:
 These are stored as in-memory dicts for O(1) lookup — no LLM call needed
 for the core crosswalk, making it deterministic, fast, and auditable.
 
-An optional LLM re-ranking step (TaskType.GENERAL) is invoked only when
-the automated coherence score falls in the ambiguous band [0.40, 0.75].
+An optional LLM re-inference step (TaskType.GENERAL) is invoked only when
+``not is_coherent`` (score < 0.70) AND both ``isic_section`` and
+``job_title`` were supplied -- NOT only in an "ambiguous band" as an
+earlier version of this docstring claimed. Corrected here (Conference I
+Reviewer #2 response, Section G) to match ``analyse()``'s actual condition
+(see the "5. ISIC-based ISCO inference" step) rather than a description
+that never matched the code.
 
 Usage
 -----
@@ -203,13 +208,26 @@ _ISCED_LABELS: dict[int, str] = {
 
 @dataclass
 class SemanticViolation:
-    """One cross-standard inconsistency."""
+    """
+    One cross-standard inconsistency.
+
+    Provenance fields (rule_id, standard_version, crosswalk_source_id,
+    matched_hierarchy_levels, severity_rationale) were added for Conference
+    I Reviewer #2 response, Section G ("semantic relation evidence") --
+    defaulted so existing callers constructing a SemanticViolation
+    positionally/without these kwargs are unaffected.
+    """
     violation_type:  str     # "isco_isic" | "isco_isced" | "isic_isced"
     severity:        str     # "HIGH" | "MODERATE" | "LOW"
     message_en:      str
     message_ar:      str
     expected:        str     # what was expected
     actual:          str     # what was found
+    rule_id:         str = ""   # e.g. "SR-ISCO-ISIC-01" -- see _check_isco_isic/_check_isco_isced
+    standard_version: str = ""  # e.g. "ISCO-08 / ISIC Rev.4"
+    crosswalk_source_id: str = ""  # which lookup table produced this violation, e.g. "_ISCO_SUBMAJOR_TO_ISIC"
+    matched_hierarchy_levels: list = field(default_factory=list)  # e.g. ["major:2", "submajor:25"]
+    severity_rationale: str = ""   # human-readable justification for the severity band chosen
 
 
 @dataclass
@@ -267,7 +285,11 @@ class SemanticRelationEngine:
     Three-way ISCO ↔ ISIC ↔ ISCED semantic crosswalk.
 
     Deterministic lookup table approach — no LLM required for core logic.
-    Optional LLM refinement only when coherence is ambiguous (0.40-0.75).
+    Optional LLM refinement only when ``not is_coherent`` (score < 0.70)
+    AND isic_section + job_title are both supplied -- see analyse()'s
+    "5. ISIC-based ISCO inference" step for the exact condition (corrected
+    here to match the code; an earlier version of this docstring
+    incorrectly described the trigger as an "ambiguous band 0.40-0.75").
 
     Parameters
     ----------
@@ -406,7 +428,12 @@ class SemanticRelationEngine:
     ) -> bool:
         """Return True if ISIC section is consistent with ISCO major/sub-major."""
         # Sub-major rule takes priority when available
-        allowed = _ISCO_SUBMAJOR_TO_ISIC.get(submajor) or _ISCO_MAJOR_TO_ISIC.get(major, ["ANY"])
+        submajor_allowed = _ISCO_SUBMAJOR_TO_ISIC.get(submajor)
+        used_submajor_rule = submajor_allowed is not None
+        allowed = submajor_allowed or _ISCO_MAJOR_TO_ISIC.get(major, ["ANY"])
+
+        source_id = "_ISCO_SUBMAJOR_TO_ISIC" if used_submajor_rule else "_ISCO_MAJOR_TO_ISIC"
+        levels = [f"major:{major}"] + ([f"submajor:{submajor}"] if used_submajor_rule and submajor else [])
 
         if "ANY" in allowed:
             return True
@@ -432,6 +459,15 @@ class SemanticRelationEngine:
                 ),
                 expected=", ".join(allowed),
                 actual=isic,
+                rule_id="SR-ISCO-ISIC-01",
+                standard_version="ISCO-08 / ISIC Rev.4",
+                crosswalk_source_id=source_id,
+                matched_hierarchy_levels=levels,
+                severity_rationale=(
+                    f"ISIC section {isic!r} is allowed at ISCO major-group level ({major}) "
+                    f"but not in the stricter sub-major ({submajor!r}) list -- treated as "
+                    f"atypical, not incompatible."
+                ),
             ))
             return True   # MODERATE — still partially compatible
 
@@ -450,6 +486,14 @@ class SemanticRelationEngine:
             ),
             expected=", ".join(allowed),
             actual=isic,
+            rule_id="SR-ISCO-ISIC-02",
+            standard_version="ISCO-08 / ISIC Rev.4",
+            crosswalk_source_id=source_id,
+            matched_hierarchy_levels=levels,
+            severity_rationale=(
+                f"ISIC section {isic!r} is not in the allowed set for ISCO major group "
+                f"{major} at either major or sub-major granularity."
+            ),
         ))
         return False
 
@@ -465,13 +509,30 @@ class SemanticRelationEngine:
 
         # Stricter sub-major minimum
         sub_min = _ISCO_SUBMAJOR_TO_ISCED_MIN.get(submajor)
-        if sub_min is not None:
+        used_submajor_rule = sub_min is not None
+        if used_submajor_rule:
             min_l = max(min_l, sub_min)
 
         if min_l <= isced <= max_l:
             return True
 
-        severity = "HIGH" if abs(isced - typical_l) >= 3 else "MODERATE"
+        # Severity band = how many ISCED levels outside the valid [min_l,
+        # max_l] range the respondent's level falls -- a genuine 3-tier
+        # scale (previously only HIGH/MODERATE existed, gated on distance
+        # from the single "typical" point rather than distance from the
+        # range boundary; LOW is new -- see Documentation/
+        # Conference_I_Reviewer_2/EVALUATION_PROTOCOL.md for why this
+        # boundary-gap formulation was chosen and its provisional status).
+        gap = (min_l - isced) if isced < min_l else (isced - max_l)
+        if gap <= 1:
+            severity = "LOW"
+        elif gap == 2:
+            severity = "MODERATE"
+        else:
+            severity = "HIGH"
+
+        source_id = "_ISCO_MAJOR_TO_ISCED" + ("+_ISCO_SUBMAJOR_TO_ISCED_MIN" if used_submajor_rule else "")
+        levels = [f"major:{major}"] + ([f"submajor:{submajor}"] if used_submajor_rule and submajor else [])
 
         violations.append(SemanticViolation(
             violation_type="isco_isced",
@@ -488,6 +549,17 @@ class SemanticRelationEngine:
             ),
             expected=f"ISCED {min_l}–{max_l}",
             actual=f"ISCED {isced}",
+            rule_id="SR-ISCO-ISCED-01" if severity == "LOW" else (
+                "SR-ISCO-ISCED-02" if severity == "MODERATE" else "SR-ISCO-ISCED-03"
+            ),
+            standard_version="ISCO-08 / ISCED 2011",
+            crosswalk_source_id=source_id,
+            matched_hierarchy_levels=levels,
+            severity_rationale=(
+                f"Respondent's ISCED level {isced} is {gap} level(s) outside the expected "
+                f"range [{min_l}, {max_l}] for ISCO major group {major} -- "
+                f"gap<=1 -> LOW, gap==2 -> MODERATE, gap>=3 -> HIGH."
+            ),
         ))
         return False
 

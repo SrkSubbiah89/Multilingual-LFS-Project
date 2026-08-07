@@ -1,0 +1,214 @@
+# eval/standards_reference.yaml
+#
+# Versioned, human-maintained SOURCE-PROVENANCE reference for the four
+# classification standards this system implements (Conference I Reviewer #2
+# response, Section C coverage-audit work). See
+# Documentation/Conference_I_Reviewer_2/STANDARDS_SOURCE_PROVENANCE.md for
+# the full research trail behind every source_url/count below, and
+# Documentation/Conference_I_Reviewer_2/COVERAGE_AUDIT_GUIDE.md for how to
+# supply a real official catalogue file and get a VERIFIED coverage
+# percentage (this file alone never produces one -- see "Two tiers of
+# official count" below).
+#
+# Two tiers of official count
+# ----------------------------
+# official_count_unverified (below, per level): a real, sourced number
+#   transcribed from the cited source_url/retrieval_date, by a human or an
+#   AI assistant reading that source -- NOT derived from importing and
+#   validating an actual catalogue file. Useful context, but
+#   eval/coverage_audit.py NEVER uses this to compute coverage_percentage.
+# official_count_verified (NOT in this file -- lives in
+#   eval/verified_catalogue_counts.yaml, machine-generated ONLY by
+#   eval/catalogue_importer.py after validating a real supplied catalogue
+#   CSV with zero issues): the only count eval/coverage_audit.py will use
+#   to compute a citable coverage_percentage.
+#
+# CRITICAL: do not fill in official_count_unverified without a real,
+# checkable source_url and retrieval_date. Leave it null with a note when
+# not sourced -- a filled-in count here is reported as-is in generated
+# audits, so an unsourced guess becomes a fabricated number in a generated
+# report, which is exactly what this whole effort exists to avoid.
+
+standards:
+
+  isco08:
+    standard_name: "ISCO-08"
+    version: "International Standard Classification of Occupations, 2008"
+    issuing_organization: "International Labour Organization (ILO)"
+    source_url: "https://isco.ilo.org/en/isco-08"
+    retrieval_date: "2026-08-07"
+    licence_or_use_note: >
+      ILO's ISCO-08 structure pages and publications are freely accessible
+      for reference use. No explicit bulk-redistribution/reuse licence text
+      was located during this session -- verify ILO's terms of use before
+      redistributing any extracted catalogue file, and do not commit the
+      catalogue itself to this repository (see COVERAGE_AUDIT_GUIDE.md).
+    local_source_file: null   # informational pointer only, human-editable; the trust boundary is eval/verified_catalogue_counts.yaml (see above)
+    local_source_file_sha256: null
+    hierarchy_levels:
+      - name: major
+        code_pattern: '\d'
+        parent_level: null
+        description: "1-digit ISCO-08 major group code"
+      - name: submajor
+        code_pattern: '\d{2}'
+        parent_level: major
+        description: "2-digit ISCO-08 sub-major group code"
+      - name: minor
+        code_pattern: '\d{3}'
+        parent_level: submajor
+        description: "3-digit ISCO-08 minor group code"
+      - name: unit
+        code_pattern: '\d{4}'
+        parent_level: minor
+        description: "4-digit ISCO-08 unit group code"
+    levels:
+      major:
+        official_count_unverified: 10
+        unverified_source_note: >
+          ILO isco.ilo.org/en/isco-08 (retrieved 2026-08-07): "a four-level
+          hierarchically structured classification ... 436 unit groups ...
+          130 minor groups ... 43 sub-major groups and 10 major groups."
+      submajor:
+        official_count_unverified: 43
+        unverified_source_note: "Same ILO page/quote as 'major' above."
+      minor:
+        official_count_unverified: 130
+        unverified_source_note: "Same ILO page/quote as 'major' above."
+      unit:
+        official_count_unverified: 436
+        unverified_source_note: "Same ILO page/quote as 'major' above."
+
+  isic_rev4:
+    standard_name: "ISIC Rev.4"
+    version: "International Standard Industrial Classification of All Economic Activities, Rev.4"
+    issuing_organization: "United Nations Statistics Division (UNSD)"
+    source_url: "https://unstats.un.org/unsd/classifications/Econ/isic"
+    retrieval_date: "2026-08-07"
+    licence_or_use_note: >
+      UN statistical classification publications are freely accessible for
+      reference use (UN Statistical Papers Series M, No. 4/Rev.4). No
+      explicit bulk-redistribution licence text was located during this
+      session -- verify UNSD's terms before redistributing any extracted
+      catalogue file, and do not commit the catalogue itself to this
+      repository.
+    local_source_file: null
+    local_source_file_sha256: null
+    hierarchy_levels:
+      - name: section
+        code_pattern: '[A-Z]'
+        parent_level: null
+        description: "1-letter ISIC Rev.4 section code (A-U)"
+      - name: division
+        code_pattern: '\d{2}'
+        parent_level: section
+        description: "2-digit ISIC Rev.4 division code"
+      - name: group
+        code_pattern: '\d{3}'
+        parent_level: division
+        description: "3-digit ISIC Rev.4 group code"
+      - name: class
+        code_pattern: '\d{4}'
+        parent_level: group
+        description: "4-digit ISIC Rev.4 class code"
+    levels:
+      section:
+        official_count_unverified: 21
+        unverified_source_note: >
+          Corroborated across two independent secondary sources during this
+          session (a web-search summary and classification.codes/classifications/industry/isic,
+          both citing UNSD's ISIC Rev.4 publication): "21 sections ...
+          represented by the English letters A to U/V." The primary UNSD
+          PDF (unstats.un.org/unsd/publication/seriesm/seriesm_4rev4e.pdf,
+          UN Statistical Papers Series M No.4/Rev.4) could NOT be
+          programmatically text-extracted in this session to directly
+          confirm -- this count is corroborated, not primary-source-confirmed.
+          Import an official catalogue file via eval/catalogue_importer.py
+          for a verified count.
+      division:
+        official_count_unverified: 88
+        unverified_source_note: "Same corroborated secondary sources as 'section' above -- same primary-source caveat applies."
+      group:
+        official_count_unverified: 238
+        unverified_source_note: "Same corroborated secondary sources as 'section' above -- same primary-source caveat applies."
+      class:
+        official_count_unverified: 419
+        unverified_source_note: "Same corroborated secondary sources as 'section' above -- same primary-source caveat applies."
+
+  isced2011:
+    standard_name: "ISCED 2011"
+    version: "International Standard Classification of Education 2011"
+    issuing_organization: "UNESCO Institute for Statistics (UIS)"
+    source_url: "https://www.uis.unesco.org/en/methods-and-tools/isced"
+    retrieval_date: "2026-08-07"
+    licence_or_use_note: >
+      UNESCO UIS methodology pages and the ISCED 2011 Operational Manual
+      (jointly published by UIS/OECD/Eurostat) are freely accessible for
+      reference use. No explicit bulk-redistribution licence text was
+      located during this session -- verify before redistributing any
+      extracted catalogue file.
+    local_source_file: null
+    local_source_file_sha256: null
+    hierarchy_levels:
+      - name: level
+        code_pattern: '[0-8]'
+        parent_level: null
+        description: "Single-digit ISCED 2011 attainment level code (0-8)"
+    levels:
+      level:
+        official_count_unverified: 9
+        unverified_source_note: >
+          UNESCO UIS uis.unesco.org/en/methods-and-tools/isced (retrieved
+          2026-08-07), directly confirmed: ISCED 2011 defines exactly 9
+          attainment levels, 0 (Early childhood education) through 8
+          (Doctoral or equivalent level). Also structurally consistent with
+          this codebase's own _ISCED_LEVELS table
+          (backend/agents/isced_classifier.py).
+
+  iscedf2013:
+    standard_name: "ISCED-F 2013"
+    version: "ISCED Fields of Education and Training 2013"
+    issuing_organization: "UNESCO Institute for Statistics (UIS)"
+    source_url: "https://www.uis.unesco.org/sites/default/files/medias/fichiers/2025/04/international-standard-classification-of-education-fields-of-education-and-training-2013-detailed-field-descriptions-2015-en.pdf"
+    retrieval_date: "2026-08-07"
+    licence_or_use_note: >
+      UNESCO UIS ISCED-F 2013 detailed field descriptions document is
+      freely accessible for reference use. No explicit bulk-redistribution
+      licence text was located during this session -- verify before
+      redistributing any extracted catalogue file.
+    local_source_file: null
+    local_source_file_sha256: null
+    hierarchy_levels:
+      - name: broad
+        code_pattern: '\d{2}'
+        parent_level: null
+        description: "2-digit ISCED-F 2013 broad field code"
+      - name: narrow
+        code_pattern: '\d{3}'
+        parent_level: broad
+        description: "3-digit ISCED-F 2013 narrow field code"
+      - name: detailed
+        code_pattern: '\d{4}'
+        parent_level: narrow
+        description: "4-digit ISCED-F 2013 detailed field code"
+    levels:
+      broad:
+        official_count_unverified: 11
+        unverified_source_note: >
+          Corroborated identically across multiple independent secondary
+          sources during this session (web-search summaries citing UNESCO
+          UIS's ISCED-F 2013 documentation): "11 broad fields (2 digits)."
+          Primary UIS PDF text extraction was not successful in this
+          session -- this count is corroborated, not primary-source-confirmed.
+      narrow:
+        official_count_unverified: 29
+        unverified_source_note: "Same corroborated secondary sources as 'broad' above: '29 narrow fields (3 digits).' Same primary-source caveat applies."
+      detailed:
+        official_count_unverified: null
+        unverified_source_note: >
+          Every secondary source found in this session hedges this count as
+          "about 80 detailed fields" -- never a precise figure. Deliberately
+          left null rather than asserting an approximate number as if exact;
+          "about 80" is not precise enough to record as a count a reader
+          might treat as authoritative. Import an official catalogue file
+          via eval/catalogue_importer.py for a verified, exact count.

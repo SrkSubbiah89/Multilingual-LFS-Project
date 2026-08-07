@@ -1,0 +1,12 @@
+{
+  "_notice": "SYNTHETIC EXAMPLE ONLY; NOT REAL LFS DATA.",
+  "dataset_id": "SYNTHETIC-DATASET-0001",
+  "governance_review_status": "SYNTHETIC — example status, e.g. 'approved by fictional ethics committee'",
+  "reviewer_name_or_role": "SYNTHETIC — example reviewer role, e.g. 'Data Governance Officer (fictional)'",
+  "review_date": "2026-01-01",
+  "data_sharing_agreement_ref": "SYNTHETIC-DSA-0001",
+  "ethics_approval_ref": "SYNTHETIC-ETHICS-0001",
+  "conditions_of_approval": "SYNTHETIC — example conditions text, e.g. 'aggregate outputs only, no cell sizes below 5'",
+  "renewal_or_expiry_date": "2027-01-01",
+  "notes": "SYNTHETIC — this file is a human-facing governance sign-off summary; the machine-validated source of truth is dataset_card.json in this same directory, validated by eval/validate_real_lfs_governance.py"
+}

@@ -51,16 +51,15 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 from dataclasses import dataclass, field
 from typing import Optional
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, VectorParams
+from qdrant_client.models import Distance, VectorParams
 from sentence_transformers import SentenceTransformer
 
-from backend.rag.candidate_pool import pool_and_rank_candidates
+from backend.rag.hierarchy_engine import HierarchyBeamSearchEngine, SeedSpec, StageConfig, StageOverride
 
 load_dotenv()
 
@@ -189,6 +188,22 @@ class HierarchicalISCOStore:
                 ),
                 _COL_FLAT,
             )
+
+        # Generic beam-search engine, configured with ISCO's 4 stages and
+        # weights (see backend/rag/hierarchy_engine.py). _hierarchical_search
+        # below is a thin translator between this store's public
+        # HierarchicalResult and the engine's stage-count-agnostic
+        # EngineResult -- the actual beam-search logic lives in the engine.
+        self._engine = HierarchyBeamSearchEngine(
+            client=self._client,
+            stages=[
+                StageConfig(name="major", collection=_COL_MAJOR, weight=_W1),
+                StageConfig(name="submajor", collection=_COL_SUBMAJOR, weight=_W2),
+                StageConfig(name="minor", collection=_COL_MINOR, weight=_W3),
+                StageConfig(name="unit", collection=_COL_UNIT, weight=_W4),
+            ],
+            hitl_threshold=HITL_THRESHOLD,
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -355,284 +370,69 @@ class HierarchicalISCOStore:
 
         Returns ``None`` only if every beam path returns 0 unit-group hits
         (caller falls back to flat search in that case).
+
+        This is a thin translator over the generic
+        ``HierarchyBeamSearchEngine`` (backend/rag/hierarchy_engine.py):
+        ``major_hint`` becomes a ``SeedSpec`` (stage-0 bypass),
+        ``stage1_mode="leaf_vote"`` becomes a ``StageOverride`` wrapping
+        ``self._leaf_vote_stage1``, and the engine's stage-count-agnostic
+        ``EngineResult`` is converted back to this store's public
+        ``HierarchicalResult``. The actual beam-search/pooling/trace logic
+        lives entirely in the engine now.
         """
-        _BEAM = beam  # configurable; default 2, set 1 for greedy ablation
+        seed = None
+        stage_overrides = None
 
-        def _trace_hits(stage_key: str, hits) -> None:
-            # Instrumentation-only: record every distinct candidate considered
-            # at this stage across the whole beam exploration (not just the
-            # winning path). No effect on selection/branching.
-            if trace is None:
-                return
-            bucket = trace.setdefault(stage_key, [])
-            seen = {c["code"] for c in bucket}
-            for hit in hits:
-                code = hit.payload.get("code", "")
-                if code in seen:
-                    continue
-                seen.add(code)
-                bucket.append({
-                    "code": code,
-                    "label_en": hit.payload.get("label_en", ""),
-                    "score": round(float(hit.score), 4),
-                })
-
-        def _timed_query(stage_key: str, **kwargs):
-            # Instrumentation-only: accumulates wall time spent in this
-            # stage's Qdrant queries (summed across beam branches — a real,
-            # additive measurement, not a per-branch estimate) into
-            # trace["stageN_latency_ms"]. No effect on the query itself.
-            if trace is None:
-                return self._query(**kwargs)
-            t0 = time.perf_counter()
-            result = self._query(**kwargs)
-            elapsed_ms = (time.perf_counter() - t0) * 1000
-            key = f"{stage_key}_latency_ms"
-            trace[key] = trace.get(key, 0.0) + elapsed_ms
-            return result
-
-        # ── Stage 1: major group ───────────────────────────────────────────
         # When a keyword hint is supplied (e.g. "chef" → "5") we trust it
-        # and skip semantic search entirely for this stage.
+        # and skip semantic search entirely for stage 1.
         if major_hint:
-            s1_candidates = [(major_hint, 1.0)]
+            seed = SeedSpec(
+                candidates=[(major_hint, 1.0)],
+                source_label="keyword_map",
+                candidate_label="(keyword hint, search skipped)",
+            )
             _logger.debug(
                 "HierarchicalISCOStore: keyword major_hint=%r, stage 1 skipped.",
                 major_hint,
             )
-            if trace is not None:
-                trace.setdefault("stage1", []).append({
-                    "code": major_hint, "label_en": "(keyword hint, search skipped)", "score": 1.0,
-                })
-                trace["stage1_latency_ms"] = trace.get("stage1_latency_ms", 0.0)  # 0ms: search skipped
-                # Disclosed explicitly rather than left implicit in a 1.0
-                # score: when this fires, stage 1 is a dictionary lookup,
-                # not hierarchical semantic retrieval -- a run's reported
-                # accuracy/latency is a blend of both mechanisms unless a
-                # reader can see which cases took which path.
-                trace["stage1_source"] = "keyword_map"
         elif stage1_mode == "leaf_vote":
-            t0 = time.perf_counter()
-            s1_candidates = self._leaf_vote_stage1(query_vec, beam=_BEAM)
-            if trace is not None:
-                trace["stage1_latency_ms"] = trace.get("stage1_latency_ms", 0.0) + (time.perf_counter() - t0) * 1000
-                trace.setdefault("stage1", []).extend([
-                    {"code": code, "label_en": "(leaf-vote aggregate over top-20 unit groups)", "score": round(score, 4)}
-                    for code, score in s1_candidates
-                ])
-                trace["stage1_source"] = "leaf_vote"
-            if not s1_candidates:
-                return None
-        else:
-            s1_hits = _timed_query(
-                "stage1",
-                collection=_COL_MAJOR,
-                query_vec=query_vec,
-                limit=_BEAM,
-            )
-            if not s1_hits:
-                return None
-            _trace_hits("stage1", s1_hits)
-            s1_candidates = [
-                (hit.payload.get("code", ""), float(hit.score))
-                for hit in s1_hits
-            ]
-            if trace is not None:
-                trace["stage1_source"] = "semantic_retrieval"
-
-        # ── Stages 2-4: beam expansion ────────────────────────────────────
-        # Each path is (s1_score, s1_code, s2_score, s2_code,
-        #               s3_score, s3_code, s4_hit_list)
-        best_result: Optional[dict] = None
-        best_s4_score = -1.0
-
-        # Candidate-pooling fix: accumulate every stage-4 hit seen across
-        # ALL explored branches (not just the eventual winner), keyed by
-        # code so a code found in more than one branch keeps its highest
-        # score. Without this, a candidate found in a losing branch with a
-        # competitive-but-not-quite-best score (e.g. 0.792 vs the winning
-        # branch's 0.800) is silently discarded before the reranker ever
-        # sees it -- confirmed as the majority failure mode (49/82 errors
-        # on the 130-case full set) once this was diagnosed.
-        s4_pool: dict[str, object] = {}
-        s4_pool_branches = 0
-
-        # B2 instrumentation ONLY (see candidate_pool.py's module docstring):
-        # plain-dict copies of every branch's stage-4 hits, used solely to
-        # compute OBSERVATIONAL enriched metadata (branch id, source rank,
-        # path, normalized score) via candidate_pool.pool_and_rank_candidates()
-        # after the loop. Never read by the B0/B1 selection logic above --
-        # only populated at all when capture_pool_metadata=True, so B0/B1
-        # (which never pass that flag) pay zero cost and see zero behaviour
-        # change from this list's existence.
-        _branch_hits_plain: list[list[dict]] = [] if capture_pool_metadata else None  # type: ignore[assignment]
-
-        for major_code, s1_score in s1_candidates:
-            # Stage 2: sub-major groups within this major
-            s2_hits = _timed_query(
-                "stage2",
-                collection=_COL_SUBMAJOR,
-                query_vec=query_vec,
-                limit=_BEAM,
-                parent_code=major_code,
-            )
-            if not s2_hits:
-                continue  # try next major branch
-            _trace_hits("stage2", s2_hits)
-
-            for s2_hit in s2_hits:
-                submajor_code = s2_hit.payload.get("code", "")
-                s2_score      = float(s2_hit.score)
-
-                # Stage 3: minor groups within this sub-major
-                s3_hits = _timed_query(
-                    "stage3",
-                    collection=_COL_MINOR,
-                    query_vec=query_vec,
-                    limit=_BEAM,
-                    parent_code=submajor_code,
+            stage_overrides = {
+                0: StageOverride(
+                    fn=lambda qv, b: self._leaf_vote_stage1(qv, beam=b),
+                    source_label="leaf_vote",
+                    candidate_label="(leaf-vote aggregate over top-20 unit groups)",
                 )
-                if not s3_hits:
-                    continue
-                _trace_hits("stage3", s3_hits)
+            }
 
-                for s3_hit in s3_hits:
-                    minor_code = s3_hit.payload.get("code", "")
-                    s3_score   = float(s3_hit.score)
-
-                    # Stage 4: unit groups within this minor
-                    s4_hits = _timed_query(
-                        "stage4",
-                        collection=_COL_UNIT,
-                        query_vec=query_vec,
-                        limit=top_k,
-                        parent_code=minor_code,
-                    )
-                    if not s4_hits:
-                        continue
-                    _trace_hits("stage4", s4_hits)
-
-                    s4_pool_branches += 1
-                    for hit in s4_hits:
-                        code = hit.payload.get("code", "")
-                        if not code:
-                            continue
-                        existing = s4_pool.get(code)
-                        if existing is None or float(hit.score) > float(existing.score):
-                            s4_pool[code] = hit
-
-                    if capture_pool_metadata:
-                        branch_id = f"{major_code}/{submajor_code}/{minor_code}"
-                        _branch_hits_plain.append([
-                            {
-                                "code": hit.payload.get("code", ""),
-                                "label_en": hit.payload.get("label_en", ""),
-                                "label_ar": hit.payload.get("label_ar", ""),
-                                "score": float(hit.score),
-                                "branch_id": branch_id,
-                                "source_rank": rank,
-                                "path": [major_code, submajor_code, minor_code, hit.payload.get("code", "")],
-                            }
-                            for rank, hit in enumerate(s4_hits, start=1)
-                        ])
-
-                    s4_top_score = float(s4_hits[0].score)
-                    if s4_top_score > best_s4_score:
-                        best_s4_score = s4_top_score
-                        best_result = {
-                            "major_code":    major_code,
-                            "s1_score":      s1_score,
-                            "submajor_code": submajor_code,
-                            "s2_score":      s2_score,
-                            "minor_code":    minor_code,
-                            "s3_score":      s3_score,
-                            "s4_hits":       s4_hits,
-                            "s4_score":      s4_top_score,
-                        }
-
-        if best_result is None:
+        engine_result = self._engine.search(
+            query_vec,
+            top_k=top_k,
+            beam=beam,
+            seed=seed,
+            stage_overrides=stage_overrides,
+            reranker_candidates=reranker_candidates,
+            branch_collapse=branch_collapse,
+            capture_pool_metadata=capture_pool_metadata,
+            trace=trace,
+        )
+        if engine_result is None:
             return None
 
-        # ── Build result from best beam path ──────────────────────────────
-        r          = best_result
-        s4_hits    = r["s4_hits"]
-        s4_top     = s4_hits[0]
-
-        confidence = round(
-            _W1 * r["s1_score"]
-            + _W2 * r["s2_score"]
-            + _W3 * r["s3_score"]
-            + _W4 * r["s4_score"],
-            4,
-        )
-        confidence = max(0.0, min(1.0, confidence))
-
-        stage_confidences = {
-            "stage1": round(r["s1_score"], 4),
-            "stage2": round(r["s2_score"], 4),
-            "stage3": round(r["s3_score"], 4),
-            "stage4": round(r["s4_score"], 4),
-        }
-
-        hierarchy_path = [
-            r["major_code"], r["submajor_code"],
-            r["minor_code"], s4_top.payload.get("code", ""),
-        ]
-
-        if branch_collapse:
-            # Pre-fix behaviour, kept only as an explicit opt-in for the
-            # before/after ablation: winning branch's own top-N children,
-            # discarding every candidate found in every other branch.
-            pool_hits = s4_hits[:reranker_candidates]
-        else:
-            # Fixed (default) behaviour: global top-N across every branch
-            # explored, deduplicated by code. The winning branch's own #1
-            # is always the pool's #1 by construction (best_s4_score is
-            # the max of every branch's own top score), so it's already
-            # included -- no special-casing needed.
-            pool_sorted = sorted(s4_pool.values(), key=lambda h: float(h.score), reverse=True)
-            pool_hits = pool_sorted[:reranker_candidates]
-
-        if trace is not None:
-            trace["reranker_candidate_pool_size"] = len(s4_pool)
-            trace["reranker_candidate_branches"] = s4_pool_branches
-            if not branch_collapse:
-                trace["stage4_pool"] = [
-                    {"code": h.payload.get("code", ""), "label_en": h.payload.get("label_en", ""),
-                     "score": round(float(h.score), 4)}
-                    for h in pool_sorted
-                ]
-            # B2 instrumentation ONLY -- observational, does not feed back
-            # into pool_hits/top_candidates above in any way. sort_mode is
-            # hardcoded to "raw_score" here deliberately: this is a LOGGING
-            # view of the same B1 ordering, not an activation of the
-            # separate B3-Sort "deterministic_3key" mode (that mode is
-            # never used by B0/B1/B2 -- see candidate_pool.py).
-            if capture_pool_metadata and _branch_hits_plain is not None:
-                trace["stage4_pool_enriched"] = pool_and_rank_candidates(
-                    _branch_hits_plain, sort_mode="raw_score", k=None,
-                )
-
         top_candidates = [
-            UnitCandidate(
-                code=hit.payload.get("code", ""),
-                label_en=hit.payload.get("label_en", ""),
-                label_ar=hit.payload.get("label_ar", ""),
-                score=round(float(hit.score), 4),
-            )
-            for hit in pool_hits
+            UnitCandidate(code=c.code, label_en=c.label_en, label_ar=c.label_ar, score=c.score)
+            for c in engine_result.top_candidates
         ]
 
         return HierarchicalResult(
-            code=s4_top.payload.get("code", ""),
-            label_en=s4_top.payload.get("label_en", ""),
-            label_ar=s4_top.payload.get("label_ar", ""),
-            confidence=confidence,
-            stage_confidences=stage_confidences,
-            hierarchy_path=hierarchy_path,
+            code=engine_result.code,
+            label_en=engine_result.label_en,
+            label_ar=engine_result.label_ar,
+            confidence=engine_result.confidence,
+            stage_confidences=engine_result.stage_confidences,
+            hierarchy_path=engine_result.hierarchy_path,
             top_candidates=top_candidates,
-            hitl_required=confidence < HITL_THRESHOLD,
-            fallback_used=False,
+            hitl_required=engine_result.hitl_required,
+            fallback_used=engine_result.fallback_used,
         )
 
     # ------------------------------------------------------------------
@@ -766,35 +566,12 @@ class HierarchicalISCOStore:
         Wrap ``client.query_points()`` with an optional parent_code filter.
 
         Returns a list of ``ScoredPoint`` objects (empty list on any error).
+        Delegates to the generic engine's ``_query`` (same implementation,
+        moved to backend/rag/hierarchy_engine.py) so ``_flat_search`` and
+        ``_leaf_vote_stage1`` -- which query outside the engine's own
+        stage-based beam loop -- keep working unchanged.
         """
-        try:
-            query_filter = None
-            if parent_code is not None:
-                query_filter = Filter(
-                    must=[
-                        FieldCondition(
-                            key="parent_code",
-                            match=MatchValue(value=parent_code),
-                        )
-                    ]
-                )
-
-            response = self._client.query_points(
-                collection_name=collection,
-                query=query_vec,
-                query_filter=query_filter,
-                limit=limit,
-                with_payload=True,
-            )
-            return response.points
-
-        except Exception as exc:
-            _logger.warning(
-                "HierarchicalISCOStore: query on '%s' failed: %s",
-                collection,
-                exc,
-            )
-            return []
+        return self._engine._query(collection=collection, query_vec=query_vec, limit=limit, parent_code=parent_code)
 
     # ------------------------------------------------------------------
     # Embedding

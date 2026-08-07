@@ -1,0 +1,12 @@
+{
+  "_notice": "SYNTHETIC EXAMPLE ONLY; NOT REAL LFS DATA.",
+  "dataset_id": "SYNTHETIC-DATASET-0001",
+  "languages": [
+    {"code": "en", "name": "English", "script": "Latin", "dialect_notes": ""},
+    {"code": "ar", "name": "Arabic", "script": "Arabic", "dialect_notes": "Includes Gulf Arabic (ar-gulf) code-switching."},
+    {"code": "ur", "name": "Urdu", "script": "Arabic (Nasta'liq)", "dialect_notes": ""},
+    {"code": "hi", "name": "Hindi", "script": "Devanagari", "dialect_notes": ""},
+    {"code": "tl", "name": "Tagalog", "script": "Latin", "dialect_notes": ""}
+  ],
+  "code_switching_observed": "SYNTHETIC — example note describing whether/how respondents mixed languages within one answer"
+}

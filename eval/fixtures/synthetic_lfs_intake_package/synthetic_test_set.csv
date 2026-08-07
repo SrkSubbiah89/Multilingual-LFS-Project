@@ -1,0 +1,6 @@
+case_id,input_text,input_language,gold_isco_4digit,gold_isic,gold_isced,industry_text,education_text
+SYN-001,SYNTHETIC EXAMPLE - primary school teacher,en,2341,P,6,SYNTHETIC EXAMPLE - works at a primary school,SYNTHETIC EXAMPLE - Bachelor's degree in education
+SYN-002,SYNTHETIC EXAMPLE - software developer,en,2512,J,6,SYNTHETIC EXAMPLE - builds mobile apps at a software company,SYNTHETIC EXAMPLE - Bachelor's degree in computer science
+SYN-003,SYNTHETIC EXAMPLE - registered nurse,en,2221,Q,6,SYNTHETIC EXAMPLE - works at a public hospital,SYNTHETIC EXAMPLE - Bachelor's degree in nursing
+SYN-004,SYNTHETIC EXAMPLE - construction labourer,ar,9312,F,2,SYNTHETIC EXAMPLE - works on a residential building site,SYNTHETIC EXAMPLE - lower secondary education
+SYN-005,SYNTHETIC EXAMPLE - accountant,ar,2411,K,6,SYNTHETIC EXAMPLE - works at an accounting firm,SYNTHETIC EXAMPLE - Bachelor's degree in accounting

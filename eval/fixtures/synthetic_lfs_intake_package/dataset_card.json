@@ -1,0 +1,57 @@
+{
+  "_notice": "SYNTHETIC EXAMPLE ONLY; NOT REAL LFS DATA. This file demonstrates the DatasetCard schema shape and will always be rejected by the approved_real_lfs_validation governance gate (see eval/validate_real_lfs_governance.py's synthetic-marker safeguard).",
+
+  "source": "SYNTHETIC — example dataset card, not real respondent data",
+  "dataset_id": "SYNTHETIC-DATASET-0001",
+  "data_owner_or_custodian": "SYNTHETIC — Fictional National Statistics Office",
+  "region": "Fictional Region",
+  "survey_programme_name": "SYNTHETIC — Fictional Labour Force Survey Programme",
+  "wave": "SYNTHETIC wave 1",
+  "collection_start_date": "2026-01-01",
+  "collection_end_date": "2026-03-31",
+  "languages": ["en", "ar", "ur", "hi", "tl"],
+  "dataset_version": "SYNTHETIC-v1.0.0",
+  "dataset_hash": "SYNTHETIC0000000000000000000000000000000000000000000000000000",
+
+  "data_sharing_agreement_ref": "SYNTHETIC-DSA-0001",
+  "ethics_approval_ref": "SYNTHETIC-ETHICS-0001",
+  "consent_obtained": true,
+  "lawful_basis_description": "SYNTHETIC — example consent process description, not a real lawful basis",
+  "permitted_research_purpose": "SYNTHETIC — example research purpose text",
+  "retention_period": "SYNTHETIC — example retention period, e.g. 5 years from collection",
+  "access_control_description": "SYNTHETIC — example access-control description",
+  "deidentification_method": "SYNTHETIC — no real respondents, nothing to de-identify",
+  "deidentification_status": "SYNTHETIC — not applicable",
+  "prohibited_disclosure_rules": "SYNTHETIC — example disclosure-rule text",
+
+  "classification_standard_version": "ISCO-08",
+  "isco08_version": "SYNTHETIC — ISCO-08 (2008)",
+  "isic_rev4_version": "SYNTHETIC — ISIC Rev.4",
+  "isced2011_version": "SYNTHETIC — ISCED 2011",
+  "iscedf2013_version": "SYNTHETIC — ISCED-F 2013",
+  "label_source": "SYNTHETIC — example label source",
+  "labelling_process": "SYNTHETIC — fixture labels invented for test coverage",
+  "labeler_type": "SYNTHETIC — example labeler type",
+  "coder_qualifications": "SYNTHETIC — not applicable",
+  "double_coded": true,
+  "adjudication_process": "SYNTHETIC — not applicable",
+  "inter_annotator_agreement": null,
+
+  "split_manifest_ref": "SYNTHETIC — see split_manifest.json in this same directory",
+  "split_hash": "SYNTHETIC0000000000000000000000000000000000000000000000000000",
+  "frozen_heldout_test_status": "SYNTHETIC — example frozen-status text",
+  "parameter_selection_dataset_ref": "SYNTHETIC — example parameter-selection dataset reference",
+  "test_set_access_restriction": "SYNTHETIC — example access-restriction text",
+  "sample_counts_by_language_and_task": {
+    "en": {"isco": 0, "isic": 0, "isced": 0},
+    "ar": {"isco": 0, "isic": 0, "isced": 0}
+  },
+  "missing_data_policy": "SYNTHETIC — example missing-data policy text",
+  "exclusion_criteria": "SYNTHETIC — example exclusion-criteria text",
+
+  "direct_identifiers_removed_confirmed": true,
+  "quasi_identifier_risk_note": "SYNTHETIC — example quasi-identifier risk note",
+  "free_text_redaction_method": "SYNTHETIC — example free-text redaction method",
+  "secure_storage_location_description": "SYNTHETIC — example description, e.g. encrypted institutional drive outside Git",
+  "raw_records_excluded_from_git_confirmed": true
+}

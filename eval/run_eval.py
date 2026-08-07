@@ -275,6 +275,51 @@ def build_system(system: str, reranker_model: Optional[str] = None, disable_keyw
     raise ValueError(f"Unknown --system {system!r}; expected hierarchical, flat, or bm25")
 
 
+def build_dry_run_case_result(
+    row_index: int,
+    case_id: str,
+    input_text: str,
+    input_language: str,
+    gold_isco_4digit: str,
+    gold_isic: str,
+    gold_isced: str,
+    config_hash: str,
+    run_id: str = "",
+    git_commit: str = "",
+    seed: Optional[int] = None,
+) -> "CaseResult":
+    """
+    Conference I Reviewer #2, Step 4 (evaluation-readiness dry-run pass).
+
+    The --dry-run code path takes THIS instead of run_one_case(). Echoes
+    the case/gold columns straight from the loaded test-set CSV -- proving
+    CSV parsing, per-row iteration, and CSV/JSONL output serialization all
+    work end-to-end on real row counts -- but calls no classifier, builds
+    no ISCOClassifier/ISICClassifier/ISCEDClassifier, and makes no Qdrant/
+    LLM/network call of any kind. Every pred_* field is left at its
+    dataclass default (blank string / None), and evaluation_status is
+    explicitly "dry_run_not_measured" so no downstream consumer can mistake
+    this row for a completed classification result.
+    """
+    return CaseResult(
+        case_id=case_id,
+        input_text=input_text,
+        input_language=input_language,
+        gold_isco_4digit=gold_isco_4digit,
+        gold_isco_1digit=_digits(gold_isco_4digit, 1),
+        gold_isco_2digit=_digits(gold_isco_4digit, 2),
+        gold_isco_3digit=_digits(gold_isco_4digit, 3),
+        gold_isic=gold_isic or "",
+        gold_isced=gold_isced or "",
+        config_hash=config_hash,
+        run_id=run_id,
+        git_commit=git_commit,
+        seed=seed,
+        input_order_position=row_index,
+        evaluation_status="dry_run_not_measured",
+    )
+
+
 @dataclass
 class CaseResult:
     """One output row. Field order here is the CSV column order."""
@@ -331,8 +376,36 @@ class CaseResult:
     pred_isced_level: str = ""        # predicted (not gold) -- fed to SRE
     pred_isced_confidence: Optional[float] = None
 
+    # Additive (Conference I Reviewer #2, Section D): full-depth ISIC/ISCED-F
+    # predictions, alongside the section-only/level-only fields above, so
+    # eval/analyze.py can compute division/group/class and broad/narrow/
+    # detailed accuracy rather than just the single top-level digit. Existing
+    # columns/consumers above are unaffected -- these are new, harmless-
+    # default fields only, same pattern as every other additive column in
+    # this dataclass.
+    pred_isic_division: str = ""
+    pred_isic_group: str = ""
+    pred_isic_class: str = ""
+    pred_isced_broad: str = ""
+    pred_isced_narrow: str = ""
+    pred_isced_detailed: str = ""
+
     sre_coherence_score: Optional[float] = None
     sre_severity: str = ""
+
+    # Conference I Reviewer #2, Step 5.1 (SRE-to-ISIC/ISCED coupling bugfix).
+    # Authoritative status for whether the SRE actually evaluated this row --
+    # sre_severity/sre_coherence_score alone cannot distinguish "SRE disabled
+    # by --sre off" from "no industry/education text on this row" from
+    # "evaluated, zero violations" (all three left sre_severity=="" or
+    # ambiguous pre-fix). One of: "evaluated" (sre.analyse() ran; see
+    # sre_severity/sre_coherence_score for the result), "disabled_by_
+    # configuration" (--sre off; ISCO/ISIC/ISCED classification still ran
+    # normally), "not_applicable" (no industry_text/education_text on this
+    # row -- SRE was never in scope regardless of --sre), "error" (ISIC/
+    # ISCED classification or the SRE call raised; see sre_status_reason).
+    sre_status: str = "not_applicable"
+    sre_status_reason: str = ""
 
     escalation_triggered: Optional[bool] = None
     escalation_reason: str = ""  # "confidence" | "sre_severity" | "stratified_sample" | "" | combined w/ ";"
@@ -374,6 +447,17 @@ class CaseResult:
     timed_out_flag: bool = False       # reranker_error signature matched a timeout (see run_one_case())
     peak_memory_mb: Optional[float] = None
 
+    # Conference I Reviewer #2, Step 4 (evaluation-readiness dry-run pass).
+    # "measured" for every real run (default, unchanged for every existing
+    # caller). --dry-run sets this to "dry_run_not_measured" on every row it
+    # writes, so no dry-run CSV can be mistaken for a completed result by a
+    # downstream consumer that only looks at the prediction columns (which
+    # are correctly blank/None either way, but this field makes the REASON
+    # for that blankness explicit and machine-checkable). See
+    # eval.manifest.ExperimentRunManifest.evaluation_status for the
+    # run-level counterpart of this same field.
+    evaluation_status: str = "measured"
+
 
 def run_one_case(
     clf,  # ISCOClassifier (hierarchical/flat) or _BM25Adapter -- duck-typed on .classify()
@@ -398,6 +482,8 @@ def run_one_case(
     git_commit: str = "",
     seed: Optional[int] = None,
     input_order_position: Optional[int] = None,
+    sre_enabled: bool = True,
+    use_llm_reranker: bool = True,
 ) -> CaseResult:
     result = CaseResult(
         case_id=case_id,
@@ -430,7 +516,7 @@ def run_one_case(
             job_title=input_text,
             language=input_language if input_language in ("en", "ar", "mixed") else "",
             top_k=5,
-            use_llm=True,
+            use_llm=use_llm_reranker,
             trace=trace,
         )
     except Exception as exc:  # noqa: BLE001 - a failed case must not crash the run
@@ -522,45 +608,71 @@ def run_one_case(
         if result.reranker_fired else 0.0
     )
 
-    # ── SRE coherence ────────────────────────────────────────────────────────
-    # The SRE's premise is catching *predicted* ISCO/ISIC/ISCED that are
-    # jointly implausible despite each looking individually confident.
-    # Feeding it gold ISIC/ISCED (as this used to do) makes the ISIC/ISCED
-    # side correct by construction and systematically understates
-    # incoherence -- every complementarity number downstream would be
-    # built on a system that never actually ran ISIC/ISCED classification.
-    # So: run the ISIC and ISCED classifiers on their own free-text inputs
+    # ── ISIC / ISCED base classification ────────────────────────────────────
+    # Runs the ISIC and ISCED classifiers on their own free-text inputs
     # (industry_text / education_text -- these are NOT the job title; ISIC
     # needs an industry description, ISCED an education/qualification
     # description, matching what a respondent would answer as separate
-    # survey questions) and feed *those* predictions to the SRE. gold_isic
-    # / gold_isced remain available on the row for scoring the ISIC/ISCED
-    # classifiers' own accuracy separately -- they are never passed to SRE.
+    # survey questions). gold_isic / gold_isced remain available on the row
+    # for scoring the ISIC/ISCED classifiers' own accuracy separately.
+    #
+    # Conference I Reviewer #2, Step 5.1 (SRE-to-ISIC/ISCED coupling
+    # bugfix). ALWAYS runs when industry_text/education_text are present,
+    # independent of sre_enabled -- see Documentation/Conference_I_
+    # Reviewer_2/SRE_COUPLING_BUGFIX.md. Prior to this fix, ISIC/ISCED
+    # classification was incorrectly gated on sre_enabled too, so --sre off
+    # silently produced blank ISIC/ISCED predictions for every case.
     if industry_text.strip() and education_text.strip():
         try:
             isic_result = isic_clf.classify(industry_text)
             isced_result = isced_clf.classify(education_text)
             result.pred_isic_section = isic_result.section
             result.pred_isic_confidence = isic_result.confidence
+            result.pred_isic_division = isic_result.division_code
+            result.pred_isic_group = isic_result.group_code
+            result.pred_isic_class = isic_result.class_code
             result.pred_isced_level = str(isced_result.level)
             result.pred_isced_confidence = isced_result.confidence
+            result.pred_isced_broad = isced_result.broad_code
+            result.pred_isced_narrow = isced_result.narrow_code
+            result.pred_isced_detailed = isced_result.detailed_code
 
-            coherence = sre.analyse(
-                isco_code=result.pred_isco_4digit,
-                isic_section=result.pred_isic_section,
-                isced_level=isced_result.level,
-                job_title=input_text,
-                language="ar" if input_language == "ar" else "en",
-            )
-            result.sre_coherence_score = coherence.score
-            result.sre_severity = _max_severity(coherence.violations)
+            # ── SRE coherence: only after base ISIC/ISCED outputs exist,
+            # and only when sre_enabled. The SRE's premise is catching
+            # *predicted* ISCO/ISIC/ISCED that are jointly implausible
+            # despite each looking individually confident -- disabling it
+            # must never affect the base classifications above.
+            if sre_enabled:
+                coherence = sre.analyse(
+                    isco_code=result.pred_isco_4digit,
+                    isic_section=result.pred_isic_section,
+                    isced_level=isced_result.level,
+                    job_title=input_text,
+                    language="ar" if input_language == "ar" else "en",
+                )
+                result.sre_coherence_score = coherence.score
+                result.sre_severity = _max_severity(coherence.violations)
+                result.sre_status = "evaluated"
+            else:
+                # Explicit disabled status -- never a bare "" or 0.0 that
+                # could be misread as "evaluated, no violation found."
+                result.sre_status = "disabled_by_configuration"
+                result.sre_status_reason = "semantic_relation_engine_disabled_by_configuration"
         except Exception as exc:  # noqa: BLE001
-            _logger.warning("case_id=%s SRE analysis failed: %s", case_id, exc)
-    # else: no industry_text/education_text on this row -- SRE is skipped
-    # entirely rather than fed job_title as a stand-in for either (that
-    # would be fabricating input the respondent never gave). Current test
-    # sets that lack these two columns will show sre_coherence_score as
-    # empty for every row; see the module docstring's "SRE coverage" note.
+            _logger.warning("case_id=%s ISIC/ISCED/SRE analysis failed: %s", case_id, exc)
+            result.sre_status = "error"
+            result.sre_status_reason = f"{type(exc).__name__}: {exc}"
+    else:
+        # No industry_text/education_text on this row -- ISIC/ISCED/SRE are
+        # all skipped rather than fed job_title as a stand-in for either
+        # (that would be fabricating input the respondent never gave).
+        # Current test sets that lack these two columns will show this
+        # status for every row; see the module docstring's "SRE coverage"
+        # note. Independent of sre_enabled -- this row was never in scope
+        # for either ISIC/ISCED classification or SRE, regardless of the
+        # --sre flag.
+        result.sre_status = "not_applicable"
+        result.sre_status_reason = "industry_text and/or education_text not supplied on this row"
 
     # ── Escalation ───────────────────────────────────────────────────────────
     reasons = []
@@ -602,6 +714,8 @@ def _config_hash(args: argparse.Namespace, resolved_reranker_model: str, keyword
             "keyword_map_enabled": keyword_map_enabled,
             "hitl_threshold": HITL_CONFIDENCE_THRESHOLD,
             "config_label": args.config,
+            "sre": args.sre,
+            "use_llm_reranker": args.use_llm_reranker,
         },
         sort_keys=True,
     )
@@ -717,6 +831,36 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--use-llm-reranker", choices=["on", "off"], default="on",
+        help=(
+            "Whether the LLM reranking stage runs at all (default: on, "
+            "unchanged prior behaviour -- previously hardcoded True with no "
+            "flag). 'off' passes use_llm=False to the classifier, so the "
+            "top pre-rerank candidate is returned directly (method suffix "
+            "'_semantic' instead of '_llm'/hierarchical_llm) -- used by "
+            "eval/ablation_runner.py's hierarchical-no-rerank vs "
+            "hierarchical-with-rerank configs (Conference I Reviewer #2 "
+            "response, Section E). Ignored for --system bm25 (no reranking "
+            "stage exists there regardless)."
+        ),
+    )
+    parser.add_argument(
+        "--sre", choices=["on", "off"], default="on",
+        help=(
+            "Whether to run the SemanticRelationEngine coherence check for "
+            "each case (default: on, unchanged prior behaviour). 'off' "
+            "skips ONLY the coherence check itself -- ISCO/ISIC/ISCED "
+            "classification still run normally either way (Step 5.1 "
+            "bugfix; see Documentation/Conference_I_Reviewer_2/"
+            "SRE_COUPLING_BUGFIX.md). With 'off', sre_status is "
+            "'disabled_by_configuration', sre_coherence_score/sre_severity "
+            "stay empty, and escalation_reason can never include "
+            "'sre_severity' -- used by eval/ablation_runner.py's no-SRE vs "
+            "with-SRE ablation configs (Conference I Reviewer #2 response, "
+            "Section E)."
+        ),
+    )
+    parser.add_argument(
         "--jsonl-output", type=Path, default=None,
         help=(
             "B2: in addition to the standard CSV, write one JSON object per "
@@ -725,10 +869,25 @@ def main() -> None:
             "at all, exactly as before this flag existed."
         ),
     )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help=(
+            "Conference I Reviewer #2, Step 4 (evaluation-readiness pass). "
+            "Validate every CLI argument and the test-set CSV exactly as a "
+            "real run would, write a CaseResult CSV with the same schema and "
+            "row count, but call NO classifier -- no ISCOClassifier/"
+            "ISICClassifier/ISCEDClassifier is constructed, no Qdrant/LLM/"
+            "network call of any kind is made. Every row's evaluation_status "
+            "is 'dry_run_not_measured' and every pred_* field is blank/None. "
+            "--reranker-model is NOT required in this mode (nothing pings "
+            "it). Use this to verify the pipeline is wired correctly before "
+            "a real, compute/API-consuming run."
+        ),
+    )
     args = parser.parse_args()
     if args.config is None:
         args.config = args.system
-    if args.system in ("hierarchical", "flat") and not args.reranker_model:
+    if args.system in ("hierarchical", "flat") and not args.reranker_model and not args.dry_run:
         parser.error(
             "--reranker-model is required for --system hierarchical/flat "
             "(no default -- the choice of reranker changes what the run's "
@@ -767,6 +926,69 @@ def main() -> None:
         ).stdout.strip()
     except Exception as exc:  # noqa: BLE001 - best-effort bookkeeping, never fatal to the run
         _logger.debug("Could not resolve git_commit: %s", exc)
+
+    if args.dry_run:
+        # No ISCOClassifier/ISICClassifier/ISCEDClassifier construction at
+        # all -- ISCOClassifier connects to Qdrant and health-checks the
+        # reranker LLM in __init__; ISICClassifier calls get_llm() (which
+        # probes Ollama) in __init__. Neither is safe to construct in a
+        # network-free dry run, so neither is constructed. resolved_
+        # reranker_model / keyword_map_enabled still get real values (pure
+        # string/bool logic, no I/O) so the config hash and printed summary
+        # are identical in shape to a real run.
+        resolved_reranker_model = args.reranker_model or "(not pinned -- dry run)"
+        keyword_map_enabled = not args.disable_keyword_map
+        cfg_hash = _config_hash(args, resolved_reranker_model, keyword_map_enabled)
+        print(f"[DRY RUN] config_hash={cfg_hash}  reranker_model={resolved_reranker_model}  "
+              f"keyword_map_enabled={keyword_map_enabled}  run_id={run_id}")
+        print("[DRY RUN] no classifier constructed, no Qdrant/LLM/network call will be made")
+
+        results: list[CaseResult] = []
+        t_run_start = time.perf_counter()
+        for i, row in enumerate(rows):
+            r = build_dry_run_case_result(
+                row_index=i,
+                case_id=row["case_id"],
+                input_text=row["input_text"],
+                input_language=row.get("input_language", ""),
+                gold_isco_4digit=row.get("gold_isco_4digit", ""),
+                gold_isic=row.get("gold_isic", ""),
+                gold_isced=row.get("gold_isced", ""),
+                config_hash=cfg_hash,
+                run_id=run_id,
+                git_commit=git_commit,
+                seed=args.seed,
+            )
+            results.append(r)
+            print(f"[DRY RUN] [{i + 1}/{len(rows)}] case_id={r.case_id} gold={r.gold_isco_4digit} "
+                  f"status=dry_run_not_measured")
+
+        total_s = time.perf_counter() - t_run_start
+        print(f"\n[DRY RUN] Completed {len(results)} case(s) (validation only) in {total_s:.2f}s")
+
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        out_path = args.output_dir / f"{timestamp}_{args.config}.csv"
+        fieldnames = list(CaseResult.__dataclass_fields__.keys())
+        with open(out_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in results:
+                writer.writerow(r.__dict__)
+        # Matches the exact "Wrote N row(s) to <path.csv>" shape a real run
+        # prints -- eval/ablation_runner.py's _find_written_csv() parses
+        # this line first (falling back to a directory glob only if it
+        # doesn't match), so dry-run output must remain parseable the same
+        # way. The dry-run/evaluation_status disclosure is a separate line.
+        print(f"\nWrote {len(results)} row(s) to {out_path}")
+        print("[DRY RUN] evaluation_status=dry_run_not_measured for all rows -- no classification was performed")
+
+        if args.jsonl_output:
+            args.jsonl_output.parent.mkdir(parents=True, exist_ok=True)
+            with open(args.jsonl_output, "w", encoding="utf-8") as f:
+                for r in results:
+                    f.write(json.dumps(r.__dict__, ensure_ascii=False) + "\n")
+            print(f"[DRY RUN] Wrote {len(results)} row(s) to {args.jsonl_output}")
+        return
 
     clf = build_system(args.system, reranker_model=args.reranker_model,
                         disable_keyword_map=args.disable_keyword_map,
@@ -808,6 +1030,8 @@ def main() -> None:
             git_commit=git_commit,
             seed=args.seed,
             input_order_position=i,
+            sre_enabled=(args.sre == "on"),
+            use_llm_reranker=(args.use_llm_reranker == "on"),
         )
         results.append(r)
         status = "ERROR" if r.error and not r.pred_isco_4digit else "ok"

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from backend.agents.classifier_methods import ISIC_HIERARCHICAL_RETRIEVAL
 from backend.agents.isic_classifier import (
     ISICClassifier,
     ISICClassification,
@@ -149,3 +150,42 @@ def test_llm_rerank_exception_falls_back_to_keyword(clf):
         # Should not raise; falls back to keyword result
         result = clf.classify("farm agriculture crop harvest")
         assert isinstance(result, ISICClassification)
+
+
+# ---------------------------------------------------------------------------
+# 4. method= stub: isic_hierarchical_retrieval is not yet implemented
+# ---------------------------------------------------------------------------
+
+def test_method_none_default_path_unchanged(clf):
+    """Omitting method= (or passing None explicitly) must be byte-for-byte
+    identical to calling classify(text) as before this parameter existed."""
+    r_default = clf.classify("software developer tech startup app")
+    r_explicit_none = clf.classify("software developer tech startup app", method=None)
+    assert r_default == r_explicit_none
+
+
+def test_hierarchical_retrieval_method_returns_structured_not_implemented(clf):
+    result = clf.classify("software developer", method=ISIC_HIERARCHICAL_RETRIEVAL)
+    assert isinstance(result, ISICClassification)
+    assert result.method == ISIC_HIERARCHICAL_RETRIEVAL
+    assert result.confidence == 0.0
+    assert result.section == ""
+    assert result.class_code == ""
+    assert "not yet implemented" in (result.raw_text or "").lower() \
+        or "deferred" in (result.raw_text or "").lower()
+
+
+def test_hierarchical_retrieval_method_does_not_call_keyword_scoring(clf):
+    """The stub path must short-circuit before any real classification work."""
+    with patch.object(clf, "_keyword_score") as mock_score:
+        clf.classify("software developer", method=ISIC_HIERARCHICAL_RETRIEVAL)
+        mock_score.assert_not_called()
+
+
+def test_unknown_method_value_falls_through_to_default_pipeline(clf):
+    """A method= value that is NOT in NOT_IMPLEMENTED_METHODS is not a stub
+    trigger -- it's ignored and the default pipeline runs (there's only one
+    real pipeline for ISIC today; this guards against a typo silently
+    routing to the not-implemented branch)."""
+    result = clf.classify("software developer tech startup app", method="some_other_value")
+    assert result.method in ("keyword", "llm")

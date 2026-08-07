@@ -1,0 +1,159 @@
+{
+  "generated_at_utc": "2026-08-06T21:04:27.045710+00:00",
+  "nodes": [
+    {
+      "component": "LanguageProcessor",
+      "method_count": 2,
+      "has_llm_method": true,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ConversationManager",
+      "method_count": 1,
+      "has_llm_method": true,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ISCOClassifier",
+      "method_count": 1,
+      "has_llm_method": true,
+      "affects_hitl_escalation": true
+    },
+    {
+      "component": "ISICClassifier",
+      "method_count": 2,
+      "has_llm_method": true,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ISCEDClassifier",
+      "method_count": 2,
+      "has_llm_method": false,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "SemanticRelationEngine",
+      "method_count": 1,
+      "has_llm_method": true,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ValidationAgent",
+      "method_count": 2,
+      "has_llm_method": true,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "HITLQualityManager",
+      "method_count": 2,
+      "has_llm_method": true,
+      "affects_hitl_escalation": true
+    },
+    {
+      "component": "SurveyOrchestrator",
+      "method_count": 1,
+      "has_llm_method": false,
+      "affects_hitl_escalation": true
+    }
+  ],
+  "edges": [
+    {
+      "component": "LanguageProcessor",
+      "method_id": "language_detection_rule_based",
+      "category": "deterministic",
+      "model_name": "",
+      "is_implemented": true
+    },
+    {
+      "component": "LanguageProcessor",
+      "method_id": "ner_llm",
+      "category": "llm",
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "is_implemented": true
+    },
+    {
+      "component": "ConversationManager",
+      "method_id": "fsm_dialogue_llm",
+      "category": "llm",
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "is_implemented": true
+    },
+    {
+      "component": "ISCOClassifier",
+      "method_id": "isco_hierarchical_rag",
+      "category": "hybrid",
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "is_implemented": true
+    },
+    {
+      "component": "ISICClassifier",
+      "method_id": "isic_keyword_llm",
+      "category": "hybrid",
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "is_implemented": true
+    },
+    {
+      "component": "ISICClassifier",
+      "method_id": "isic_hierarchical_retrieval",
+      "category": "retrieval",
+      "model_name": "",
+      "is_implemented": false
+    },
+    {
+      "component": "ISCEDClassifier",
+      "method_id": "isced_rule_keyword",
+      "category": "deterministic",
+      "model_name": "",
+      "is_implemented": true
+    },
+    {
+      "component": "ISCEDClassifier",
+      "method_id": "iscedf_hierarchical_retrieval",
+      "category": "retrieval",
+      "model_name": "",
+      "is_implemented": false
+    },
+    {
+      "component": "SemanticRelationEngine",
+      "method_id": "isco_isic_isced_crosswalk",
+      "category": "hybrid",
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "is_implemented": true
+    },
+    {
+      "component": "ValidationAgent",
+      "method_id": "rule_based_r01_r10",
+      "category": "deterministic",
+      "model_name": "",
+      "is_implemented": true
+    },
+    {
+      "component": "ValidationAgent",
+      "method_id": "semantic_check_llm",
+      "category": "llm",
+      "model_name": "anthropic/claude-3-5-sonnet-20241022",
+      "is_implemented": true
+    },
+    {
+      "component": "HITLQualityManager",
+      "method_id": "quality_scoring_deterministic",
+      "category": "deterministic",
+      "model_name": "",
+      "is_implemented": true
+    },
+    {
+      "component": "HITLQualityManager",
+      "method_id": "bilingual_report_llm",
+      "category": "llm",
+      "model_name": "anthropic/claude-3-5-sonnet-20241022",
+      "is_implemented": true
+    },
+    {
+      "component": "SurveyOrchestrator",
+      "method_id": "turn_orchestration",
+      "category": "deterministic",
+      "model_name": "",
+      "is_implemented": true
+    }
+  ]
+}

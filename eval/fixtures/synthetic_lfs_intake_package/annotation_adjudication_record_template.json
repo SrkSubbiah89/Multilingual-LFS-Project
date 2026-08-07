@@ -1,0 +1,18 @@
+{
+  "_notice": "TEMPLATE ONLY -- field structure for recording one annotation + adjudication decision. Deliberately left UNFILLED (not even with synthetic example values) because a plausible-looking filled example could be mistaken for a real coding decision. See Documentation/Conference_I_Reviewer_2/ANNOTATION_AND_ADJUDICATION_GUIDE.md for how to use this template.",
+  "case_id": "<non-identifying case ID>",
+  "task": "<one of: isco | isic | isced_level | iscedf_field>",
+  "coder_1_id": "<non-identifying coder ID>",
+  "coder_1_label": "<code assigned by coder 1>",
+  "coder_1_confidence_or_note": "<optional free text>",
+  "coder_2_id": "<non-identifying coder ID>",
+  "coder_2_label": "<code assigned by coder 2>",
+  "coder_2_confidence_or_note": "<optional free text>",
+  "agreement": "<true|false -- did coder_1_label == coder_2_label>",
+  "adjudicator_id": "<non-identifying adjudicator ID, required if agreement=false>",
+  "adjudicated_final_label": "<the final gold label after adjudication, required if agreement=false>",
+  "adjudication_rationale": "<free text explaining the adjudicator's decision, required if agreement=false>",
+  "ambiguous_or_unknown_flag": "<true|false -- see ANNOTATION_AND_ADJUDICATION_GUIDE.md's handling-of-ambiguous-cases section>",
+  "ambiguous_or_unknown_resolution": "<how an ambiguous/unknown/multilingual/incomplete case was resolved, if flagged>",
+  "system_prediction_shown_to_coder": "<true|false -- coders must label blind to the system's own prediction, see the guide's separation-of-prediction-and-reference-label section>"
+}

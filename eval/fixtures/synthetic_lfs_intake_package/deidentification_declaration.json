@@ -1,0 +1,11 @@
+{
+  "_notice": "SYNTHETIC EXAMPLE ONLY; NOT REAL LFS DATA.",
+  "dataset_id": "SYNTHETIC-DATASET-0001",
+  "direct_identifiers_removed_confirmed": true,
+  "direct_identifiers_removed_list": ["SYNTHETIC — example: name, national ID number, exact phone number, exact street address"],
+  "deidentification_method": "SYNTHETIC — example: names/IDs stripped at source by the fictional custodian before extract; geography generalised to region level",
+  "deidentification_status": "SYNTHETIC — example status: fully de-identified extract, no re-identification key held by the research team",
+  "quasi_identifier_risk_note": "SYNTHETIC — example note: rare occupation x small region combinations reviewed and generalised where respondent count < 5",
+  "free_text_redaction_method": "SYNTHETIC — example: free-text fields screened for incidental names/contact details before release",
+  "residual_risk_acknowledgement": "SYNTHETIC — example acknowledgement text signed by the fictional data controller"
+}

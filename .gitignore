@@ -34,3 +34,28 @@ logs/
 # hard-rejects any file over 100MB)
 Software/
 *.exe
+
+# Official classification catalogue source files (Conference I Reviewer #2
+# coverage-audit work, eval/catalogue_importer.py) -- these may be extracted
+# from copyrighted ILO/UNSD/UNESCO publications or restricted data; never
+# commit them. Only eval/verified_catalogue_counts.yaml (machine-generated
+# counts + a file hash, no source content) is committed.
+eval/local_catalogues/
+
+# Local dry-run / real-run scratch artifacts (Conference I Reviewer #2,
+# Step 4 evaluation-readiness pass) -- eval/run_eval.py --dry-run and
+# eval/ablation_runner.py --dry-run write here by default
+# (eval/local_runs/dry_run_<timestamp>/). Never committed: even though dry
+# runs contain no real data by construction, this directory is also where a
+# future REAL run's raw artifacts would land before manual review, so it is
+# gitignored unconditionally rather than trusting every run to be dry.
+eval/local_runs/
+
+# Generated controlled-benchmark packages (Conference I Reviewer #2, Step 6)
+# -- e.g. the WISCO-derived ISCO-08 benchmark built by
+# eval/build_wisco_isco_benchmark.py. Not confidential (WISCO itself is
+# CC-BY-4.0 public reference data, already tracked under
+# backend/evaluation/wisco/), but kept out of Git as a generated/derived
+# artifact -- regenerate from the tracked source + script rather than
+# committing the output, consistent with every other eval/local_* directory.
+eval/local_benchmarks/

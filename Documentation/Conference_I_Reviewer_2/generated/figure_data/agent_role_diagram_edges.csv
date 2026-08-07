@@ -1,0 +1,15 @@
+component,method_id,category,model_name,is_implemented
+LanguageProcessor,language_detection_rule_based,deterministic,,True
+LanguageProcessor,ner_llm,llm,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",True
+ConversationManager,fsm_dialogue_llm,llm,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",True
+ISCOClassifier,isco_hierarchical_rag,hybrid,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",True
+ISICClassifier,isic_keyword_llm,hybrid,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",True
+ISICClassifier,isic_hierarchical_retrieval,retrieval,,False
+ISCEDClassifier,isced_rule_keyword,deterministic,,True
+ISCEDClassifier,iscedf_hierarchical_retrieval,retrieval,,False
+SemanticRelationEngine,isco_isic_isced_crosswalk,hybrid,"ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",True
+ValidationAgent,rule_based_r01_r10,deterministic,,True
+ValidationAgent,semantic_check_llm,llm,anthropic/claude-3-5-sonnet-20241022,True
+HITLQualityManager,quality_scoring_deterministic,deterministic,,True
+HITLQualityManager,bilingual_report_llm,llm,anthropic/claude-3-5-sonnet-20241022,True
+SurveyOrchestrator,turn_orchestration,deterministic,,True

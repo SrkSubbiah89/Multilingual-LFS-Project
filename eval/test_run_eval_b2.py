@@ -193,3 +193,122 @@ def test_retry_count_always_zero_for_standard_reranker():
     clf = make_fake_clf()
     r = run_eval.run_one_case(clf, **base_kwargs())
     assert r.retry_count == 0
+
+
+# ---------------------------------------------------------------------------
+# sre_enabled (Conference I Reviewer #2, Section E ablation support)
+# ---------------------------------------------------------------------------
+
+def _make_isic_result():
+    return SimpleNamespace(
+        section="J", section_title="ICT", division_code="62", division_title="",
+        group_code="620", group_title="", class_code="6201", class_title="",
+        confidence=0.9, method="keyword", alternatives=[], raw_text="",
+    )
+
+
+def _make_isced_result():
+    return SimpleNamespace(
+        level=6, level_title="Bachelor's", broad_code="06", broad_title="",
+        narrow_code="061", narrow_title="", detailed_code="0613", detailed_title="",
+        confidence=0.8, method="keyword", raw_text="",
+    )
+
+
+def _make_sre_coherence():
+    return SimpleNamespace(score=0.95, violations=[])
+
+
+def _kwargs_with_sre_inputs(sre_enabled):
+    kwargs = base_kwargs()
+    isic_clf = MagicMock()
+    isic_clf.classify.return_value = _make_isic_result()
+    isced_clf = MagicMock()
+    isced_clf.classify.return_value = _make_isced_result()
+    sre = MagicMock()
+    sre.analyse.return_value = _make_sre_coherence()
+    kwargs.update(
+        isic_clf=isic_clf, isced_clf=isced_clf, sre=sre,
+        industry_text="software company", education_text="bachelor of science",
+        sre_enabled=sre_enabled,
+    )
+    return kwargs, isic_clf, isced_clf, sre
+
+
+def test_sre_enabled_default_true_runs_isic_isced_and_sre():
+    clf = make_fake_clf()
+    kwargs, isic_clf, isced_clf, sre = _kwargs_with_sre_inputs(sre_enabled=True)
+    r = run_eval.run_one_case(clf, **kwargs)
+    isic_clf.classify.assert_called_once()
+    isced_clf.classify.assert_called_once()
+    sre.analyse.assert_called_once()
+    assert r.pred_isic_section == "J"
+    assert r.pred_isic_division == "62"
+    assert r.pred_isic_class == "6201"
+    assert r.pred_isced_broad == "06"
+    assert r.pred_isced_detailed == "0613"
+    assert r.sre_coherence_score == 0.95
+    assert r.sre_status == "evaluated"
+    assert r.sre_status_reason == ""
+
+
+def test_sre_disabled_still_runs_isic_isced_but_skips_sre():
+    """Conference I Reviewer #2, Step 5.1 (SRE-to-ISIC/ISCED coupling
+    bugfix). --sre off must skip ONLY the SRE coherence check -- ISIC/ISCED
+    classification must still run normally. Pre-fix, this test asserted the
+    opposite (isic_clf.classify.assert_not_called()), which was the bug
+    itself locked in as "expected" behaviour; see
+    Documentation/Conference_I_Reviewer_2/SRE_COUPLING_BUGFIX.md."""
+    clf = make_fake_clf()
+    kwargs, isic_clf, isced_clf, sre = _kwargs_with_sre_inputs(sre_enabled=False)
+    r = run_eval.run_one_case(clf, **kwargs)
+    isic_clf.classify.assert_called_once()
+    isced_clf.classify.assert_called_once()
+    sre.analyse.assert_not_called()
+    assert r.pred_isic_section == "J"
+    assert r.pred_isic_division == "62"
+    assert r.pred_isced_broad == "06"
+    assert r.sre_coherence_score is None
+    assert r.sre_severity == ""
+    assert "sre_severity" not in r.escalation_reason
+    assert r.sre_status == "disabled_by_configuration"
+    assert r.sre_status_reason == "semantic_relation_engine_disabled_by_configuration"
+
+
+def test_sre_disabled_default_omitted_param_behaves_as_enabled():
+    """Omitting sre_enabled entirely must be identical to sre_enabled=True
+    (the parameter's default) -- byte-for-byte the same as before this
+    parameter existed."""
+    clf = make_fake_clf()
+    kwargs, isic_clf, isced_clf, sre = _kwargs_with_sre_inputs(sre_enabled=True)
+    del kwargs["sre_enabled"]
+    r = run_eval.run_one_case(clf, **kwargs)
+    isic_clf.classify.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# use_llm_reranker (Conference I Reviewer #2, Section E ablation support)
+# ---------------------------------------------------------------------------
+
+def test_use_llm_reranker_default_true_passes_use_llm_true_to_classifier():
+    clf = make_fake_clf()
+    run_eval.run_one_case(clf, **base_kwargs())
+    _, kwargs = clf.classify.call_args
+    assert kwargs["use_llm"] is True
+
+
+def test_use_llm_reranker_false_passes_use_llm_false_to_classifier():
+    clf = make_fake_clf()
+    run_eval.run_one_case(clf, **base_kwargs(), use_llm_reranker=False)
+    _, kwargs = clf.classify.call_args
+    assert kwargs["use_llm"] is False
+
+
+def test_use_llm_reranker_omitted_defaults_to_true():
+    """Omitting use_llm_reranker entirely must be identical to
+    use_llm_reranker=True -- byte-for-byte the same as before this
+    parameter existed (it replaced a hardcoded use_llm=True call)."""
+    clf = make_fake_clf()
+    run_eval.run_one_case(clf, **base_kwargs())
+    _, kwargs = clf.classify.call_args
+    assert kwargs["use_llm"] is True

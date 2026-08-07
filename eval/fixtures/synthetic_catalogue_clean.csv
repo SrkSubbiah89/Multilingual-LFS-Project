@@ -1,0 +1,6 @@
+level,code,parent_code,label
+category,A,,Category A
+category,B,,Category B
+item,001,A,Item One
+item,002,A,Item Two
+item,003,B,Item Three

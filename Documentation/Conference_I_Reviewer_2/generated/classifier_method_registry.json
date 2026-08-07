@@ -1,0 +1,388 @@
+{
+  "generated_at_utc": "2026-08-06T20:32:05.948060+00:00",
+  "entry_count": 14,
+  "entries": [
+    {
+      "component": "LanguageProcessor",
+      "method_id": "language_detection_rule_based",
+      "category": "deterministic",
+      "input_fields": [
+        "raw_text"
+      ],
+      "output_schema": {
+        "detected_language": "str (en|ar|ar-gulf|ur|hi|tl|other)",
+        "confidence": "float 0-1",
+        "is_code_switched": "bool",
+        "arabic_ratio": "float 0-1",
+        "latin_ratio": "float 0-1",
+        "devanagari_ratio": "float 0-1",
+        "segments": "list[CodeSegment]",
+        "normalised_text": "Optional[str]"
+      },
+      "model_name": null,
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": null,
+      "decoding_config": null,
+      "fallback_behaviour": "Pure regex/script-ratio + seeded langdetect (DetectorFactory.seed=0); deterministic, no LLM, no failure mode.",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "LanguageProcessor",
+      "method_id": "ner_llm",
+      "category": "llm",
+      "input_fields": [
+        "raw_text"
+      ],
+      "output_schema": {
+        "entities": "list[Entity{text,label,language,start,end}]"
+      },
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": "Prompt text is not currently version-tagged in source; the prompt string itself (in the component's module) is the only record of what was sent to the LLM for any given commit.",
+      "decoding_config": {
+        "task_type": "GENERAL"
+      },
+      "fallback_behaviour": "Role 'Multilingual NER Specialist' (CrewAI Agent, get_llm(TaskType.GENERAL)). Degrades to entities=[] (not a hard failure) if the LLM is unavailable.",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ConversationManager",
+      "method_id": "fsm_dialogue_llm",
+      "category": "llm",
+      "input_fields": [
+        "conversation_context",
+        "collected_data",
+        "current_state"
+      ],
+      "output_schema": {
+        "response_text": "str",
+        "next_state": "ConversationState enum",
+        "collected_data": "dict (raw text only, no classification)"
+      },
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": "Prompt text is not currently version-tagged in source; the prompt string itself (in the component's module) is the only record of what was sent to the LLM for any given commit.",
+      "decoding_config": {
+        "task_type": "GENERAL"
+      },
+      "fallback_behaviour": "Role 'Conversation Manager' (CrewAI Agent, get_llm(TaskType.GENERAL)). Falls back to a deterministic _dev_stub_response() when the LLM is unavailable or LFS_FAST_MODE=true. Does NOT call any classifier directly -- only collects raw text; classification happens downstream in SurveyOrchestrator.",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ISCOClassifier",
+      "method_id": "isco_hierarchical_rag",
+      "category": "hybrid",
+      "input_fields": [
+        "job_title",
+        "language"
+      ],
+      "output_schema": {
+        "primary": "ISCOMatch{code,title_en,title_ar,confidence}",
+        "alternatives": "list[ISCOMatch]",
+        "method": "str",
+        "stage_confidences": "dict{stage1..stage4}",
+        "hierarchy_path": "list[str]",
+        "hitl_required": "bool",
+        "reasoning": "str"
+      },
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "model_version": null,
+      "embedding_model": "intfloat/multilingual-e5-small (384-dim)",
+      "prompt_version": "Prompt text is not currently version-tagged in source; the prompt string itself (in the component's module) is the only record of what was sent to the LLM for any given commit.",
+      "decoding_config": {
+        "task_type": "GENERAL",
+        "high_confidence_skip_llm_threshold": 0.92
+      },
+      "fallback_behaviour": "4-stage hierarchical beam search (backend/rag/hierarchy_engine.py) with optional LLM re-ranking of the top pooled candidates. Falls back to flat isco_occupations search if any hierarchical Qdrant collection is missing or a stage returns 0 hits; falls back further to semantic-only selection (method suffix '_semantic') if the LLM is unavailable.",
+      "evaluated": true,
+      "evaluated_ref": "eval/results/ (B0-B2 accuracy runs on test_set_full130.csv -- ISCO top-1/top-3 digit-level accuracy only; see EVALUATION_PROTOCOL.md)",
+      "affects_hitl_escalation": true
+    },
+    {
+      "component": "ISICClassifier",
+      "method_id": "isic_keyword_llm",
+      "category": "hybrid",
+      "input_fields": [
+        "text"
+      ],
+      "output_schema": {
+        "section": "str (A-U)",
+        "section_title": "str",
+        "division_code": "str (2-digit)",
+        "division_title": "str",
+        "group_code": "str (3-digit)",
+        "group_title": "str",
+        "class_code": "str (4-digit)",
+        "class_title": "str",
+        "confidence": "float 0-1",
+        "method": "str (keyword|llm)",
+        "alternatives": "list[dict]",
+        "raw_text": "Optional[str]"
+      },
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": "Prompt text is not currently version-tagged in source; the prompt string itself (in the component's module) is the only record of what was sent to the LLM for any given commit.",
+      "decoding_config": {
+        "task_type": "GENERAL",
+        "keyword_threshold": 0.85,
+        "top_k": 3
+      },
+      "fallback_behaviour": "Keyword lookup over a flat leaf-path table (_ISIC_DATA); LLM re-ranking (role 'ISIC Industry Classifier') only invoked when keyword confidence < 0.85. LLM failure falls back to best keyword match with confidence deflated by 0.8x. NOT hierarchical retrieval -- this is keyword lookup, not Section->Division->Group->Class RAG (see isic_hierarchical_retrieval below for the deferred hierarchical mode).",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ISICClassifier",
+      "method_id": "isic_hierarchical_retrieval",
+      "category": "retrieval",
+      "input_fields": [
+        "text"
+      ],
+      "output_schema": {
+        "section": "str (planned)",
+        "division_code": "str (planned)",
+        "group_code": "str (planned)",
+        "class_code": "str (planned)",
+        "confidence": "float (planned)",
+        "hierarchy_path": "list[str] (planned)",
+        "stage_confidences": "dict (planned)",
+        "top_candidates": "list (planned)"
+      },
+      "model_name": null,
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": null,
+      "decoding_config": null,
+      "fallback_behaviour": "NOT YET IMPLEMENTED. No Qdrant collections, loader, or live retrieval exist for ISIC today. Calling ISICClassifier.classify(text, method='isic_hierarchical_retrieval') returns a structured not-implemented result (confidence=0.0, all hierarchy fields empty) rather than raising or silently running the keyword pipeline. See CLASSIFIER_METHOD_REGISTRY.md for the deferred build plan (Section B, full pass).",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ISCEDClassifier",
+      "method_id": "isced_rule_keyword",
+      "category": "deterministic",
+      "input_fields": [
+        "text"
+      ],
+      "output_schema": {
+        "level": "int 0-8",
+        "level_title": "str",
+        "broad_code": "str (2-digit)",
+        "broad_title": "str",
+        "narrow_code": "str (3-digit)",
+        "narrow_title": "str",
+        "detailed_code": "str (4-digit)",
+        "detailed_title": "str",
+        "confidence": "float 0-1",
+        "method": "str (keyword|rule)",
+        "raw_text": "Optional[str]"
+      },
+      "model_name": null,
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": null,
+      "decoding_config": null,
+      "fallback_behaviour": "Pure token-overlap scoring against two independent tables (_ISCED_LEVELS for attainment level, _ISCED_FIELDS for ISCED-F field); no LLM, fully offline. Empty/no-match input defaults to level=3 (Upper secondary, confidence 0.3) and a default field entry (confidence 0.0). NOT hierarchical retrieval for the field dimension (see iscedf_hierarchical_retrieval below).",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ISCEDClassifier",
+      "method_id": "iscedf_hierarchical_retrieval",
+      "category": "retrieval",
+      "input_fields": [
+        "text"
+      ],
+      "output_schema": {
+        "broad_code": "str (planned)",
+        "narrow_code": "str (planned)",
+        "detailed_code": "str (planned)",
+        "confidence": "float (planned)",
+        "hierarchy_path": "list[str] (planned)",
+        "stage_confidences": "dict (planned)"
+      },
+      "model_name": null,
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": null,
+      "decoding_config": null,
+      "fallback_behaviour": "NOT YET IMPLEMENTED. No Qdrant collections, loader, or live retrieval exist for ISCED-F today. Calling ISCEDClassifier.classify(text, method='iscedf_hierarchical_retrieval') returns a structured not-implemented result (confidence=0.0, level=-1 sentinel, all field codes empty) rather than raising or silently running the rule/keyword pipeline. ISCED 2011 attainment-LEVEL classification is intentionally kept separate (a level, not a field hierarchy) and is unaffected by this deferred item.",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "SemanticRelationEngine",
+      "method_id": "isco_isic_isced_crosswalk",
+      "category": "hybrid",
+      "input_fields": [
+        "isco_code",
+        "isic_section",
+        "isced_level",
+        "job_title",
+        "language"
+      ],
+      "output_schema": {
+        "score": "float 0-1",
+        "is_coherent": "bool",
+        "isco_isic_compatible": "bool",
+        "isco_isced_compatible": "bool",
+        "violations": "list[SemanticViolation]",
+        "inferred_isco": "Optional[str]",
+        "explanation_en": "str",
+        "explanation_ar": "str",
+        "confidence_adjustment": "float (-0.20 to +0.10)",
+        "major_group": "str",
+        "major_label": "str",
+        "isic_label": "Optional[str]",
+        "isced_label": "Optional[str]"
+      },
+      "model_name": "ollama/llama3.2 (env OLLAMA_MODEL), falls back to anthropic/claude-3-5-sonnet-20241022 if Ollama unreachable",
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": "Prompt text is not currently version-tagged in source; the prompt string itself (in the component's module) is the only record of what was sent to the LLM for any given commit.",
+      "decoding_config": {
+        "task_type": "GENERAL",
+        "use_llm_default": true
+      },
+      "fallback_behaviour": "Deterministic dict-lookup crosswalk (ILO ISCO-ISIC correspondence table, UNESCO ISCED 2011 Operational Manual Table 7) is the core, always-on logic -- no LLM required for scoring. Optional LLM re-inference (role 'ISCO-08 occupation coding specialist') only fires when NOT is_coherent AND isic_section+job_title are both present; LLM failure is caught and silently ignored (inferred_isco stays None). VERIFIED: SurveyOrchestrator stores this on TurnResult.semantic_coherence but does NOT read it near the HITL escalation decision -- purely informational in production today.",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ValidationAgent",
+      "method_id": "rule_based_r01_r10",
+      "category": "deterministic",
+      "input_fields": [
+        "responses (employment_status, job_title, industry, hours_per_week, employment_type)",
+        "language"
+      ],
+      "output_schema": {
+        "is_valid": "bool",
+        "rule_violations": "list[RuleViolation{rule_id,field,severity,message_en,message_ar}]"
+      },
+      "model_name": null,
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": null,
+      "decoding_config": null,
+      "fallback_behaviour": "10 fixed rules (R01-R10, e.g. hours-in-range, employment-status contradictions). Pure Python, no API calls, cannot fail. VERIFIED: rule_violations are surfaced on TurnResult/ValidationResult but are NOT read by HITLQualityManager anywhere -- this is a real, currently-unaddressed architectural gap, not a design choice.",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "ValidationAgent",
+      "method_id": "semantic_check_llm",
+      "category": "llm",
+      "input_fields": [
+        "responses",
+        "language"
+      ],
+      "output_schema": {
+        "semantic_issues": "list[str]",
+        "explanation_en": "str",
+        "explanation_ar": "str",
+        "confidence": "float 0-1"
+      },
+      "model_name": "anthropic/claude-3-5-sonnet-20241022",
+      "model_version": "claude-3-5-sonnet-20241022",
+      "embedding_model": null,
+      "prompt_version": "Prompt text is not currently version-tagged in source; the prompt string itself (in the component's module) is the only record of what was sent to the LLM for any given commit.",
+      "decoding_config": {
+        "task_type": "CRITICAL",
+        "temperature": 0.0
+      },
+      "fallback_behaviour": "Role 'LFS Survey Data Quality Specialist' (CrewAI Agent, get_llm(TaskType.CRITICAL)). Only runs when Stage 1 (rule_based_r01_r10) found zero errors. Final confidence = 1.0 - 0.25*errors - 0.10*warnings - 0.10*semantic_issues, then multiplied by llm_confidence if no errors.",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "HITLQualityManager",
+      "method_id": "quality_scoring_deterministic",
+      "category": "deterministic",
+      "input_fields": [
+        "session_id",
+        "session responses with ISCO confidence scores"
+      ],
+      "output_schema": {
+        "quality_score": "float 0-1",
+        "status": "ReviewStatus(pass|fail|escalated)",
+        "metrics": "QualityMetrics",
+        "flagged_items": "list[FlaggedItem]",
+        "escalated": "bool",
+        "escalation_reason": "Optional[str]"
+      },
+      "model_name": null,
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": null,
+      "decoding_config": null,
+      "fallback_behaviour": "Deterministic weighted score (confidence 0.50, coverage 0.30, low-conf-penalty 0.20) against its OWN independent thresholds (_LOW_CONFIDENCE_THRESHOLD=0.60, _MIN_PASS_QUALITY_SCORE=0.70, _ESCALATION_THRESHOLD=0.50, _MAX_FLAGS_BEFORE_ESCALATION=3) -- VERIFIED independent of ISCOClassifier.HITL_THRESHOLD=0.70 (different constant, different file, no cross-reference). Only question_id in {'job_title','last_job_title'} is eligible for a MISSING_ISCO flag. Cannot fail (no external calls).",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": true
+    },
+    {
+      "component": "HITLQualityManager",
+      "method_id": "bilingual_report_llm",
+      "category": "llm",
+      "input_fields": [
+        "quality_score",
+        "metrics",
+        "flagged_items"
+      ],
+      "output_schema": {
+        "report_en": "str",
+        "report_ar": "str"
+      },
+      "model_name": "anthropic/claude-3-5-sonnet-20241022",
+      "model_version": "claude-3-5-sonnet-20241022",
+      "embedding_model": null,
+      "prompt_version": "Prompt text is not currently version-tagged in source; the prompt string itself (in the component's module) is the only record of what was sent to the LLM for any given commit.",
+      "decoding_config": {
+        "task_type": "CRITICAL"
+      },
+      "fallback_behaviour": "Role 'LFS Survey Quality Assurance Manager' (CrewAI Agent, get_llm(TaskType.CRITICAL)). Generates prose report text only -- scoring/flagging/escalation (quality_scoring_deterministic above) is unaffected by this step's success or failure.",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": false
+    },
+    {
+      "component": "SurveyOrchestrator",
+      "method_id": "turn_orchestration",
+      "category": "deterministic",
+      "input_fields": [
+        "session_id",
+        "turn responses"
+      ],
+      "output_schema": {
+        "TurnResult": "wraps classification/validation/semantic_coherence results for one survey turn"
+      },
+      "model_name": null,
+      "model_version": null,
+      "embedding_model": null,
+      "prompt_version": null,
+      "decoding_config": null,
+      "fallback_behaviour": "Pure Python wiring: calls ISCOClassifier/ISICClassifier/ISCEDClassifier, ValidationAgent, SemanticRelationEngine(use_llm=False), and triggers HITLQualityManager.review_session() on FSM completion. Does not itself call any LLM. VERIFIED: only ISCOClassifier's per-response confidence and HITLQualityManager's own scoring feed the escalation decision -- ValidationAgent and SemanticRelationEngine outputs are attached to TurnResult but not read by the escalation path.",
+      "evaluated": false,
+      "evaluated_ref": null,
+      "affects_hitl_escalation": true
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "_notice": "TEST FIXTURE ONLY. Used exclusively by eval/test_validate_real_lfs_governance.py to exercise the governance validator's ACCEPT path (proving a fully-complete DatasetCard passes). This is NOT a real ethics approval, data-sharing agreement, or governance sign-off, and must never be cited or presented as one anywhere outside the automated test suite. All reference numbers below use an obviously non-institutional 'TEST-FIXTURE-*' format specifically so they cannot be mistaken for real approval references.",
+
+  "source": "Example Test Institute LFS extract (fixture data for automated tests only)",
+  "dataset_id": "TEST-FIXTURE-DATASET-0001",
+  "data_owner_or_custodian": "Example Test Institute, Statistics Division (fixture)",
+  "region": "Example Test Region",
+  "survey_programme_name": "Example Test Labour Force Survey Programme",
+  "wave": "Example wave 1",
+  "collection_start_date": "2026-01-01",
+  "collection_end_date": "2026-03-31",
+  "languages": ["en", "ar"],
+  "dataset_version": "TEST-FIXTURE-v1.0.0",
+  "dataset_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd",
+
+  "data_sharing_agreement_ref": "TEST-FIXTURE-DSA-0001",
+  "ethics_approval_ref": "TEST-FIXTURE-ETHICS-0001",
+  "consent_obtained": true,
+  "lawful_basis_description": "Example fixture text: informed consent obtained at time of survey administration.",
+  "permitted_research_purpose": "Example fixture text: automated evaluation of occupation/industry/education classification accuracy.",
+  "retention_period": "Example fixture text: 5 years from collection date.",
+  "access_control_description": "Example fixture text: access restricted to named research team members via institutional access control.",
+  "deidentification_method": "Example fixture text: direct identifiers stripped by data owner prior to extract; geography generalised to region level.",
+  "deidentification_status": "Example fixture text: fully de-identified extract.",
+  "prohibited_disclosure_rules": "Example fixture text: no cell sizes below 5 respondents in any output table.",
+
+  "classification_standard_version": "ISCO-08",
+  "isco08_version": "ISCO-08 (2008)",
+  "isic_rev4_version": "ISIC Rev.4",
+  "isced2011_version": "ISCED 2011",
+  "iscedf2013_version": "ISCED-F 2013",
+  "label_source": "Example fixture text: expert human coder review of respondent free text.",
+  "labelling_process": "Example fixture text: double-coded with adjudication.",
+  "labeler_type": "Example fixture text: trained professional statistical coder.",
+  "coder_qualifications": "Example fixture text: coders hold a postgraduate statistics qualification and completed standard concept training.",
+  "double_coded": true,
+  "adjudication_process": "Example fixture text: disagreements resolved by a senior coder following the adjudication workflow.",
+  "inter_annotator_agreement": 0.87,
+
+  "split_manifest_ref": "Example fixture text: see the accompanying split manifest reference held by the data owner.",
+  "split_hash": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba98765432",
+  "frozen_heldout_test_status": "Example fixture text: frozen as of 2026-04-01, never used for parameter selection.",
+  "parameter_selection_dataset_ref": "Example fixture text: separate development split, disjoint from the frozen test split.",
+  "test_set_access_restriction": "Example fixture text: accessible only to the named PI on a read-only basis.",
+  "sample_counts_by_language_and_task": {
+    "en": {"isco": 40, "isic": 40, "isced": 40},
+    "ar": {"isco": 30, "isic": 30, "isced": 30}
+  },
+  "missing_data_policy": "Example fixture text: records with a blank job-title response are excluded from ISCO accuracy scoring only.",
+  "exclusion_criteria": "Example fixture text: respondents under working age excluded from this extract.",
+
+  "direct_identifiers_removed_confirmed": true,
+  "quasi_identifier_risk_note": "Example fixture text: rare occupation x small region combinations reviewed and generalised where respondent count was below 5.",
+  "free_text_redaction_method": "Example fixture text: free-text fields screened for incidental names/contact details before release.",
+  "secure_storage_location_description": "Example fixture text: encrypted institutional drive, access restricted to named PI, located outside any version-control system.",
+  "raw_records_excluded_from_git_confirmed": true
+}

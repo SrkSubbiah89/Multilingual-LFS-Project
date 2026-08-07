@@ -1,0 +1,18 @@
+{
+  "_notice": "SYNTHETIC EXAMPLE ONLY; NOT REAL LFS DATA. Describes what a real intake file's COLUMNS would be -- contains no respondent text or actual records.",
+  "dataset_id": "SYNTHETIC-DATASET-0001",
+  "fields": [
+    {"name": "case_id", "type": "string", "description": "Unique, non-identifying case identifier (never a national ID or similar).", "example": "CASE-000001"},
+    {"name": "language", "type": "string", "description": "Detected/reported language of the response.", "example": "ar"},
+    {"name": "respondent_text_job_title", "type": "string", "description": "Free-text job-title response (real files: actual respondent text; this dictionary never contains any).", "example": "SYNTHETIC EXAMPLE — e.g. 'primary school teacher'"},
+    {"name": "respondent_text_industry", "type": "string", "description": "Free-text industry/employer-sector response.", "example": "SYNTHETIC EXAMPLE — e.g. 'public education'"},
+    {"name": "respondent_text_education", "type": "string", "description": "Free-text education/qualification response.", "example": "SYNTHETIC EXAMPLE — e.g. 'bachelor of education'"},
+    {"name": "gold_isco_4digit", "type": "string", "description": "4-digit ISCO-08 gold label, from label_source in dataset_card.json.", "example": "2341"},
+    {"name": "gold_isic_class", "type": "string", "description": "4-digit ISIC Rev.4 gold label.", "example": "8510"},
+    {"name": "gold_isced_level", "type": "int", "description": "ISCED 2011 attainment level gold label, 0-8.", "example": 6},
+    {"name": "gold_iscedf_detailed", "type": "string", "description": "4-digit ISCED-F 2013 detailed field gold label.", "example": "0113"},
+    {"name": "coder_id", "type": "string", "description": "Non-identifying coder/labeler identifier (never a real name).", "example": "CODER-A"},
+    {"name": "adjudicated", "type": "bool", "description": "Whether this record's label was produced via adjudication after coder disagreement.", "example": false},
+    {"name": "split", "type": "string", "description": "One of 'dev' (parameter selection) or 'heldout' (frozen confirmation set).", "example": "heldout"}
+  ]
+}

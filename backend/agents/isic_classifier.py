@@ -51,6 +51,7 @@ from typing import Optional
 
 from crewai import Agent, Crew, Task
 
+from backend.agents.classifier_methods import NOT_IMPLEMENTED_METHODS, NOT_IMPLEMENTED_REASON
 from backend.llm.llm_client import TaskType, get_llm
 
 log = logging.getLogger(__name__)
@@ -817,12 +818,28 @@ class ISICClassifier:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def classify(self, text: str) -> ISICClassification:
+    def classify(self, text: str, *, method: Optional[str] = None) -> ISICClassification:
         """
         Classify *text* to an ISIC Rev.4 4-digit class with full hierarchy.
 
         Returns ``ISICClassification`` with section → division → group → class.
+
+        Parameters
+        ----------
+        method : str, optional
+            Default ``None`` runs today's unchanged keyword+LLM pipeline
+            (identical to calling ``classify(text)`` before this parameter
+            existed). Passing a value from
+            ``backend.agents.classifier_methods.NOT_IMPLEMENTED_METHODS``
+            (currently just ``"isic_hierarchical_retrieval"``) returns a
+            structured not-implemented result instead of running any
+            classification -- hierarchical retrieval for ISIC is deferred
+            scope, not yet built. See
+            Documentation/Conference_I_Reviewer_2/CLASSIFIER_METHOD_REGISTRY.md.
         """
+        if method is not None and method in NOT_IMPLEMENTED_METHODS:
+            return self._not_implemented(method, text)
+
         text = (text or "").strip()
         if not text:
             return self._fallback(text)
@@ -992,6 +1009,26 @@ class ISICClassifier:
             confidence=round(min(conf, 1.0), 4),
             method="llm",
             raw_text=original_text,
+        )
+
+    # ── Not-implemented stub (deferred scope, see classifier_methods.py) ───────
+
+    @staticmethod
+    def _not_implemented(method: str, text: str) -> ISICClassification:
+        """
+        Structured "not implemented" result for a ``method`` value in
+        ``NOT_IMPLEMENTED_METHODS`` -- returned instead of raising so
+        CLI/eval callers that don't expect an exception stay safe, and
+        instead of silently running the default keyword/LLM pipeline (which
+        would misreport which method actually produced the result). All
+        hierarchy fields are deliberately empty rather than a fabricated or
+        borrowed classification.
+        """
+        return ISICClassification(
+            section="", section_title="", division_code="", division_title="",
+            group_code="", group_title="", class_code="", class_title="",
+            confidence=0.0, method=method, alternatives=[],
+            raw_text=f"{NOT_IMPLEMENTED_REASON} (requested method={method!r}, input={text!r})",
         )
 
     # ── Fallback ──────────────────────────────────────────────────────────────

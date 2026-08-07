@@ -1,0 +1,16 @@
+{
+  "source": "SYNTHETIC — generated for test/demo purposes only, not real respondent data",
+  "region": "Fictional Region",
+  "wave": "Synthetic wave 1",
+  "languages": ["en", "ar"],
+  "collection_start_date": "2026-01-01",
+  "collection_end_date": "2026-01-01",
+  "ethics_approval_ref": "SYNTHETIC-N/A",
+  "consent_obtained": true,
+  "deidentification_method": "SYNTHETIC — no real respondents, nothing to de-identify",
+  "labelling_process": "SYNTHETIC — fixture labels invented for test coverage",
+  "coder_qualifications": "SYNTHETIC — not applicable",
+  "double_coded": true,
+  "adjudication_process": "SYNTHETIC — not applicable",
+  "classification_standard_version": "ISCO-08"
+}

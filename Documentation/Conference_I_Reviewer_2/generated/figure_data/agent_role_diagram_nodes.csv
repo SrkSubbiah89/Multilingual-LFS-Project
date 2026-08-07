@@ -1,0 +1,10 @@
+component,method_count,has_llm_method,affects_hitl_escalation
+LanguageProcessor,2,True,False
+ConversationManager,1,True,False
+ISCOClassifier,1,True,True
+ISICClassifier,2,True,False
+ISCEDClassifier,2,False,False
+SemanticRelationEngine,1,True,False
+ValidationAgent,2,True,False
+HITLQualityManager,2,True,True
+SurveyOrchestrator,1,False,True

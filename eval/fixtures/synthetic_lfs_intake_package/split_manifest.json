@@ -1,0 +1,25 @@
+{
+  "_notice": "SYNTHETIC EXAMPLE ONLY; NOT REAL LFS DATA. Counts and hashes only -- no case IDs or records that would let this be joined back to any real file.",
+  "dataset_id": "SYNTHETIC-DATASET-0001",
+  "split_hash": "SYNTHETIC0000000000000000000000000000000000000000000000000000",
+  "splits": {
+    "dev": {
+      "split_id": "SYNTHETIC-SPLIT-DEV-0001",
+      "purpose": "parameter selection only -- never a citable confirmation result",
+      "n_cases": 0,
+      "frozen": false,
+      "case_id_range_or_ref": "SYNTHETIC — example: not applicable, zero synthetic cases in this example"
+    },
+    "heldout": {
+      "split_id": "SYNTHETIC-SPLIT-HELDOUT-0001",
+      "purpose": "frozen confirmation set",
+      "n_cases": 0,
+      "frozen": true,
+      "frozen_as_of": "2026-01-01",
+      "frozen_heldout_test_status": "SYNTHETIC — example: frozen, never used for parameter selection",
+      "test_set_access_restriction": "SYNTHETIC — example: accessible only to the named PI, read-only, on the fictional custodian's encrypted drive"
+    }
+  },
+  "leakage_check_performed": true,
+  "leakage_check_method": "SYNTHETIC — example: no case_id or normalised free-text overlap between dev and heldout splits"
+}

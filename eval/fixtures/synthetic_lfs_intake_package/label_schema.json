@@ -1,0 +1,26 @@
+{
+  "_notice": "SYNTHETIC EXAMPLE ONLY; NOT REAL LFS DATA. Classification-standard versions and example codes -- see Documentation/Conference_I_Reviewer_2/STANDARDS_SOURCE_PROVENANCE.md for the real, sourced standard versions this system implements.",
+  "dataset_id": "SYNTHETIC-DATASET-0001",
+  "standards": {
+    "isco08": {
+      "version": "ISCO-08 (International Labour Organization, 2008)",
+      "example_code": "2512",
+      "example_label": "Software Developer"
+    },
+    "isic_rev4": {
+      "version": "ISIC Rev.4 (United Nations Statistics Division)",
+      "example_code": "6201",
+      "example_label": "Computer programming activities"
+    },
+    "isced2011": {
+      "version": "ISCED 2011 (UNESCO Institute for Statistics)",
+      "example_code": 6,
+      "example_label": "Bachelor's or equivalent level"
+    },
+    "iscedf2013": {
+      "version": "ISCED-F 2013 (UNESCO Institute for Statistics)",
+      "example_code": "0613",
+      "example_label": "Software and applications development and analysis"
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "generated_at_utc": "2026-08-06T21:45:48.978439+00:00",
+  "reports": [
+    {
+      "standard_name": "ISCO-08",
+      "version": "International Standard Classification of Occupations, 2008",
+      "level_name": "major",
+      "official_count_verified": null,
+      "official_count_verified_note": "no verified official catalogue has been imported for this level -- run eval/catalogue_importer.py with a real catalogue file (see COVERAGE_AUDIT_GUIDE.md); official_count_unverified is NEVER used as a substitute",
+      "official_count_unverified": 10,
+      "official_count_unverified_note": "ILO isco.ilo.org/en/isco-08 (retrieved 2026-08-07): \"a four-level hierarchically structured classification ... 436 unit groups ... 130 minor groups ... 43 sub-major groups and 10 major groups.\"\n",
+      "implemented_count": 10,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_codes": [],
+      "malformed_codes": [],
+      "missing_codes": [],
+      "source_file": "C:\\Multilingual_LFS_Project\\backend\\rag\\load_full_isco.py",
+      "source_file_sha256": "a25cf5efe9c193d87d7bdca94d7ecbefdb581a791afb95c25d35a71a1f8cfe95"
+    },
+    {
+      "standard_name": "ISCO-08",
+      "version": "International Standard Classification of Occupations, 2008",
+      "level_name": "submajor",
+      "official_count_verified": null,
+      "official_count_verified_note": "no verified official catalogue has been imported for this level -- run eval/catalogue_importer.py with a real catalogue file (see COVERAGE_AUDIT_GUIDE.md); official_count_unverified is NEVER used as a substitute",
+      "official_count_unverified": 43,
+      "official_count_unverified_note": "Same ILO page/quote as 'major' above.",
+      "implemented_count": 43,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_codes": [],
+      "malformed_codes": [],
+      "missing_codes": [],
+      "source_file": "C:\\Multilingual_LFS_Project\\backend\\rag\\load_full_isco.py",
+      "source_file_sha256": "a25cf5efe9c193d87d7bdca94d7ecbefdb581a791afb95c25d35a71a1f8cfe95"
+    },
+    {
+      "standard_name": "ISCO-08",
+      "version": "International Standard Classification of Occupations, 2008",
+      "level_name": "minor",
+      "official_count_verified": null,
+      "official_count_verified_note": "no verified official catalogue has been imported for this level -- run eval/catalogue_importer.py with a real catalogue file (see COVERAGE_AUDIT_GUIDE.md); official_count_unverified is NEVER used as a substitute",
+      "official_count_unverified": 130,
+      "official_count_unverified_note": "Same ILO page/quote as 'major' above.",
+      "implemented_count": 131,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_codes": [],
+      "malformed_codes": [],
+      "missing_codes": [],
+      "source_file": "C:\\Multilingual_LFS_Project\\backend\\rag\\load_full_isco.py",
+      "source_file_sha256": "a25cf5efe9c193d87d7bdca94d7ecbefdb581a791afb95c25d35a71a1f8cfe95"
+    },
+    {
+      "standard_name": "ISCO-08",
+      "version": "International Standard Classification of Occupations, 2008",
+      "level_name": "unit",
+      "official_count_verified": null,
+      "official_count_verified_note": "no verified official catalogue has been imported for this level -- run eval/catalogue_importer.py with a real catalogue file (see COVERAGE_AUDIT_GUIDE.md); official_count_unverified is NEVER used as a substitute",
+      "official_count_unverified": 436,
+      "official_count_unverified_note": "Same ILO page/quote as 'major' above.",
+      "implemented_count": 441,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_codes": [],
+      "malformed_codes": [],
+      "missing_codes": [],
+      "source_file": "C:\\Multilingual_LFS_Project\\backend\\rag\\load_full_isco.py",
+      "source_file_sha256": "a25cf5efe9c193d87d7bdca94d7ecbefdb581a791afb95c25d35a71a1f8cfe95"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+level,code,parent_code,label
+category,A,,Category A
+category,a,,Malformed lowercase code
+category,A,,Duplicate of Category A
+item,001,A,Item One
+item,002,Z,Orphan parent -- Z was never a category
+widget,999,A,Unknown level for this standard

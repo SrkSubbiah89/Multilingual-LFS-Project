@@ -1,0 +1,138 @@
+{
+  "generated_at_utc": "2026-08-06T21:46:00.460725+00:00",
+  "no_coverage_reports_found": false,
+  "coverage": [
+    {
+      "standard_name": "ISCED 2011",
+      "level_name": "level",
+      "official_count_verified": null,
+      "official_count_unverified": 9,
+      "implemented_count": 9,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 0,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISCED-F 2013",
+      "level_name": "broad",
+      "official_count_verified": null,
+      "official_count_unverified": 11,
+      "implemented_count": 11,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 11,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISCED-F 2013",
+      "level_name": "narrow",
+      "official_count_verified": null,
+      "official_count_unverified": 29,
+      "implemented_count": 25,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 14,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISCED-F 2013",
+      "level_name": "detailed",
+      "official_count_verified": null,
+      "official_count_unverified": null,
+      "implemented_count": 63,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 0,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISCO-08",
+      "level_name": "major",
+      "official_count_verified": null,
+      "official_count_unverified": 10,
+      "implemented_count": 10,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 0,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISCO-08",
+      "level_name": "submajor",
+      "official_count_verified": null,
+      "official_count_unverified": 43,
+      "implemented_count": 43,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 0,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISCO-08",
+      "level_name": "minor",
+      "official_count_verified": null,
+      "official_count_unverified": 130,
+      "implemented_count": 131,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 0,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISCO-08",
+      "level_name": "unit",
+      "official_count_verified": null,
+      "official_count_unverified": 436,
+      "implemented_count": 441,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 0,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISIC Rev.4",
+      "level_name": "section",
+      "official_count_verified": null,
+      "official_count_unverified": 21,
+      "implemented_count": 21,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 19,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISIC Rev.4",
+      "level_name": "division",
+      "official_count_verified": null,
+      "official_count_unverified": 88,
+      "implemented_count": 68,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 45,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISIC Rev.4",
+      "level_name": "group",
+      "official_count_verified": null,
+      "official_count_unverified": 238,
+      "implemented_count": 118,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 13,
+      "malformed_count": 0
+    },
+    {
+      "standard_name": "ISIC Rev.4",
+      "level_name": "class",
+      "official_count_verified": null,
+      "official_count_unverified": 419,
+      "implemented_count": 134,
+      "coverage_percentage": null,
+      "coverage_percentage_status": "unavailable -- no verified official catalogue import for this level (official_count_unverified, if present, is a sourced-but-unverified figure and is never used for this computation)",
+      "duplicate_count": 0,
+      "malformed_count": 0
+    }
+  ]
+}
