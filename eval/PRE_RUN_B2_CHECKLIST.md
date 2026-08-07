@@ -5,6 +5,29 @@ clean, leakage-safe, reproducible comparison against the frozen B1 result
 (54/130 on `eval/test_set_full130.csv`) -- every item below exists because
 skipping it would silently break that comparability.
 
+## ⚠️ Currently blocked: the shipped baseline is quarantined
+
+**As of Conference I Reviewer #2 Task 04, `eval/configs/b1_frozen.json`
+cannot currently pass the pre-run gate, and no B2 sweep can currently run.**
+The file's `baseline_validity.status` is `"historical_stale_requires_rerun"`
+and `baseline_validity.b2_sweep_permitted` is `false` -- both
+`eval/pre_run_check.py` and `eval/dev_sweep.py` will report a `FAIL`/
+`FATAL` on the `codebase_check:baseline_validity` and
+`codebase_check:implementation_fingerprint` lines and refuse to proceed.
+This is intentional and correct: the Conference I Reviewer #2 hierarchy-
+engine refactor (`backend/rag/hierarchical_store.py`'s
+`_hierarchical_search` now delegates to `backend/rag/hierarchy_engine.py`)
+changed the live implementation fingerprint the frozen baseline no longer
+matches. **The historical 54/130 result itself is unchanged and still
+valid as historical engineering evidence** -- see
+`Documentation/AI_HANDOFF/CLAUDE_B1_BASELINE_STATUS_REPORT.md` for the full
+explanation. To unblock: a fresh B1 run against the current codebase and a
+re-frozen `eval/configs/b1_frozen.json` (new `implementation_fingerprint`,
+`baseline_validity.status = "current_verified_ready"`,
+`b2_sweep_permitted = true`) is required, and that re-freeze needs its own
+separate, explicit authorization -- it is not part of this checklist and
+must not be done casually.
+
 ## Prerequisites
 
 1. **A fresh, validated dev set** at `eval/dev_set_v1.csv`, following

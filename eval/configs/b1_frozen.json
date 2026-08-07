@@ -4,6 +4,14 @@
   "_source_top1_accuracy": "54/130",
   "_verified_on": "2026-08-05",
 
+  "baseline_validity": {
+    "status": "historical_stale_requires_rerun",
+    "reason": "The historical B1 implementation fingerprint no longer matches the current source tree after the Conference I Reviewer #2 hierarchy-engine refactor (backend/rag/hierarchical_store.py's _hierarchical_search now delegates to backend/rag/hierarchy_engine.py). The original run evidence above (source CSV, hashes, timestamp, fingerprint) is retained unchanged -- only its currency has changed, not its historical accuracy.",
+    "permitted_use": "Historical engineering evidence only; not manuscript-eligible performance evidence (eval/test_set_full130.csv has unknown label provenance -- see Documentation/Conference_I_Reviewer_2/CONTROLLED_BENCHMARK_AUDIT.md) and not permitted to seed a B2 sweep.",
+    "b2_sweep_permitted": false,
+    "re_freeze_requires": "Separate explicit approval, a fresh documented B1 run against the current codebase, and a new frozen baseline (this file, regenerated) before any B2 K-sweep may use it."
+  },
+
   "reranker_model": "ollama/llama3.2:latest",
   "beam": 3,
   "stage1_mode": "leaf_vote",

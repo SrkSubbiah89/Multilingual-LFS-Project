@@ -214,7 +214,18 @@ REQUIRED_BASELINE_FIELDS = [
     "reranker_model", "beam", "stage1_mode", "keyword_map_enabled",
     "branch_collapse", "llm_temperature", "timeout_s",
     "beam_evidence", "ollama_model_identity", "implementation_fingerprint",
+    "baseline_validity",
 ]
+
+# Conference I Reviewer #2, Task 04 (B1 baseline quarantine). A deliberately
+# small, closed enum -- "historical_stale_requires_rerun" is the only status
+# that exists today (every frozen baseline in this repo is exactly this,
+# since none has ever been re-frozen against a post-refactor codebase).
+# "current_verified_ready" is reserved for a FUTURE re-freeze that has both
+# a passing implementation-fingerprint check AND b2_sweep_permitted=true --
+# it is not used anywhere yet. No other status string is ever valid; an
+# unrecognised status is a validate_baseline_shape() error, not a warning.
+BASELINE_VALIDITY_STATUSES = ("historical_stale_requires_rerun", "current_verified_ready")
 
 # The exact, sorted set of B1 decision-critical functions hashed into
 # implementation_fingerprint. For the B1 hierarchical code path, candidate
@@ -301,6 +312,45 @@ def validate_baseline_shape(baseline: dict) -> list:
             f"implementation_fingerprint={fingerprint!r} must be a dict with a non-empty "
             f"'components' dict and a non-empty 'composite_sha256' string"
         )
+
+    errors.extend(_validate_baseline_validity_shape(baseline.get("baseline_validity")))
+    return errors
+
+
+def _validate_baseline_validity_shape(validity) -> list:
+    """Conference I Reviewer #2, Task 04. Structural/consistency checks for
+    the baseline_validity object ONLY -- this never decides whether a sweep
+    may proceed (that's check_baseline_validity_permits_sweep(), part of
+    BASELINE_CODEBASE_CHECKS below); it only rejects a MALFORMED or
+    internally-inconsistent baseline_validity block, the same way the rest
+    of this function rejects a malformed beam_evidence/ollama_model_identity/
+    implementation_fingerprint. Missing baseline_validity entirely is caught
+    upstream by the REQUIRED_BASELINE_FIELDS check and never reaches here."""
+    errors = []
+    if not isinstance(validity, dict):
+        errors.append(f"baseline_validity={validity!r} must be a dict")
+        return errors
+
+    status = validity.get("status")
+    if status not in BASELINE_VALIDITY_STATUSES:
+        errors.append(
+            f"baseline_validity.status={status!r} must be one of {BASELINE_VALIDITY_STATUSES}"
+        )
+
+    permitted = validity.get("b2_sweep_permitted")
+    if not isinstance(permitted, bool):
+        errors.append(f"baseline_validity.b2_sweep_permitted={permitted!r} must be a bool")
+    elif status == "historical_stale_requires_rerun" and permitted is True:
+        errors.append(
+            "baseline_validity.status='historical_stale_requires_rerun' cannot combine with "
+            "b2_sweep_permitted=true -- internally inconsistent (a stale baseline can never "
+            "permit a sweep)"
+        )
+
+    for field in ("reason", "permitted_use", "re_freeze_requires"):
+        if not isinstance(validity.get(field), str) or not validity.get(field):
+            errors.append(f"baseline_validity.{field} must be a non-empty string")
+
     return errors
 
 
@@ -432,6 +482,28 @@ def check_implementation_fingerprint(baseline: dict) -> tuple:
     return True, f"implementation_fingerprint.composite_sha256 confirmed ({live_fingerprint['composite_sha256'][:16]}...)"
 
 
+def check_baseline_validity_permits_sweep(baseline: dict) -> tuple:
+    """Conference I Reviewer #2, Task 04. A NEW, ADDITIVE check -- fails
+    closed whenever the baseline's own self-reported validity metadata says
+    it must not seed a B2 sweep, independent of (and in addition to) the
+    implementation-fingerprint check below. Every check in
+    BASELINE_CODEBASE_CHECKS is OR'd into one failure list by
+    assert_baseline_matches_codebase() -- adding this one only makes that
+    gate stricter, never weaker, and does not change how any existing check
+    (especially check_implementation_fingerprint()) decides pass/fail."""
+    validity = baseline["baseline_validity"]
+    status = validity.get("status")
+    permitted = validity.get("b2_sweep_permitted")
+    if status != "current_verified_ready" or permitted is not True:
+        return False, (
+            f"baseline_validity.status={status!r}, b2_sweep_permitted={permitted!r} -- this "
+            f"baseline is historical/stale and must not seed a B2 sweep. Reason: "
+            f"{validity.get('reason', '(none recorded)')} Re-freeze requires: "
+            f"{validity.get('re_freeze_requires', 'separate explicit approval and a fresh B1 run')}"
+        )
+    return True, "baseline_validity confirms this baseline is current and permitted for a B2 sweep"
+
+
 def check_ollama_model_identity(baseline: dict) -> tuple:
     identity = resolve_ollama_model_identity(baseline["ollama_model_identity"]["tag"])
     if identity["status"] != "confirmed":
@@ -457,6 +529,7 @@ def check_ollama_model_identity(baseline: dict) -> tuple:
 # checklist reports each as its own PASS/FAIL line rather than one bundled
 # exception. Each is (name, fn(baseline) -> (ok, message)).
 BASELINE_CODEBASE_CHECKS = [
+    ("baseline_validity", check_baseline_validity_permits_sweep),
     ("branch_collapse", check_branch_collapse_false),
     ("llm_temperature", check_llm_temperature),
     ("timeout_s", check_timeout),
@@ -467,9 +540,10 @@ BASELINE_CODEBASE_CHECKS = [
 
 def assert_baseline_matches_codebase(baseline: dict) -> None:
     """Runs every check in BASELINE_CODEBASE_CHECKS -- the frozen baseline's
-    claims about non-CLI-configurable pipeline behaviour (temperature,
-    timeout, implementation fingerprint, branch_collapse) and the pinned
-    Ollama model identity, against the CURRENT codebase/environment.
+    own self-reported validity status (baseline_validity, Task 04), claims
+    about non-CLI-configurable pipeline behaviour (temperature, timeout,
+    implementation fingerprint, branch_collapse), and the pinned Ollama
+    model identity, against the CURRENT codebase/environment.
     reranker_model/beam/stage1_mode/keyword_map_enabled are deliberately
     NOT checked here -- once this script sources them directly from the
     baseline file (see main()), there is no separate value left for them
@@ -477,7 +551,12 @@ def assert_baseline_matches_codebase(baseline: dict) -> None:
     check_beam_evidence(). Raises BaselineMismatchError (all mismatches
     listed at once, not just the first) if anything here no longer
     matches -- refuses to run any case rather than silently produce a
-    comparison that isn't actually comparable to the frozen B1 result."""
+    comparison that isn't actually comparable to the frozen B1 result. A
+    baseline can be blocked by ANY single check (including
+    baseline_validity alone, even if every codebase/environment check would
+    otherwise pass) -- this function never accepts or bypasses a mismatch
+    from any check, and adding the baseline_validity check did not change
+    how any pre-existing check decides pass/fail."""
     mismatches = [msg for _, check in BASELINE_CODEBASE_CHECKS for ok, msg in [check(baseline)] if not ok]
     if mismatches:
         raise BaselineMismatchError(

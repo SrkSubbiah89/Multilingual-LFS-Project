@@ -100,9 +100,19 @@ or subsequent test runs.
 ## 4. Confirmation both `test_run_eval_b2.py` test blocks remain
 
 Verified directly: `pytest eval/test_run_eval_b2.py -q` → **21 passed**
-(18 pre-existing + 3 from the Reviewer #2 `sre_enabled`/`use_llm_reranker`
-block — unchanged in count and assertions from before the merge — plus B2's
-4 new "exact classifier-input regression" tests, all passing). Grepped the
+(**Correction, Task 04**: the original count above ("18 pre-existing + 3
+... + 4 ...") did not arithmetically sum to 21 and has been corrected
+here, using counts verified directly via `git show <ref>:eval/
+test_run_eval_b2.py | grep -c "^def test_"` against the actual merge base
+and both parent commits, not estimated: **12 tests shared by both branches
+unchanged** (the merge base,
+`git merge-base reviewer2-wip-snapshot-20260807 origin/conference1-b2-evaluation`,
+has exactly 12) **+ 6 added by the Reviewer #2 snapshot** (the
+`sre_enabled` block, 3 tests, and the `use_llm_reranker` block, 3 tests —
+`reviewer2-wip-snapshot-20260807`'s own copy of the file has 18 total, i.e.
+12 + 6) **+ 3 added by B2** (the "exact classifier-input regression" block
+— `origin/conference1-b2-evaluation`'s own copy has 15 total, i.e. 12 + 3)
+**= 21**. Grepped the
 resolved file directly to confirm both `_kwargs_with_sre_inputs()` (snapshot)
 and `_TRICKY_INPUT_TEXT`/`test_dev_sweep_csv_to_classify_chain_is_verbatim_end_to_end()`
 (B2) are present with no truncation.

@@ -368,6 +368,12 @@ FAKE_MODEL_DIGEST = "fake0000digest0000for0000hermetic0000tests0000not0000live00
 
 
 def valid_baseline(**overrides):
+    """A hypothetical CURRENT, sweep-ready baseline -- implementation_
+    fingerprint is computed live, so this always matches the live codebase
+    by construction. Represents what a fresh B1 re-freeze would look like;
+    distinct from the real shipped eval/configs/b1_frozen.json, which is
+    deliberately historical/stale (Conference I Reviewer #2, Task 04) --
+    see test_the_actual_shipped_b1_frozen_json_is_correctly_quarantined()."""
     fingerprint = ds.compute_composite_fingerprint()
     baseline = {
         "reranker_model": "ollama/llama3.2:latest",
@@ -380,6 +386,13 @@ def valid_baseline(**overrides):
         "beam_evidence": {"status": "confirmed", "source": "test fixture", "detail": "n/a"},
         "ollama_model_identity": {"tag": "llama3.2:latest", "digest": FAKE_MODEL_DIGEST},
         "implementation_fingerprint": fingerprint,
+        "baseline_validity": {
+            "status": "current_verified_ready",
+            "b2_sweep_permitted": True,
+            "reason": "test fixture -- represents a hypothetical fresh re-freeze",
+            "permitted_use": "test fixture only",
+            "re_freeze_requires": "n/a -- already current",
+        },
     }
     baseline.update(overrides)
     return baseline
@@ -446,6 +459,65 @@ def test_validate_baseline_shape_rejects_empty_fingerprint_components():
         valid_baseline(implementation_fingerprint={"components": {}, "composite_sha256": "abc"})
     )
     assert any("implementation_fingerprint" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# baseline_validity shape (Conference I Reviewer #2, Task 04 -- B1 baseline
+# quarantine after the hierarchy-engine refactor)
+# ---------------------------------------------------------------------------
+
+def test_validate_baseline_shape_rejects_missing_baseline_validity():
+    baseline = valid_baseline()
+    del baseline["baseline_validity"]
+    errors = ds.validate_baseline_shape(baseline)
+    assert any("missing required field" in e and "baseline_validity" in e for e in errors)
+
+
+def test_validate_baseline_shape_rejects_bad_baseline_validity_status():
+    errors = ds.validate_baseline_shape(
+        valid_baseline(baseline_validity={
+            "status": "totally_fine_trust_me", "b2_sweep_permitted": True,
+            "reason": "x", "permitted_use": "x", "re_freeze_requires": "x",
+        })
+    )
+    assert any("baseline_validity.status" in e for e in errors)
+
+
+def test_validate_baseline_shape_rejects_non_bool_b2_sweep_permitted():
+    errors = ds.validate_baseline_shape(
+        valid_baseline(baseline_validity={
+            "status": "historical_stale_requires_rerun", "b2_sweep_permitted": "false",
+            "reason": "x", "permitted_use": "x", "re_freeze_requires": "x",
+        })
+    )
+    assert any("b2_sweep_permitted" in e for e in errors)
+
+
+def test_validate_baseline_shape_rejects_stale_status_with_sweep_permitted_true():
+    """The exact internal-inconsistency the task calls out by name: a
+    baseline cannot claim to be historical/stale AND simultaneously permit
+    a B2 sweep."""
+    errors = ds.validate_baseline_shape(
+        valid_baseline(baseline_validity={
+            "status": "historical_stale_requires_rerun", "b2_sweep_permitted": True,
+            "reason": "x", "permitted_use": "x", "re_freeze_requires": "x",
+        })
+    )
+    assert any("internally inconsistent" in e for e in errors)
+
+
+def test_validate_baseline_shape_rejects_blank_baseline_validity_reason():
+    errors = ds.validate_baseline_shape(
+        valid_baseline(baseline_validity={
+            "status": "current_verified_ready", "b2_sweep_permitted": True,
+            "reason": "", "permitted_use": "x", "re_freeze_requires": "x",
+        })
+    )
+    assert any("baseline_validity.reason" in e for e in errors)
+
+
+def test_validate_baseline_shape_accepts_well_formed_current_baseline_validity():
+    assert ds.validate_baseline_shape(valid_baseline()) == []
 
 
 # ---------------------------------------------------------------------------
@@ -525,6 +597,20 @@ def test_assert_baseline_matches_codebase_rejects_stale_composite_fingerprint(fa
         ds.assert_baseline_matches_codebase(valid_baseline(implementation_fingerprint=stale))
 
 
+def test_assert_baseline_matches_codebase_rejects_stale_baseline_validity(fake_ollama_identity):
+    """Even a baseline whose fingerprint/temperature/timeout/branch_collapse
+    would all otherwise PASS must still be rejected if baseline_validity
+    itself says the sweep is not permitted -- this check is independent of,
+    and does not require, a fingerprint mismatch to fire."""
+    stale = valid_baseline(baseline_validity={
+        "status": "historical_stale_requires_rerun", "b2_sweep_permitted": False,
+        "reason": "test: pretend this fresh-fingerprint baseline is actually stale",
+        "permitted_use": "test fixture only", "re_freeze_requires": "n/a",
+    })
+    with pytest.raises(ds.BaselineMismatchError, match="baseline_validity"):
+        ds.assert_baseline_matches_codebase(stale)
+
+
 def test_assert_baseline_matches_codebase_rejects_model_identity_mismatch(fake_ollama_identity):
     with pytest.raises(ds.BaselineMismatchError, match="ollama_model_identity"):
         ds.assert_baseline_matches_codebase(
@@ -553,22 +639,53 @@ def test_assert_baseline_matches_codebase_reports_all_mismatches_at_once(fake_ol
         assert "timeout_s" in msg
 
 
-def test_the_actual_shipped_b1_frozen_json_passes_shape_and_codebase_checks():
-    """The real eval/configs/b1_frozen.json this repo ships must itself be
-    internally consistent with the current codebase AND the currently
-    installed Ollama model -- if this test starts failing, either the file
-    is stale (someone edited the reranker prompt/timeout constant, or
-    re-pulled the model under the same tag) or the file was authored with a
-    typo. Either way it must be caught here, not at the start of a real B2
-    run. Deliberately NOT using fake_ollama_identity -- this is the one
-    test that should hit the real, locally installed Ollama, since it's
-    asserting the shipped file matches THIS machine's actual state."""
+def test_the_actual_shipped_b1_frozen_json_is_correctly_quarantined():
+    """Conference I Reviewer #2, Task 04 (B1 baseline quarantine). The real
+    eval/configs/b1_frozen.json this repo ships is INTENTIONALLY historical
+    and stale as of the hierarchy-engine refactor (backend/rag/
+    hierarchical_store.py's _hierarchical_search now delegates to
+    backend/rag/hierarchy_engine.py, changing its source and therefore its
+    implementation-fingerprint hash) -- this is an expected, permanent
+    consequence of that refactor, not a newly-measured regression, and not
+    something to "fix" by re-running B1 in this test. This test asserts the
+    file is well-formed AND correctly self-reports as not sweep-ready,
+    exactly the safety state the repository must be in until a real B1
+    re-freeze happens (separate explicit approval required -- see
+    Documentation/AI_HANDOFF/CLAUDE_B1_BASELINE_STATUS_REPORT.md).
+
+    Deliberately NOT using fake_ollama_identity -- this is the one test
+    that should hit the real, locally installed Ollama, since it's
+    asserting the shipped file's ollama_model_identity claim against THIS
+    machine's actual state (a live, metadata-only GET /api/tags call --
+    no inference)."""
     path = Path(__file__).resolve().parent / "configs" / "b1_frozen.json"
     baseline = ds.load_baseline_config(path)
+
+    # 1. The shipped JSON passes shape/metadata validation -- it is
+    # well-formed, not malformed; "stale" and "malformed" are different
+    # things, and only the latter is a shape error.
     assert ds.validate_baseline_shape(baseline) == []
-    ds.assert_baseline_matches_codebase(baseline)  # must not raise
+
+    # 2/3. It correctly, explicitly self-reports as historical/stale and
+    # not permitted to seed a sweep -- never silently "upgraded".
+    assert baseline["baseline_validity"]["status"] == "historical_stale_requires_rerun"
+    assert baseline["baseline_validity"]["b2_sweep_permitted"] is False
+
+    # 4/5. assert_baseline_matches_codebase() still raises BaselineMismatchError
+    # (fail-closed, not bypassed), and the message clearly identifies BOTH
+    # the baseline_validity self-report AND the underlying implementation-
+    # fingerprint mismatch that caused it -- a reader is never left
+    # guessing why the sweep is blocked, and it is never silently permitted.
+    with pytest.raises(ds.BaselineMismatchError) as exc_info:
+        ds.assert_baseline_matches_codebase(baseline)
+    msg = str(exc_info.value)
+    assert "baseline_validity" in msg
+    assert "historical/stale" in msg
+    assert "implementation_fingerprint" in msg
+
     assert baseline["reranker_model"] == "ollama/llama3.2:latest"  # NOT ...1b, see file's _notes
     assert baseline["beam_evidence"]["status"] == "inferred"  # honest, not silently upgraded
+    assert baseline["_source_top1_accuracy"] == "54/130"  # historical result, unchanged
 
 
 # ---------------------------------------------------------------------------
