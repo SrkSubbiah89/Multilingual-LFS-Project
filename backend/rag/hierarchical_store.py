@@ -25,12 +25,69 @@ Pipeline
 Returns ``HierarchicalResult`` with the best unit-group code, confidence,
 hierarchy path, top candidates, and a HITL flag.
 
-Fallback
---------
-If *any* hierarchical collection is absent or returns 0 results the store
-falls back to searching the original flat ``isco_occupations`` collection
-so the system keeps working while the hierarchical collections are being
-populated.
+Retrieval outcomes (Task 13 revision)
+--------------------------------------
+Every call to ``search()`` ends in exactly one of four distinct,
+explicitly labelled states -- see ``HierarchicalResult.fallback_used`` and
+each ``ISCOClassification.method``'s ``"hierarchical_"``/``"flat_"``
+prefix (backend/agents/isco_classifier.py):
+
+1. **Successful keyword-anchor route.** ``ISCOClassifier`` supplies a
+   keyword-derived ``major_hint`` (``_keyword_major_hint()``); the anchor
+   reaches a complete stage 1-4 path on the first attempt. ``fallback_used
+   =False``. ``trace["stage1_source"] == "keyword_map"``,
+   ``trace["keyword_anchor_retry"] == False``.
+2. **Recovered semantic-stage route after a failed keyword anchor.** The
+   keyword anchor reached no stage-4 result (e.g. the hint's submajor/
+   minor/unit branch had zero children in the collection), so
+   ``_hierarchical_search()`` retries the SAME generic engine exactly
+   once with no seed (normal semantic stage-1 retrieval) before
+   considering flat fallback. If that retry succeeds, ``fallback_used=
+   False`` and the case is still genuine hierarchical retrieval --
+   ``trace["stage1_source"] == "semantic_retrieval"`` (the true final
+   path) and ``trace["keyword_anchor_retry"] == True`` +
+   ``trace["keyword_anchor_original_hint"]`` (the failed hint) record
+   what was tried and abandoned, without ever conflating the failed
+   attempt's stage evidence with the winning retry's. This state did not
+   exist before Task 13 -- previously, a failed keyword anchor fell
+   straight through to flat fallback (see state 4), which the Task 12
+   full WISCO run showed happening for 21/18,747 cases.
+3. **Explicit flat fallback.** Neither the keyword-anchor attempt (if
+   any) nor the unseeded retry (if attempted) produced a complete 4-stage
+   path, OR a hierarchical collection is absent, OR a Qdrant query
+   exception occurred (see "Bounded Qdrant requests" below). The flat
+   ``isco_occupations`` collection is searched instead.
+   ``fallback_used=True``, ``ISCOClassification.method`` gets a
+   ``"flat_"`` prefix, and the trace records the SAME candidate list
+   under all four ``stageN`` keys (documented, intentional -- there are
+   no real stages 1-3 for a flat search) so a fallback result's trace is
+   never mistaken for four genuinely distinct hierarchical stages.
+4. **Total unavailability.** Neither hierarchical nor flat collections are
+   usable (or both are empty for this query) -- ``_empty_result()``,
+   ``code=""``, ``fallback_used=True``.
+
+``eval/run_eval.py --require-genuine-hierarchical`` (Task 13, evaluation-
+only) refuses to accept a run containing ANY case in states 3 or 4, or
+missing stage evidence, or (with ``--max-stage-latency-ms``) an excessive
+per-stage latency -- it aborts immediately rather than writing a result
+CSV that could be mistaken for complete, valid hierarchical benchmark
+evidence. Production behaviour (states 1-4 above) is completely
+unaffected by that flag; it only changes whether ``eval/run_eval.py``
+itself accepts the run's output.
+
+Bounded Qdrant requests (Task 13)
+------------------------------------
+``HierarchicalISCOStore`` passes an explicit, finite request timeout to
+its ``QdrantClient`` (default 30s, override via ``QDRANT_TIMEOUT_SECONDS``
+-- see ``_resolve_qdrant_timeout_seconds()``). This does NOT prove or fix
+the unconfirmed root cause of the multi-minute-to-multi-hour individual
+stage stalls the Task 12 full WISCO run observed (see
+Documentation/Conference_I_Reviewer_2/WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md)
+-- it only bounds a *class* of indefinitely-blocked Qdrant requests so a
+future stall raises a catchable exception (routed through the existing
+query-exception → zero-hits → fallback/retry path, state 3/4 above)
+instead of hanging forever, making the failure diagnosable rather than
+silent.
 
 Embedding
 ---------
@@ -85,6 +142,44 @@ _COL_SUBMAJOR = "isco08_submajor_groups"
 _COL_MINOR    = "isco08_minor_groups"
 _COL_UNIT     = "isco08_unit_groups"
 _COL_FLAT     = "isco_occupations"  # fallback
+
+# Task 13: bounded Qdrant request timeout. Finite and conservative by
+# default -- the Task 12 full WISCO run observed individual stage queries
+# blocking for minutes to hours with no client-side bound at all. This
+# timeout does NOT prove or fix that stall's root cause (unconfirmed --
+# see Documentation/Conference_I_Reviewer_2/WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md);
+# it only bounds a *class* of indefinitely-blocked Qdrant requests so a
+# future stall raises a catchable exception (routed through the existing,
+# unchanged query-exception -> zero-hits -> fallback/retry path -- see
+# HierarchyBeamSearchEngine._query()) instead of hanging forever, making
+# the failure diagnosable rather than silent.
+QDRANT_DEFAULT_TIMEOUT_SECONDS = 30
+
+
+def _resolve_qdrant_timeout_seconds() -> int:
+    """Read QDRANT_TIMEOUT_SECONDS from the environment; fail safe to
+    QDRANT_DEFAULT_TIMEOUT_SECONDS (never raise, never crash startup) on
+    a missing, malformed, or non-positive value."""
+    raw = os.getenv("QDRANT_TIMEOUT_SECONDS")
+    if raw is None or not raw.strip():
+        return QDRANT_DEFAULT_TIMEOUT_SECONDS
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        _logger.warning(
+            "HierarchicalISCOStore: QDRANT_TIMEOUT_SECONDS=%r is not a valid "
+            "integer; using the default %ss.",
+            raw, QDRANT_DEFAULT_TIMEOUT_SECONDS,
+        )
+        return QDRANT_DEFAULT_TIMEOUT_SECONDS
+    if value <= 0:
+        _logger.warning(
+            "HierarchicalISCOStore: QDRANT_TIMEOUT_SECONDS=%r must be positive; "
+            "using the default %ss.",
+            raw, QDRANT_DEFAULT_TIMEOUT_SECONDS,
+        )
+        return QDRANT_DEFAULT_TIMEOUT_SECONDS
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -162,11 +257,27 @@ class HierarchicalISCOStore:
         self,
         host: Optional[str] = None,
         port: Optional[int] = None,
+        timeout_seconds: Optional[int] = None,
     ) -> None:
+        """
+        Parameters
+        ----------
+        timeout_seconds : int, optional
+            Task 13: explicit Qdrant request timeout (seconds), passed
+            straight through to ``QdrantClient(timeout=...)``. Existing
+            callers that omit this (default None) get the value resolved
+            from the ``QDRANT_TIMEOUT_SECONDS`` environment variable, or
+            ``QDRANT_DEFAULT_TIMEOUT_SECONDS`` (30s) if that variable is
+            absent, empty, malformed, or non-positive -- see
+            ``_resolve_qdrant_timeout_seconds()``. This bounds how long a
+            single Qdrant request can block; it does not change what a
+            successful or failed query means to the rest of this class.
+        """
         _host = host or os.getenv("QDRANT_HOST", "localhost")
         _port = int(port or os.getenv("QDRANT_PORT", 6333))
+        _timeout = timeout_seconds if timeout_seconds is not None else _resolve_qdrant_timeout_seconds()
 
-        self._client = QdrantClient(host=_host, port=_port)
+        self._client = QdrantClient(host=_host, port=_port, timeout=_timeout)
         self._model  = SentenceTransformer(MODEL_NAME)
 
         # Pre-check which collections exist so we know upfront whether to
@@ -379,9 +490,22 @@ class HierarchicalISCOStore:
         ``EngineResult`` is converted back to this store's public
         ``HierarchicalResult``. The actual beam-search/pooling/trace logic
         lives entirely in the engine now.
+
+        Task 13 keyword-anchor recovery: a keyword ``major_hint`` anchors
+        the engine to a single stage-0 branch (see ``SeedSpec`` below). If
+        that one anchored branch reaches no stage-4 hit anywhere (engine
+        returns ``None``), the anchor itself -- not genuine hierarchical
+        unavailability -- was the cause, so this method retries the SAME
+        engine exactly once with no seed (normal semantic stage-1
+        retrieval) before this store falls through to flat search. Each
+        attempt is traced into its own throwaway dict; only the winning
+        attempt's stage evidence is ever copied into the caller's
+        ``trace``, so a failed seeded attempt can never be mistaken for
+        the final retrieval path (see the docstring on ``trace`` above).
         """
         seed = None
         stage_overrides = None
+        used_keyword_anchor = bool(major_hint)
 
         # When a keyword hint is supplied (e.g. "chef" → "5") we trust it
         # and skip semantic search entirely for stage 1.
@@ -404,6 +528,8 @@ class HierarchicalISCOStore:
                 )
             }
 
+        want_trace = trace is not None
+        attempt_trace: dict = {} if want_trace else None
         engine_result = self._engine.search(
             query_vec,
             top_k=top_k,
@@ -413,8 +539,40 @@ class HierarchicalISCOStore:
             reranker_candidates=reranker_candidates,
             branch_collapse=branch_collapse,
             capture_pool_metadata=capture_pool_metadata,
-            trace=trace,
+            trace=attempt_trace,
         )
+
+        retried = False
+        if engine_result is None and used_keyword_anchor:
+            _logger.info(
+                "HierarchicalISCOStore: keyword major_hint=%r reached no complete "
+                "hierarchical path; retrying once with normal semantic stage-1 "
+                "retrieval (no seed) before falling back to flat search.",
+                major_hint,
+            )
+            retried = True
+            attempt_trace = {} if want_trace else None
+            engine_result = self._engine.search(
+                query_vec,
+                top_k=top_k,
+                beam=beam,
+                seed=None,
+                stage_overrides=stage_overrides,
+                reranker_candidates=reranker_candidates,
+                branch_collapse=branch_collapse,
+                capture_pool_metadata=capture_pool_metadata,
+                trace=attempt_trace,
+            )
+
+        if trace is not None:
+            # Only the winning attempt's stage evidence is copied in --
+            # a failed seeded attempt's throwaway trace is discarded
+            # entirely, never merged with the retry's genuine evidence.
+            trace.update(attempt_trace)
+            if used_keyword_anchor:
+                trace["keyword_anchor_retry"] = retried
+                trace["keyword_anchor_original_hint"] = major_hint
+
         if engine_result is None:
             return None
 

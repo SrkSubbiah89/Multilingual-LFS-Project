@@ -389,3 +389,73 @@ planning only.
   accuracy claim (comment 5's coverage-vs-accuracy distinction — WISCO
   supports coverage but not accuracy for those standards), and any SRE
   precision/recall claim (Phase D.3, `not_evaluable_on_wisco_isco_only`).
+
+## Post-execution update: Task 12 (Tier 1 run) and Task 13 (integrity fix)
+
+Everything above this section was written **before** Tier 1 was actually
+run and describes the plan, not the outcome. This section records what
+actually happened and must be read alongside it.
+
+### Task 12 — the first full Tier-1 run was halted, not completed
+
+Task 12 executed both full Tier-1 configurations (18,747 cases each,
+`--use-llm-reranker off`, flat then hierarchical) exactly as planned
+above. Both commands exited 0 and wrote complete 18,747-row CSVs, but the
+**hierarchical** output failed the mandatory output-integrity gate: 23 of
+18,747 rows (0.123%) carried a `flat_semantic` method label instead of
+genuine hierarchical retrieval — a real integrity problem, not merely a
+stray edge case, per this project's evidence-safety discipline. Per that
+gate's own explicit rule, Task 12 stopped before any accuracy analysis or
+manifest was produced — **no measured Tier-1 metric exists from that
+run**. Two of the 23 fallback rows, plus a third row that did not fall
+back, showed severe anomalous single-stage latency (up to ~4 hours for
+one case), together accounting for ~85% of the hierarchical run's 5h21m
+wall time; the flat run showed no such anomaly anywhere. Full detail:
+`Documentation/AI_HANDOFF/CLAUDE_TASK_12_FINAL_REPORT.md`.
+
+### Task 13 — root-cause fix for the 21 fast fallbacks, and new safeguards
+
+Direct code inspection (not merely inference from the CSV) confirmed a
+reproducible cause for the 21 fast (non-anomalous-latency) fallbacks:
+`ISCOClassifier` supplies a keyword-derived `major_hint` by default;
+`HierarchicalISCOStore._hierarchical_search()` anchors the entire search
+to that one hint as a single-branch `SeedSpec`, skipping semantic stage 1
+entirely; if that one anchored branch reaches no stage-4 result, the
+generic engine returns `None` and the store silently fell straight
+through to flat search. Task 13 fixed this: the store now retries the
+same generic engine exactly once, unseeded (normal semantic stage-1
+retrieval), before falling back to flat — see
+`backend/rag/hierarchical_store.py`'s "Retrieval outcomes" docstring
+section for the resulting four-state model (successful keyword-anchor
+route / recovered semantic-stage route after a failed anchor / explicit
+flat fallback / total unavailability). A failed seeded attempt's trace
+data is never merged with a successful retry's — only the winning
+attempt's genuine stage 1-4 evidence is ever recorded.
+
+Task 13 does **not** claim to have found or fixed the 2-3 severe-latency
+stall cases' root cause — that remains unconfirmed. It adds a bounded,
+configurable Qdrant request timeout (default 30s,
+`QDRANT_TIMEOUT_SECONDS` override) so a future stall raises a catchable
+exception instead of blocking indefinitely, making it diagnosable rather
+than silent — this bounds a *class* of indefinitely-blocked requests, it
+does not prove or fix what caused the Task 12 stalls specifically.
+
+Task 13 also added `eval/run_eval.py --require-genuine-hierarchical`
+(optional, valid only with `--system hierarchical`) plus an opt-in
+`--max-stage-latency-ms` threshold: together they make any future Tier-1
+attempt fail fast and non-zero, writing no result CSV at all, the instant
+any case falls back, is missing stage evidence, or exceeds a configured
+per-stage latency bound — so a contaminated run can never again produce
+output that looks like complete, valid benchmark evidence. Full detail:
+`Documentation/AI_HANDOFF/CLAUDE_TASK_13_FINAL_REPORT.md`.
+
+### Status of Tier 1 after Task 13
+
+**Still not run to completion with valid results.** Task 13 is a targeted
+fix and safeguard addition, independently audited and integrated by a
+separate task before any rerun. No new WISCO benchmark, collection build,
+or measured metric was produced by Task 13 itself. When Tier 1 is next
+attempted, it should be run with `--require-genuine-hierarchical` (and a
+considered `--max-stage-latency-ms`) so any remaining integrity problem
+is caught immediately rather than discovered only after a multi-hour run
+completes, as happened in Task 12.
