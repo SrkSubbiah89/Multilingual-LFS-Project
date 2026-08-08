@@ -43,7 +43,7 @@ and current closure status.
 | `generated/` | Landing directory for every JSON/CSV/MD artifact the tooling below produces (`MEASURED_EVALUATION_EVIDENCE_SUMMARY.md` lives here) |
 | [FLAT_BASELINE_COVERAGE_AUDIT.md](FLAT_BASELINE_COVERAGE_AUDIT.md) | Task 19: why the legacy `isco_occupations` flat baseline can't support a 4-digit accuracy comparison, and the (then-unresolved) 441-vs-436 ISCO-08 unit-group count discrepancy |
 | [ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md](ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md) | Task 20: primary ILO ISCO-08 catalogue import (`eval/verified_catalogue_counts.yaml`) and full code-by-code reconciliation against `backend/rag/load_full_isco.py` — closes Task 19's catalogue-identity blocker; catalogue itself not yet corrected |
-| [OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md](OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md) | Task 21: official-source runtime loader, dry-run collection builder, versioned official retrieval profiles (hierarchical + genuine four-digit-only flat comparator), and `eval/run_eval.py --isco-catalogue-profile` wiring — no collection built, no evaluation run |
+| [OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md](OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md) | Task 21: official-source runtime loader, dry-run collection builder, versioned official retrieval profiles (hierarchical + genuine four-digit-only flat comparator), and `eval/run_eval.py --isco-catalogue-profile` wiring. Task 22: the real, guarded `--execute` collection-build path (dual acknowledgement, local-only, no-overwrite, ordered create+verify, manifest). No collection built, no evaluation run by either task |
 
 ## Code added (by section)
 
@@ -81,10 +81,10 @@ benchmark run, has not happened yet). New modules: `eval/manifest.py`,
 plus the `eval/local_runs/` and `eval/local_benchmarks/` gitignored output
 conventions.
 
-### Tasks 09-21 — WISCO Tier 1 evidence line, catalogue reconciliation, and official runtime
+### Tasks 09-22 — WISCO Tier 1 evidence line, catalogue reconciliation, and official runtime/build
 
 Tracked individually under `Documentation/AI_HANDOFF/CLAUDE_TASK_09_*`
-through `CLAUDE_TASK_21_*` (numbered task-handoff reports, not part of
+through `CLAUDE_TASK_22_*` (numbered task-handoff reports, not part of
 either the A-J or Step-2-through-7A schemes above). Briefly, in order:
 model-free ISCO evaluation mode; WISCO v2 group-aware measurement
 baseline; Tier-1 preflight and a full Tier-1 run that found 23 silent
@@ -97,16 +97,19 @@ baseline (§ below); a read-only audit of that refusal
 (`FLAT_BASELINE_COVERAGE_AUDIT.md`, Task 19); a primary-source ILO
 ISCO-08 catalogue reconciliation finding 20 non-standard codes, 14
 missing codes, and 84 title mismatches
-(`ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md`, Task 20); and an
+(`ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md`, Task 20); an
 official-source runtime path plus a genuine, versioned, four-digit-only
-flat comparator built against that verified catalogue
-(`OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md`, Task 21, this
-section's newest entries above). **No WISCO accuracy number has been
-produced by any of these tasks** — Task 18 produced zero metric output
-(a gate failure, not a bug), Task 20 explicitly did not correct or
-re-evaluate anything, and Task 21 built runtime infrastructure only
-(zero Qdrant collections built, zero evaluations run). `eval/local_runs/`
-and `eval/local_catalogues/` (both gitignored) hold every raw artifact
+flat comparator built against that verified catalogue (Task 21); and
+the real, guarded local Qdrant collection-build execution for those
+same five official collections (dual acknowledgement, no-overwrite,
+ordered create+verify, manifest — `OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md`,
+Task 22, this section's newest entries above). **No WISCO accuracy
+number has been produced by any of these tasks** — Task 18 produced
+zero metric output (a gate failure, not a bug), Task 20 explicitly did
+not correct or re-evaluate anything, and Tasks 21-22 built runtime/build
+infrastructure only (zero Qdrant collections built, zero evaluations
+run, zero live Qdrant connections at any point). `eval/local_runs/` and
+`eval/local_catalogues/` (both gitignored) hold every raw artifact
 these tasks produced.
 
 ## What is explicitly out of scope, still

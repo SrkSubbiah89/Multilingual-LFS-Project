@@ -490,3 +490,12 @@ completes, as happened in Task 12.
   exists, not the legacy profile these commands were originally written
   for, once the catalogue-correction staged plan (`ISCO08_PRIMARY_
   CATALOGUE_RECONCILIATION.md` §6) closes.
+- **Task 22**: implemented the real, guarded local Qdrant build
+  execution for those five official collections (dual acknowledgement,
+  local-only target, no-overwrite preflight, ordered create+verify,
+  success/failure manifest) — 26 hermetic tests against fakes only, zero
+  live Qdrant/embedder use. **Still no collection built, still no
+  evaluation run, still no citable ISCO-08 accuracy number.** The build
+  itself remains gated on the same catalogue-correction staged plan
+  referenced above, plus a separate future task's explicit review and
+  authorization to actually invoke `--execute`.

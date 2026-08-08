@@ -281,13 +281,17 @@ still requires the staged plan in §6, each step separately approved.
    **Still not started.**
 3. A separately approved local Qdrant rebuild (`isco08_minor_groups`,
    `isco08_unit_groups`) from the corrected list. **Still not started —
-   but Task 21 built the runtime/builder path this step will use**: a
-   fail-closed official-catalogue loader
-   (`backend/rag/official_isco08_catalogue.py`) and a dry-run collection-
-   plan builder (`backend/rag/build_official_isco08_collections.py`),
-   see [OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md](OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md).
-   Its `--execute` path is explicitly refused pending the correction in
-   steps 1-2 and a separate approval.
+   but the runtime/builder path this step will use is now fully
+   implemented**: a fail-closed official-catalogue loader
+   (`backend/rag/official_isco08_catalogue.py`, Task 21) and a
+   collection builder (`backend/rag/build_official_isco08_collections.py`)
+   whose dry-run path shipped in Task 21 and whose real, guarded
+   `--execute` path (dual acknowledgement, local-only Qdrant, no-overwrite
+   preflight, ordered create+verify, success/failure manifest) shipped in
+   Task 22 — see [OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md](OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md).
+   Neither task ever ran `--execute` against a live Qdrant instance; a
+   future task must independently review the code and run it under its
+   own explicit approval, still pending the correction in steps 1-2.
 4. A new strict full WISCO run for both a future unit-group-only flat
    comparator and the hierarchical system. **Still not started** — Task
    21 implemented both official retrieval profiles and their distinct
