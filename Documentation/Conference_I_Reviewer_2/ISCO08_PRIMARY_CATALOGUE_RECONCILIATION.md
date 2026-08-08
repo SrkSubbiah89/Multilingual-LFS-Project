@@ -269,23 +269,33 @@ integrity-checked, non-accuracy artifact — and is not a citable ISCO-08
 accuracy result now or after this task.** Any future accuracy claim
 still requires the staged plan in §6, each step separately approved.
 
-## 6. Staged future plan (not started)
+## 6. Staged future plan
 
 1. Human review of the full mismatch list (§4, plus the complete local
    diff) and an explicit, approved decision on final accepted catalogue
    scope — including the two flagged content-misalignment ranges (§4.3).
+   **Still not started.**
 2. A dedicated source-data correction task for `backend/rag/
    load_full_isco.py`'s `_MINOR`/`_UNIT` tables, with hermetic tests,
    scoped only to applying the reviewed corrections from step 1.
+   **Still not started.**
 3. A separately approved local Qdrant rebuild (`isco08_minor_groups`,
-   `isco08_unit_groups`) from the corrected list.
+   `isco08_unit_groups`) from the corrected list. **Still not started —
+   but Task 21 built the runtime/builder path this step will use**: a
+   fail-closed official-catalogue loader
+   (`backend/rag/official_isco08_catalogue.py`) and a dry-run collection-
+   plan builder (`backend/rag/build_official_isco08_collections.py`),
+   see [OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md](OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md).
+   Its `--execute` path is explicitly refused pending the correction in
+   steps 1-2 and a separate approval.
 4. A new strict full WISCO run for both a future unit-group-only flat
-   comparator (per `FLAT_BASELINE_COVERAGE_AUDIT.md` §4's now-partially-
-   unblocked specification) and the hierarchical system.
+   comparator and the hierarchical system. **Still not started** — Task
+   21 implemented both official retrieval profiles and their distinct
+   method labels (`hierarchical_isco08_official_ilo2021_v1` /
+   `flat_isco08_official_ilo2021_v1`), but no collection exists yet for
+   either to query.
 5. A new fail-closed analysis task, structured like Task 18's
-   `eval/analyze_wisco_tier1.py`.
-
-None of these five steps were taken in this task.
+   `eval/analyze_wisco_tier1.py`. **Still not started.**
 
 ## 7. Local artifact paths (git-ignored, not committed)
 

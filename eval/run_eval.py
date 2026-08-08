@@ -155,6 +155,7 @@ from backend.agents.isic_classifier import ISICClassifier  # noqa: E402
 from backend.agents.isced_classifier import ISCEDClassifier  # noqa: E402
 from backend.agents.semantic_relation import SemanticRelationEngine  # noqa: E402
 from backend.rag.hierarchical_store import MODEL_NAME as EMBEDDING_MODEL_NAME  # noqa: E402
+from backend.rag.hierarchical_store import LEGACY_PROFILE, OFFICIAL_PROFILE_ILO2021_V1  # noqa: E402
 from backend.evaluation.evaluate import BM25Baseline  # noqa: E402
 
 _logger = logging.getLogger("eval.run_eval")
@@ -259,7 +260,8 @@ class _BM25Adapter:
 def build_system(system: str, reranker_model: Optional[str] = None, disable_keyword_map: bool = False,
                   beam: int = 2, stage1_mode: str = "description",
                   reranker_candidates: int = 5, branch_collapse: bool = False,
-                  capture_pool_metadata: bool = False, use_llm_reranker: bool = True):
+                  capture_pool_metadata: bool = False, use_llm_reranker: bool = True,
+                  isco_catalogue_profile: str = LEGACY_PROFILE):
     """Return a classifier object exposing .classify(...) for the requested
     --system value. hierarchical and flat share ISCOClassifier (same class,
     force_flat toggles the retrieval path); bm25 uses the adapter above.
@@ -285,13 +287,25 @@ def build_system(system: str, reranker_model: Optional[str] = None, disable_keyw
 
     capture_pool_metadata (B2, default False): opt-in, observational only --
     see HierarchicalISCOStore.search()'s capture_pool_metadata docstring.
-    Ignored for bm25 (no stage4 pool to capture)."""
+    Ignored for bm25 (no stage4 pool to capture).
+
+    isco_catalogue_profile (Task 21, default "legacy"): passed straight
+    through to ISCOClassifier(isco_catalogue_profile=...). "legacy" is
+    byte-identical to every prior version of this function -- existing
+    callers that omit this see zero behavioural change. A non-legacy
+    profile (e.g. "official_ilo2021_v1") makes both --system hierarchical
+    and --system flat select the versioned official collections instead
+    (flat becomes the genuine, direct, unfiltered official four-digit
+    comparator via ISCOClassifier's force_flat_only wiring -- not the
+    legacy mixed-granularity isco_occupations collection). Ignored for
+    bm25 (no ISCOClassifier is constructed for that system)."""
     common_kwargs = dict(
         llm_temperature=0.0, disable_keyword_map=disable_keyword_map,
         beam=beam, stage1_mode=stage1_mode,
         reranker_candidates=reranker_candidates,
         branch_collapse=branch_collapse,
         capture_pool_metadata=capture_pool_metadata,
+        isco_catalogue_profile=isco_catalogue_profile,
     )
     if system == "hierarchical":
         if use_llm_reranker:
@@ -806,7 +820,13 @@ def _config_hash(args: argparse.Namespace, resolved_reranker_model: str, keyword
     use_llm=True even though no LLM was constructed. Now derived from the
     actual flag, so a retrieval-only run's hash (together with
     resolved_reranker_model reporting "none (reranking disabled)" instead
-    of a model string) cannot be mistaken for a reranked run's."""
+    of a model string) cannot be mistaken for a reranked run's.
+
+    Task 21: "isco_catalogue_profile" makes legacy vs. official-catalogue
+    runs unambiguous in the manifest/config hash itself -- two runs that
+    differ only in --isco-catalogue-profile always produce different
+    hashes, so a legacy run's raw output can never be mistaken for an
+    official-profile run's by anyone reading only the config hash."""
     payload = json.dumps(
         {
             "system": args.system,
@@ -824,6 +844,7 @@ def _config_hash(args: argparse.Namespace, resolved_reranker_model: str, keyword
             "config_label": args.config,
             "sre": args.sre,
             "use_llm_reranker": args.use_llm_reranker,
+            "isco_catalogue_profile": args.isco_catalogue_profile,
         },
         sort_keys=True,
     )
@@ -958,6 +979,28 @@ def main() -> None:
             "hierarchical-with-rerank configs (Conference I Reviewer #2 "
             "response, Section E). Ignored for --system bm25 (no reranking "
             "stage exists there regardless)."
+        ),
+    )
+    parser.add_argument(
+        "--isco-catalogue-profile", choices=[LEGACY_PROFILE, OFFICIAL_PROFILE_ILO2021_V1], default=LEGACY_PROFILE,
+        help=(
+            "Task 21: which ISCO-08 catalogue/collection identity --system "
+            "hierarchical/flat use (ignored for --system bm25). Default "
+            "'legacy' is byte-identical to every prior run -- omitting this "
+            "flag changes nothing. 'official_ilo2021_v1' selects the "
+            "versioned, primary-ILO-sourced collections instead (Task 20/21) "
+            "-- --system flat becomes the genuine, direct, unfiltered "
+            "official four-digit unit-group comparator rather than the "
+            "legacy mixed-granularity isco_occupations collection, and both "
+            "systems' pred_method values are prefixed distinctly "
+            "(hierarchical_isco08_official_ilo2021_v1 / "
+            "flat_isco08_official_ilo2021_v1), never flat_semantic. Legacy "
+            "vs. official is always unambiguous in the config hash (see "
+            "_config_hash()) and in every row's pred_method -- this run's "
+            "raw output can never be mistaken for the other profile's. "
+            "Rejected immediately (fail closed) if the requested official "
+            "catalogue/collection is unavailable -- never silently falls "
+            "back to legacy."
         ),
     )
     parser.add_argument(
@@ -1161,7 +1204,26 @@ def main() -> None:
                         reranker_candidates=args.reranker_candidates,
                         branch_collapse=args.branch_collapse,
                         capture_pool_metadata=args.capture_pool_metadata,
-                        use_llm_reranker=(args.use_llm_reranker == "on"))
+                        use_llm_reranker=(args.use_llm_reranker == "on"),
+                        isco_catalogue_profile=args.isco_catalogue_profile)
+
+    # Task 21: fail closed BEFORE running any case if an official profile
+    # was explicitly requested but its collections are unavailable --
+    # never silently proceed row-by-row into a RuntimeError per case, and
+    # never silently fall back to a legacy result.
+    if (
+        args.isco_catalogue_profile != LEGACY_PROFILE
+        and args.system in ("hierarchical", "flat")
+        and getattr(clf, "_hierarchical_store", None) is None
+    ):
+        print(
+            f"ERROR: --isco-catalogue-profile={args.isco_catalogue_profile!r} was requested "
+            "but its collections are unavailable -- refusing to run (no legacy fallback "
+            "for an explicitly-requested official profile). No result CSV was written.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     resolved_reranker_model = getattr(clf, "reranker_model_resolved", "")
     keyword_map_enabled = not args.disable_keyword_map
 

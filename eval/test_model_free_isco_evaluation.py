@@ -326,7 +326,7 @@ def _hash_args(**overrides):
     base = dict(
         system="hierarchical", beam=2, stage1_mode="description",
         reranker_candidates=5, branch_collapse=False, config=None, sre="on",
-        use_llm_reranker="on",
+        use_llm_reranker="on", isco_catalogue_profile="legacy",
     )
     base.update(overrides)
     return SimpleNamespace(**base)

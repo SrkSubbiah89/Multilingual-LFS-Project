@@ -402,6 +402,22 @@ first written.
    §4.3). This requires the staged, separately-approved plan in that
    document's §6, starting with human review of the full mismatch list.
 
+**Update (Task 21): the specification below is no longer deferred — it
+is implemented, but as a dry-run-only builder gated on blocker 4 above.**
+See [OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md](OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md)
+for the full detail. In short: `backend/rag/official_isco08_catalogue.py`
+(fail-closed loader, hash/count-verified against `eval/
+verified_catalogue_counts.yaml`), `backend/rag/
+build_official_isco08_collections.py` (dry-run collection planner;
+`--execute` unconditionally refused), the five versioned collection
+names from item 1 below, direct unfiltered retrieval (item 5), a hard
+runtime four-digit assertion (item 6), and a distinct method label
+`flat_isco08_official_ilo2021_v1` (item 7, never `flat_semantic`) are
+all built and hermetically tested (item 9). **No collection has been
+built or populated** (items 8, 10 remain genuinely future work) — the
+builder's `--execute` path exists only as a CLI shape and refuses to run
+in this task, pending the catalogue correction in blocker 4.
+
 ### What such a specification will eventually need to contain (deferred, not written now)
 
 For context only — once the above blockers close, a future task's

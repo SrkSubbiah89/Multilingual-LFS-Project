@@ -108,6 +108,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -117,6 +118,7 @@ from qdrant_client.models import Distance, VectorParams
 from sentence_transformers import SentenceTransformer
 
 from backend.rag.hierarchy_engine import HierarchyBeamSearchEngine, SeedSpec, StageConfig, StageOverride
+from backend.rag.official_isco08_catalogue import PROFILE_COLLECTION_NAMES
 
 load_dotenv()
 
@@ -136,12 +138,42 @@ HITL_THRESHOLD = 0.70  # below this → human-in-the-loop review required
 # Confidence weights for the four stages
 _W1, _W2, _W3, _W4 = 0.10, 0.20, 0.20, 0.50
 
-# Collection names
+# Collection names (legacy profile -- unchanged since before Task 21)
 _COL_MAJOR    = "isco08_major_groups"
 _COL_SUBMAJOR = "isco08_submajor_groups"
 _COL_MINOR    = "isco08_minor_groups"
 _COL_UNIT     = "isco08_unit_groups"
 _COL_FLAT     = "isco_occupations"  # fallback
+
+# Task 21: profile support. LEGACY_PROFILE (the default) preserves the
+# exact module-level constants above -- every existing caller that omits
+# `profile=` sees byte-identical collection names and behaviour to
+# before this task. OFFICIAL_PROFILE_ILO2021_V1 points at the versioned,
+# primary-ILO-sourced collections (Task 20/21) instead, including its
+# OWN flat collection (isco08_unit_groups_flat_ilo2021_v1) -- an official
+# profile never falls back to the legacy, mixed-granularity
+# `isco_occupations` collection, so a caller can never receive a
+# legacy-sourced result while believing they selected the official
+# profile.
+LEGACY_PROFILE = "legacy"
+OFFICIAL_PROFILE_ILO2021_V1 = "official_ilo2021_v1"
+
+_PROFILE_COLLECTIONS: dict[str, dict[str, str]] = {
+    LEGACY_PROFILE: {
+        "major": _COL_MAJOR, "submajor": _COL_SUBMAJOR,
+        "minor": _COL_MINOR, "unit": _COL_UNIT, "flat": _COL_FLAT,
+    },
+    **{profile: names for profile, names in PROFILE_COLLECTION_NAMES.items()},
+}
+
+
+class UnknownISCOCatalogueProfileError(Exception):
+    """Raised by HierarchicalISCOStore.__init__ when an unrecognized
+    `profile` is requested -- fail closed rather than silently falling
+    back to the legacy collection names."""
+
+
+_ISCO4_RE = re.compile(r"^[0-9]{4}$")
 
 # Task 13: bounded Qdrant request timeout. Finite and conservative by
 # default -- the Task 12 full WISCO run observed individual stage queries
@@ -258,6 +290,7 @@ class HierarchicalISCOStore:
         host: Optional[str] = None,
         port: Optional[int] = None,
         timeout_seconds: Optional[int] = None,
+        profile: str = LEGACY_PROFILE,
     ) -> None:
         """
         Parameters
@@ -272,32 +305,59 @@ class HierarchicalISCOStore:
             ``_resolve_qdrant_timeout_seconds()``. This bounds how long a
             single Qdrant request can block; it does not change what a
             successful or failed query means to the rest of this class.
+        profile : str, default "legacy"
+            Task 21: which set of Qdrant collection names to use.
+            ``"legacy"`` (default) is byte-identical to every prior
+            version of this class -- existing callers that omit this
+            parameter see zero behavioural change. ``"official_ilo2021_v1"``
+            (see ``OFFICIAL_PROFILE_ILO2021_V1``) points at the versioned,
+            primary-ILO-sourced collections instead, including a
+            dedicated official flat collection
+            (``isco08_unit_groups_flat_ilo2021_v1``) used for THIS
+            profile's own fallback -- an official profile never falls
+            back to the legacy ``isco_occupations`` collection. An
+            unrecognized profile raises ``UnknownISCOCatalogueProfileError``
+            immediately (fail closed; never silently falls back to
+            legacy collection names).
         """
+        if profile not in _PROFILE_COLLECTIONS:
+            raise UnknownISCOCatalogueProfileError(
+                f"profile {profile!r} is not a known ISCO-08 catalogue profile; "
+                f"known profiles: {sorted(_PROFILE_COLLECTIONS)}"
+            )
+        self.profile = profile
+        _cols = _PROFILE_COLLECTIONS[profile]
+        col_major, col_submajor, col_minor, col_unit, col_flat = (
+            _cols["major"], _cols["submajor"], _cols["minor"], _cols["unit"], _cols["flat"],
+        )
+
         _host = host or os.getenv("QDRANT_HOST", "localhost")
         _port = int(port or os.getenv("QDRANT_PORT", 6333))
         _timeout = timeout_seconds if timeout_seconds is not None else _resolve_qdrant_timeout_seconds()
 
         self._client = QdrantClient(host=_host, port=_port, timeout=_timeout)
         self._model  = SentenceTransformer(MODEL_NAME)
+        self._col_flat = col_flat
 
         # Pre-check which collections exist so we know upfront whether to
         # run the hierarchical pipeline or fall back immediately.
         existing = {c.name for c in self._client.get_collections().collections}
         self._hierarchical_ready = all(
             col in existing
-            for col in (_COL_MAJOR, _COL_SUBMAJOR, _COL_MINOR, _COL_UNIT)
+            for col in (col_major, col_submajor, col_minor, col_unit)
         )
-        self._flat_ready = _COL_FLAT in existing
+        self._flat_ready = col_flat in existing
 
         if not self._hierarchical_ready:
             _logger.warning(
-                "HierarchicalISCOStore: one or more hierarchical Qdrant collections "
-                "are missing (%s). Will fall back to flat search on '%s'.",
+                "HierarchicalISCOStore(profile=%r): one or more hierarchical Qdrant "
+                "collections are missing (%s). Will fall back to flat search on '%s'.",
+                profile,
                 ", ".join(
-                    c for c in (_COL_MAJOR, _COL_SUBMAJOR, _COL_MINOR, _COL_UNIT)
+                    c for c in (col_major, col_submajor, col_minor, col_unit)
                     if c not in existing
                 ),
-                _COL_FLAT,
+                col_flat,
             )
 
         # Generic beam-search engine, configured with ISCO's 4 stages and
@@ -305,13 +365,15 @@ class HierarchicalISCOStore:
         # below is a thin translator between this store's public
         # HierarchicalResult and the engine's stage-count-agnostic
         # EngineResult -- the actual beam-search logic lives in the engine.
+        # Same engine class for every profile (Task 21 adapts collection
+        # names only; it does not implement a new search algorithm).
         self._engine = HierarchyBeamSearchEngine(
             client=self._client,
             stages=[
-                StageConfig(name="major", collection=_COL_MAJOR, weight=_W1),
-                StageConfig(name="submajor", collection=_COL_SUBMAJOR, weight=_W2),
-                StageConfig(name="minor", collection=_COL_MINOR, weight=_W3),
-                StageConfig(name="unit", collection=_COL_UNIT, weight=_W4),
+                StageConfig(name="major", collection=col_major, weight=_W1),
+                StageConfig(name="submajor", collection=col_submajor, weight=_W2),
+                StageConfig(name="minor", collection=col_minor, weight=_W3),
+                StageConfig(name="unit", collection=col_unit, weight=_W4),
             ],
             hitl_threshold=HITL_THRESHOLD,
         )
@@ -604,18 +666,20 @@ class HierarchicalISCOStore:
         trace: Optional[dict] = None,
     ) -> HierarchicalResult:
         """
-        Search the flat ``isco_occupations`` collection and wrap the result
-        as a ``HierarchicalResult`` so callers get a consistent return type.
+        Search this store's profile-resolved flat collection (legacy:
+        ``isco_occupations``; official: ``isco08_unit_groups_flat_ilo2021_v1``)
+        and wrap the result as a ``HierarchicalResult`` so callers get a
+        consistent return type.
         """
         if not self._flat_ready:
             _logger.error(
-                "HierarchicalISCOStore: neither hierarchical collections nor "
-                "flat '%s' collection is available.",
-                _COL_FLAT,
+                "HierarchicalISCOStore(profile=%r): neither hierarchical "
+                "collections nor flat '%s' collection is available.",
+                self.profile, self._col_flat,
             )
             return self._empty_result()
 
-        hits = self._query(collection=_COL_FLAT, query_vec=query_vec, limit=top_k)
+        hits = self._query(collection=self._col_flat, query_vec=query_vec, limit=top_k)
         if not hits:
             return self._empty_result()
         if trace is not None:
@@ -646,6 +710,25 @@ class HierarchicalISCOStore:
         ]
 
         code = p.get("code", "")
+
+        # Task 21: an official profile's flat collection is built to
+        # contain ONLY 4-digit unit-group codes (unlike the legacy,
+        # intentionally mixed-granularity `isco_occupations` collection,
+        # which may legitimately return a coarser code -- see
+        # Documentation/Conference_I_Reviewer_2/FLAT_BASELINE_COVERAGE_AUDIT.md).
+        # This is a defensive runtime check, not expected to ever fire in
+        # practice given the builder's own guarantees, but the official
+        # flat profile must never silently return a coarse code as if it
+        # were a genuine four-digit prediction.
+        if self.profile != LEGACY_PROFILE and not _ISCO4_RE.match(code):
+            _logger.error(
+                "HierarchicalISCOStore(profile=%r): flat collection '%s' returned "
+                "a non-4-digit candidate code %r; refusing to report it as a "
+                "genuine official flat prediction.",
+                self.profile, self._col_flat, code,
+            )
+            return self._empty_result()
+
         hierarchy_path = _infer_path(code)
 
         return HierarchicalResult(
@@ -689,7 +772,7 @@ class HierarchicalISCOStore:
         (_W1 * s1_score + ...) without separate rescaling -- summing
         would blow past 1.0 for any major group with several hits.
         """
-        hits = self._query(collection=_COL_UNIT, query_vec=query_vec, limit=top_n)
+        hits = self._query(collection=self._engine.stages[-1].collection, query_vec=query_vec, limit=top_n)
         if not hits:
             return []
 
@@ -749,6 +832,28 @@ class HierarchicalISCOStore:
     # ------------------------------------------------------------------
     # Sentinel
     # ------------------------------------------------------------------
+
+    def search_flat_only(
+        self,
+        query: str,
+        top_k: int = 5,
+        trace: Optional[dict] = None,
+    ) -> HierarchicalResult:
+        """
+        Task 21: bypass the hierarchical stages entirely and query only
+        this store's profile-resolved flat collection directly -- reuses
+        the existing ``_flat_search``/``_embed_query`` implementations
+        unchanged (no new retrieval algorithm). For the official profile
+        this queries ONLY ``isco08_unit_groups_flat_ilo2021_v1`` (never
+        the legacy ``isco_occupations`` collection); for the legacy
+        profile it reproduces the legacy flat-fallback collection's
+        existing behaviour, standalone.
+        """
+        query = query.strip()
+        if not query:
+            return self._empty_result()
+        query_vec = self._embed_query(query)
+        return self._flat_search(query_vec, top_k=top_k, trace=trace)
 
     @staticmethod
     def _empty_result() -> HierarchicalResult:

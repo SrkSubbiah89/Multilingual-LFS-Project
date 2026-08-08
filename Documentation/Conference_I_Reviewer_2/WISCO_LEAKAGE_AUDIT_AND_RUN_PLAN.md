@@ -459,3 +459,34 @@ attempted, it should be run with `--require-genuine-hierarchical` (and a
 considered `--max-stage-latency-ms`) so any remaining integrity problem
 is caught immediately rather than discovered only after a multi-hour run
 completes, as happened in Task 12.
+
+## Post-execution update: Tasks 15-21 — full run completed, but catalogue found non-standard, official runtime now implemented
+
+- **Task 15/17**: the Task 13 fix was verified at scale (524-case
+  preflight, then a full 18,747-case strict run) with **zero silent
+  fallbacks and zero strict-guard violations**. `TIER1_STRICT_COMPLETED:
+  yes` — the run described above as "still not run to completion" *has
+  now completed*, cleanly, on the legacy `isco_occupations`/
+  `isco08_unit_groups` collections.
+- **Task 18**: the first attempt to *score* that completed run
+  (`eval/analyze_wisco_tier1.py`) correctly refused, closed, with zero
+  accuracy output — the legacy flat baseline's raw predictions are not
+  all four-digit codes by design (`FLAT_BASELINE_COVERAGE_AUDIT.md`).
+- **Task 19/20**: root-caused that refusal and, going further, found via
+  a primary ILO source import that this project's own `isco08_unit_groups`
+  catalogue itself has 20 non-standard codes, is missing 14 real ones,
+  and has 84 title mismatches relative to the true ISCO-08 standard
+  (`ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md`) — so even a
+  hypothetical four-digit-only rerun of the *legacy* hierarchical
+  collection would not be standard-compliant accuracy evidence.
+- **Task 21**: implemented the official-source runtime path and a
+  genuine, separately-named, four-digit-only flat comparator
+  (`OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md`) against the
+  *verified* ILO catalogue — but built no collection and ran no
+  evaluation. **No Step 7B run — legacy or official — has produced a
+  citable ISCO-08 accuracy number as of Task 21.** The next WISCO run
+  this document's Phase D/E commands describe should target
+  `--isco-catalogue-profile official_ilo2021_v1` once a collection
+  exists, not the legacy profile these commands were originally written
+  for, once the catalogue-correction staged plan (`ISCO08_PRIMARY_
+  CATALOGUE_RECONCILIATION.md` §6) closes.

@@ -805,7 +805,7 @@ def test_compute_k_config_hash_matches_run_eval_config_hash_mechanism():
     from types import SimpleNamespace as SNS
     fake_args = SNS(system="hierarchical", beam=3, stage1_mode="leaf_vote",
                      reranker_candidates=5, branch_collapse=False, config="label",
-                     sre="on", use_llm_reranker="on")
+                     sre="on", use_llm_reranker="on", isco_catalogue_profile="legacy")
     expected = ds.run_eval._config_hash(fake_args, "ollama/llama3.2:latest", False)
     actual = ds.compute_k_config_hash(5, "ollama/llama3.2:latest", False, 3, "leaf_vote", "label")
     assert actual == expected

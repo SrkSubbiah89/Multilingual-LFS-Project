@@ -665,11 +665,18 @@ def compute_k_config_hash(k: int, resolved_reranker_model: str, keyword_map_enab
     #2 Section E for ablation support) and always runs with both at their
     true default ("on"), matching run_one_case()'s own default behaviour
     (sre_enabled=True, use_llm_reranker=True) -- this is what every B2
-    sweep case actually ran with, not an approximation."""
+    sweep case actually ran with, not an approximation.
+
+    isco_catalogue_profile="legacy": Task 21 added this field to
+    run_eval._config_hash()'s payload (same integration-seam pattern as
+    the sre/use_llm_reranker fix above -- see git history). B2's K-sweep
+    predates Task 21 and always ran against the legacy ISCO-08 catalogue
+    (isco_catalogue_profile did not exist yet), so "legacy" is what every
+    B2 sweep case actually ran with, not an approximation."""
     fake_args = SimpleNamespace(
         system="hierarchical", beam=beam, stage1_mode=stage1_mode,
         reranker_candidates=k, branch_collapse=False, config=config_label,
-        sre="on", use_llm_reranker="on",
+        sre="on", use_llm_reranker="on", isco_catalogue_profile="legacy",
     )
     return run_eval._config_hash(fake_args, resolved_reranker_model, keyword_map_enabled)
 

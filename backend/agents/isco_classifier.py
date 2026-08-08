@@ -56,6 +56,8 @@ from pydantic import BaseModel
 from backend.llm import TaskType, get_llm, get_llm_strict
 from backend.rag import OccupationMatch, get_vector_store
 from backend.rag.hierarchical_store import (
+    LEGACY_PROFILE,
+    HierarchicalISCOStore,
     HierarchicalResult,
     UnitCandidate,
     get_hierarchical_store,
@@ -462,6 +464,7 @@ class ISCOClassifier:
         branch_collapse: bool = False,
         capture_pool_metadata: bool = False,
         enable_llm: bool = True,
+        isco_catalogue_profile: str = LEGACY_PROFILE,
     ) -> None:
         """
         Parameters
@@ -552,6 +555,24 @@ class ISCOClassifier:
             the evaluation harness's genuinely retrieval-only runs
             (eval/run_eval.py --use-llm-reranker off), which must not
             initialise an LLM at all, not just skip calling it.
+        isco_catalogue_profile : str, default "legacy"
+            Task 21: which ISCO-08 catalogue/collection identity to use.
+            ``"legacy"`` (default) is byte-identical to every prior
+            version of this class -- existing callers that omit this
+            parameter see zero behavioural change, including continuing
+            to share the module-level ``get_hierarchical_store()``
+            singleton. ``"official_ilo2021_v1"`` constructs a dedicated
+            (non-singleton) ``HierarchicalISCOStore(profile=...)``
+            pointed at the versioned, primary-ILO-sourced collections
+            (Task 20/21) instead, and every resulting ``method`` string
+            is prefixed distinctly (``hierarchical_isco08_official_ilo2021_v1``
+            / ``flat_isco08_official_ilo2021_v1`` / an explicit
+            ``unavailable_isco08_official_ilo2021_v1`` sentinel) --
+            never ``flat_semantic``, and never silently reported as
+            legacy retrieval. Combine with ``force_flat=True`` to force
+            direct, unfiltered retrieval against only the official flat
+            four-digit unit-group collection (the "full-unit-group flat
+            comparator"), bypassing hierarchical beam search entirely.
         """
         self._disable_keyword_map   = disable_keyword_map
         self._beam                  = beam
@@ -565,31 +586,54 @@ class ISCOClassifier:
         self._llm_temperature       = llm_temperature
         self._reranker_model_pin    = reranker_model
         self.reranker_model_resolved = ""
+        self._isco_catalogue_profile = isco_catalogue_profile
+        # Task 21: force_flat_only means "call search_flat_only() on the
+        # official-profile HierarchicalISCOStore" -- distinct from the
+        # legacy force_flat=True path (self._flat_store, legacy VectorStore).
+        self._force_flat_only       = False
 
-        # Stage 1a: hierarchical vector store (preferred, unless force_flat)
-        if not force_flat:
+        if isco_catalogue_profile != LEGACY_PROFILE:
+            # Official (or any future non-legacy) profile: always a
+            # dedicated, non-singleton store -- never shares state with
+            # legacy callers via get_hierarchical_store(), and never
+            # falls back to the legacy flat VectorStore/isco_occupations
+            # collection (see hierarchical_store.py's profile-aware
+            # _flat_search / no-silent-fallback design).
             try:
-                self._hierarchical_store = get_hierarchical_store()
+                self._hierarchical_store = HierarchicalISCOStore(profile=isco_catalogue_profile)
+                self._force_flat_only = force_flat
             except Exception as exc:
                 _logger.warning(
-                    "ISCOClassifier: hierarchical store unavailable (%s). "
-                    "Will attempt flat store instead.",
-                    exc,
-                )
-
-        # Stage 1b: flat vector store (fallback when hierarchical store fails
-        # to initialise entirely — e.g. Qdrant completely unreachable — or
-        # when force_flat=True was requested explicitly)
-        if self._hierarchical_store is None:
-            try:
-                self._flat_store = get_vector_store()
-            except Exception as exc:
-                _logger.warning(
-                    "ISCOClassifier: flat vector store also unavailable (%s). "
-                    "ISCO classification will be unavailable until Qdrant is reachable.",
-                    exc,
+                    "ISCOClassifier: official ISCO-08 profile %r unavailable (%s). "
+                    "No legacy fallback is used for a non-legacy profile.",
+                    isco_catalogue_profile, exc,
                 )
                 return  # no point loading LLM if there is no store at all
+        else:
+            # Stage 1a: hierarchical vector store (preferred, unless force_flat)
+            if not force_flat:
+                try:
+                    self._hierarchical_store = get_hierarchical_store()
+                except Exception as exc:
+                    _logger.warning(
+                        "ISCOClassifier: hierarchical store unavailable (%s). "
+                        "Will attempt flat store instead.",
+                        exc,
+                    )
+
+            # Stage 1b: flat vector store (fallback when hierarchical store
+            # fails to initialise entirely — e.g. Qdrant completely
+            # unreachable — or when force_flat=True was requested explicitly)
+            if self._hierarchical_store is None:
+                try:
+                    self._flat_store = get_vector_store()
+                except Exception as exc:
+                    _logger.warning(
+                        "ISCOClassifier: flat vector store also unavailable (%s). "
+                        "ISCO classification will be unavailable until Qdrant is reachable.",
+                        exc,
+                    )
+                    return  # no point loading LLM if there is no store at all
 
         # Stage 2: LLM agent for re-ranking
         if not enable_llm:
@@ -740,16 +784,28 @@ class ISCOClassifier:
         ).strip()
         enriched_query = f"{job_title} {context_clean}".strip() if context_clean else job_title
 
-        h: HierarchicalResult = self._hierarchical_store.search(
-            enriched_query, top_k=top_k, major_hint=major_hint,
-            beam=self._beam, stage1_mode=self._stage1_mode,
-            reranker_candidates=self._reranker_candidates,
-            branch_collapse=self._branch_collapse,
-            capture_pool_metadata=self._capture_pool_metadata, trace=trace,
-        )
+        is_official_profile = self._isco_catalogue_profile != LEGACY_PROFILE
+
+        if self._force_flat_only:
+            # Task 21: official full-unit-group flat comparator -- direct,
+            # unfiltered retrieval only, no hierarchy beam/parent filter.
+            h: HierarchicalResult = self._hierarchical_store.search_flat_only(
+                enriched_query, top_k=top_k, trace=trace,
+            )
+        else:
+            h = self._hierarchical_store.search(
+                enriched_query, top_k=top_k, major_hint=major_hint,
+                beam=self._beam, stage1_mode=self._stage1_mode,
+                reranker_candidates=self._reranker_candidates,
+                branch_collapse=self._branch_collapse,
+                capture_pool_metadata=self._capture_pool_metadata, trace=trace,
+            )
 
         if not h.code:
-            return self._empty_result(job_title, lang)
+            unavailable_method = (
+                f"unavailable_isco08_{self._isco_catalogue_profile}" if is_official_profile else None
+            )
+            return self._empty_result(job_title, lang, method=unavailable_method)
 
         primary_match = ISCOMatch(
             code=h.code,
@@ -769,6 +825,14 @@ class ISCOClassifier:
         ]
 
         method_prefix = "flat" if h.fallback_used else "hierarchical"
+        # Task 21: an official profile's method label is always
+        # "{prefix}_isco08_{profile}" (e.g. "hierarchical_isco08_official_ilo2021_v1"
+        # / "flat_isco08_official_ilo2021_v1") -- one label per
+        # hierarchical-vs-flat state, regardless of whether the LLM fired
+        # (reranker_fired in trace/instrumentation still records that
+        # separately). This never emits "flat_semantic"/"hierarchical_semantic"
+        # and is never conflated with the legacy label scheme.
+        official_method = f"{method_prefix}_isco08_{self._isco_catalogue_profile}" if is_official_profile else None
 
         # Fast path: unambiguous — skip LLM
         if h.confidence >= _HIGH_CONFIDENCE_THRESHOLD:
@@ -779,7 +843,7 @@ class ISCOClassifier:
                 language=lang,
                 primary=primary_match,
                 alternatives=alternatives,
-                method=f"{method_prefix}_semantic",
+                method=official_method or f"{method_prefix}_semantic",
                 stage_confidences=h.stage_confidences,
                 hierarchy_path=h.hierarchy_path,
                 hitl_required=h.hitl_required,
@@ -818,7 +882,7 @@ class ISCOClassifier:
                 for c in h.top_candidates[:3]
                 if c.code != primary_match.code
             ][:2]
-            method = f"{method_prefix}_llm"
+            method = official_method or f"{method_prefix}_llm"
         else:
             if trace is not None:
                 trace["reranker_fired"] = False
@@ -827,7 +891,7 @@ class ISCOClassifier:
                 f"(score {h.confidence:.2%})"
                 + ("; LLM agent unavailable." if not self._agent_available else ".")
             )
-            method = f"{method_prefix}_semantic"
+            method = official_method or f"{method_prefix}_semantic"
 
         # Re-evaluate hitl after potential LLM reselection
         hitl = primary_match.confidence < HITL_THRESHOLD
@@ -1128,9 +1192,19 @@ class ISCOClassifier:
 
     @staticmethod
     def _empty_result(
-        job_title: str = "", lang: str = "other"
+        job_title: str = "", lang: str = "other", method: Optional[str] = None,
     ) -> ISCOClassification:
-        """Return a safe sentinel when no candidates are available."""
+        """Return a safe sentinel when no candidates are available.
+
+        `method` : str, optional
+            Task 21: override the sentinel's `method` label. Existing
+            callers that omit this (default None) get the exact prior
+            behaviour, `"flat_semantic"` -- an official profile passes an
+            explicit `unavailable_isco08_{profile}` label instead, so a
+            missing/unavailable official collection is never silently
+            reported as `flat_semantic` (which would look like a legacy
+            flat *result*, not an explicit unavailability).
+        """
         placeholder = ISCOMatch(
             code="",
             title_en="Unknown",
@@ -1142,7 +1216,7 @@ class ISCOClassifier:
             language=lang,
             primary=placeholder,
             alternatives=[],
-            method="flat_semantic",
+            method=method or "flat_semantic",
             stage_confidences=None,
             hierarchy_path=None,
             hitl_required=True,
