@@ -478,6 +478,19 @@ class CaseResult:
     timed_out_flag: bool = False       # reranker_error signature matched a timeout (see run_one_case())
     peak_memory_mb: Optional[float] = None
 
+    # Task 13: keyword-anchor recovery metadata (backend/rag/hierarchical_store.py
+    # ::_hierarchical_search()). False/blank for every case that didn't use a
+    # keyword major_hint at all, or whose keyword-anchored search succeeded on
+    # the first attempt -- unchanged from prior behaviour for those cases.
+    # True only when the keyword anchor reached no complete hierarchical path
+    # and the store retried once, unseeded, before this row's final
+    # pred_method/stage evidence were recorded. See stage1_source for what the
+    # FINAL winning attempt actually was ("semantic_retrieval" after a retry,
+    # "keyword_map" when the anchor succeeded outright) -- this field is
+    # deliberately separate so a retry is never conflated with stage1_source.
+    keyword_anchor_retry_used: bool = False
+    keyword_anchor_original_hint: str = ""
+
     # Conference I Reviewer #2, Step 4 (evaluation-readiness dry-run pass).
     # "measured" for every real run (default, unchanged for every existing
     # caller). --dry-run sets this to "dry_run_not_measured" on every row it
@@ -573,6 +586,8 @@ def run_one_case(
     result.pred_reasoning = clf_result.reasoning
 
     result.stage1_source = trace.get("stage1_source", "")
+    result.keyword_anchor_retry_used = bool(trace.get("keyword_anchor_retry", False))
+    result.keyword_anchor_original_hint = trace.get("keyword_anchor_original_hint", "")
     result.stage1_candidates = json.dumps(trace.get("stage1", []), ensure_ascii=False)
     result.stage2_candidates = json.dumps(trace.get("stage2", []), ensure_ascii=False)
     result.stage3_candidates = json.dumps(trace.get("stage3", []), ensure_ascii=False)
@@ -728,6 +743,50 @@ def run_one_case(
     result.escalation_reason = ";".join(reasons)
 
     return result
+
+
+# Genuine hierarchical method labels ISCOClassifier ever returns for
+# --system hierarchical (see backend/agents/isco_classifier.py's
+# method_prefix = "flat" if h.fallback_used else "hierarchical"). Anything
+# else recorded in pred_method for a hierarchical-system row means the
+# flat fallback fired for that case.
+_GENUINE_HIERARCHICAL_METHOD_PREFIX = "hierarchical_"
+
+
+def check_strict_hierarchical(result: CaseResult, max_stage_latency_ms: Optional[float]) -> Optional[str]:
+    """Task 13 --require-genuine-hierarchical guard. Purely evaluative --
+    never mutates *result* or reinterprets its fields. Returns None when
+    the case is genuine, non-fallback, complete 4-stage hierarchical
+    retrieval (within the optional latency bound); otherwise returns a
+    human-readable reason naming exactly what failed, for the caller to
+    abort the run on."""
+    if not result.pred_method.startswith(_GENUINE_HIERARCHICAL_METHOD_PREFIX):
+        return (
+            f"case_id={result.case_id}: pred_method={result.pred_method!r} is not a "
+            f"genuine hierarchical method -- the flat fallback fired for this case"
+        )
+
+    for stage_num in (1, 2, 3, 4):
+        raw = getattr(result, f"stage{stage_num}_candidates", "")
+        if not raw or raw == "null":
+            return f"case_id={result.case_id}: stage{stage_num}_candidates is missing/empty"
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return f"case_id={result.case_id}: stage{stage_num}_candidates is not valid JSON"
+        if not isinstance(parsed, list) or not parsed:
+            return f"case_id={result.case_id}: stage{stage_num}_candidates has no entries"
+
+    if max_stage_latency_ms is not None:
+        for stage_num in (1, 2, 3, 4):
+            latency = getattr(result, f"stage{stage_num}_latency_ms", None)
+            if latency is not None and latency > max_stage_latency_ms:
+                return (
+                    f"case_id={result.case_id}: stage{stage_num}_latency_ms={latency} "
+                    f"exceeds --max-stage-latency-ms={max_stage_latency_ms}"
+                )
+
+    return None
 
 
 def _config_hash(args: argparse.Namespace, resolved_reranker_model: str, keyword_map_enabled: bool) -> str:
@@ -941,6 +1000,37 @@ def main() -> None:
             "a real, compute/API-consuming run."
         ),
     )
+    parser.add_argument(
+        "--require-genuine-hierarchical", action="store_true",
+        help=(
+            "Task 13: strict evaluation-only guard. Valid only with "
+            "--system hierarchical (rejected otherwise). Checks every case "
+            "immediately after classification -- a non-hierarchical "
+            "pred_method (fallback_used), missing/empty stage 1-4 evidence, "
+            "or (with --max-stage-latency-ms) an exceeded stage-latency "
+            "threshold aborts the run at once, non-zero exit, with NO "
+            "result CSV written -- so a run containing even one fallback or "
+            "stalled case can never be mistaken for complete, valid "
+            "hierarchical benchmark evidence. Never hides, retries, or "
+            "reinterprets a fallback as a successful hierarchical "
+            "prediction. Omitted by default -- ordinary runs are completely "
+            "unaffected and keep writing their CSV with explicit fallback "
+            "labelling as before."
+        ),
+    )
+    parser.add_argument(
+        "--max-stage-latency-ms", type=float, default=None,
+        help=(
+            "Task 13: opt-in: only checked when --require-genuine-hierarchical "
+            "is also passed; has no effect otherwise. Must be a positive "
+            "number (rejected if zero/negative). If any case's recorded "
+            "stage1_latency_ms..stage4_latency_ms exceeds this value, the "
+            "strict guard aborts the run naming the exact stage and observed "
+            "value. This is a guard against unrepresentative stalled timing "
+            "data (see Task 12's report) -- it does not prove what caused "
+            "any particular stall."
+        ),
+    )
     args = parser.parse_args()
     if args.config is None:
         args.config = args.system
@@ -958,6 +1048,16 @@ def main() -> None:
             "'anthropic/claude-3-5-sonnet-20241022' to match the paper. "
             "Pass --use-llm-reranker off for a genuinely retrieval-only "
             "run that needs no reranker model at all."
+        )
+
+    if args.require_genuine_hierarchical and args.system != "hierarchical":
+        parser.error(
+            "--require-genuine-hierarchical is valid only with --system hierarchical "
+            f"(got --system {args.system!r})."
+        )
+    if args.max_stage_latency_ms is not None and args.max_stage_latency_ms <= 0:
+        parser.error(
+            f"--max-stage-latency-ms must be a positive number (got {args.max_stage_latency_ms!r})."
         )
 
     if not args.test_set.exists():
@@ -1122,6 +1222,21 @@ def main() -> None:
             sre_enabled=(args.sre == "on"),
             use_llm_reranker=(args.use_llm_reranker == "on"),
         )
+
+        if args.require_genuine_hierarchical:
+            violation = check_strict_hierarchical(r, args.max_stage_latency_ms)
+            if violation is not None:
+                print(
+                    f"\nSTRICT GUARD FAILURE (--require-genuine-hierarchical): {violation}",
+                    file=sys.stderr,
+                )
+                print(
+                    "Aborting immediately -- no result CSV written. This run cannot "
+                    "be used as genuine hierarchical benchmark evidence.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
         results.append(r)
         status = "ERROR" if r.error and not r.pred_isco_4digit else "ok"
         print(
