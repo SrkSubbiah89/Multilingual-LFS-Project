@@ -36,12 +36,93 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+import httpx
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from backend.rag.candidate_pool import pool_and_rank_candidates
 
 _logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Task 27: bounded, opt-in Qdrant query retry configuration
+# ---------------------------------------------------------------------------
+#
+# Task 24 and Task 26 each independently observed exactly one transient
+# Qdrant query failure during an otherwise-clean ~18,700-case sustained
+# run (Task 24: the official flat collection; Task 26: the official
+# major-groups collection at hierarchical stage 1). Both were logged by
+# HierarchyBeamSearchEngine._query()'s existing except-block with message
+# text ending "failed: timed out". Neither incident's server/network root
+# cause is known or claimed here -- this module only makes the *class* of
+# failure retryable, narrowly and transparently, never masks it.
+#
+# Default is UNCHANGED behaviour: exactly one attempt, no retry, no
+# backoff -- byte-for-byte identical to every prior caller that does not
+# opt in.
+DEFAULT_MAX_QUERY_ATTEMPTS = 1
+
+# Hard upper bound enforced in code (see HierarchyBeamSearchEngine.__init__
+# and _resolve_max_query_attempts()). Justified in
+# Documentation/AI_HANDOFF/CLAUDE_TASK_27_FINAL_REPORT.md: 1 initial
+# attempt + at most 2 retries. A transient client-side timeout is either
+# gone within a couple of attempts or reflects a real outage a bounded
+# retry cannot paper over; a benchmark run over ~18,700 cases must not
+# risk an unbounded or large per-case multiplier if timeouts turn out to
+# be correlated (e.g. sustained server-side load) rather than independent.
+MAX_QUERY_ATTEMPTS_HARD_CAP = 3
+
+# Default is UNCHANGED behaviour: zero backoff (only relevant once
+# max_query_attempts > 1, which is itself opt-in).
+DEFAULT_RETRY_BACKOFF_SECONDS = 0.0
+
+# Hard upper bound enforced in code. A bounded, small, fixed backoff --
+# not exponential, not unbounded -- so a worst-case retried case adds at
+# most (MAX_QUERY_ATTEMPTS_HARD_CAP - 1) * MAX_RETRY_BACKOFF_SECONDS to
+# its own latency, never to the whole run's structure.
+MAX_RETRY_BACKOFF_SECONDS_HARD_CAP = 2.0
+
+
+def _is_retryable_exception(exc: BaseException) -> bool:
+    """
+    Task 27: strict, type-based (never message-substring-based) retry
+    eligibility check for the exact exception taxonomy the installed
+    qdrant-client (1.17.0, REST/httpx transport -- no grpc client is
+    constructed anywhere in this codebase, confirmed by inspection) can
+    raise from a read-only query call:
+
+    - ``httpx.TimeoutException`` (and its subclasses ConnectTimeout /
+      ReadTimeout / WriteTimeout / PoolTimeout) directly, if a future
+      call path ever surfaces one unwrapped.
+    - ``qdrant_client.http.exceptions.ResponseHandlingException``, but
+      ONLY when its wrapped ``.source`` cause (qdrant_client's own
+      ``ApiClient.send_inner()`` wraps *any* exception the underlying
+      httpx client raises, including a successfully-parsed-but-
+      schema-invalid response's ``pydantic.ValidationError`` -- see
+      Task 27's final report for the full audited call path) is itself
+      an ``httpx.TimeoutException``. A ``ResponseHandlingException``
+      wrapping anything else (a parse/validation error, a connection
+      reset, etc.) is deliberately NOT retried -- retrying a malformed-
+      response or non-timeout transport failure would not plausibly
+      help and could mask a real data/schema defect.
+
+    Explicitly NOT retryable (fails closed, single attempt, existing
+    behaviour): ``qdrant_client.http.exceptions.UnexpectedResponse``
+    (any non-2xx HTTP status -- programmer/validation/auth errors),
+    ``ResourceExhaustedResponse`` (HTTP 429 rate-limiting -- a different
+    signal than a timeout, out of this task's narrow scope), any other
+    ``ApiException`` subclass, and any exception type not named above,
+    including bare ``Exception``.
+    """
+    if isinstance(exc, httpx.TimeoutException):
+        return True
+    if isinstance(exc, ResponseHandlingException):
+        source = getattr(exc, "source", None)
+        if isinstance(source, httpx.TimeoutException):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -114,16 +195,55 @@ class HierarchyBeamSearchEngine:
         client: QdrantClient,
         stages: list[StageConfig],
         hitl_threshold: float,
+        max_query_attempts: int = DEFAULT_MAX_QUERY_ATTEMPTS,
+        retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
     ) -> None:
+        """
+        max_query_attempts : int, default 1 (Task 27)
+            Total attempts (including the first) for a single Qdrant
+            query call before it is treated as failed. 1 (the default)
+            reproduces prior behaviour exactly -- no retry loop runs at
+            all. Must be an int in [1, MAX_QUERY_ATTEMPTS_HARD_CAP]
+            (currently 3); any other value raises ValueError immediately
+            at construction -- fail closed on explicit misuse, mirroring
+            UnknownISCOCatalogueProfileError's precedent in
+            hierarchical_store.py. (Ambient environment misconfiguration
+            -- QDRANT_QUERY_MAX_ATTEMPTS -- is handled separately by
+            hierarchical_store._resolve_max_query_attempts(), which
+            fails SAFE to the default instead of raising, matching
+            _resolve_qdrant_timeout_seconds()'s existing precedent.)
+        retry_backoff_seconds : float, default 0.0 (Task 27)
+            Fixed (never exponential, never unbounded) delay between
+            attempts, only ever consulted when max_query_attempts > 1.
+            Must be a number in [0, MAX_RETRY_BACKOFF_SECONDS_HARD_CAP]
+            (currently 2.0); any other value raises ValueError
+            immediately at construction.
+        """
         if len(stages) < 2:
             raise ValueError(
                 "HierarchyBeamSearchEngine requires at least 2 stages "
                 f"(got {len(stages)}); every stage after the first needs a "
                 "parent to filter on."
             )
+        if not isinstance(max_query_attempts, int) or isinstance(max_query_attempts, bool) or not (
+            1 <= max_query_attempts <= MAX_QUERY_ATTEMPTS_HARD_CAP
+        ):
+            raise ValueError(
+                f"max_query_attempts must be an int in [1, {MAX_QUERY_ATTEMPTS_HARD_CAP}]; "
+                f"got {max_query_attempts!r}"
+            )
+        if not isinstance(retry_backoff_seconds, (int, float)) or isinstance(retry_backoff_seconds, bool) or not (
+            0 <= retry_backoff_seconds <= MAX_RETRY_BACKOFF_SECONDS_HARD_CAP
+        ):
+            raise ValueError(
+                f"retry_backoff_seconds must be a number in [0, {MAX_RETRY_BACKOFF_SECONDS_HARD_CAP}]; "
+                f"got {retry_backoff_seconds!r}"
+            )
         self._client = client
         self.stages = stages
         self.hitl_threshold = hitl_threshold
+        self.max_query_attempts = max_query_attempts
+        self.retry_backoff_seconds = float(retry_backoff_seconds)
 
     # ------------------------------------------------------------------
     # Public API
@@ -170,10 +290,36 @@ class HierarchyBeamSearchEngine:
             if trace is None:
                 return self._query(**kwargs)
             t0 = time.perf_counter()
-            result = self._query(**kwargs)
+            query_telemetry: dict = {}
+            result = self._query(query_telemetry=query_telemetry, **kwargs)
             elapsed_ms = (time.perf_counter() - t0) * 1000
             lk = f"{key}_latency_ms"
+            # Task 13: this already includes the full duration of every
+            # attempt and any Task 27 retry backoff, since _query()'s own
+            # internal retry loop is inside the single self._query() call
+            # timed here -- --max-stage-latency-ms is never blind to
+            # retry/backoff time.
             trace[lk] = trace.get(lk, 0.0) + elapsed_ms
+            # Task 27: separate, clearly-named per-stage retry/exception
+            # telemetry -- never written into the flat_query_* fields
+            # (those are exclusively HierarchicalISCOStore._flat_search()'s).
+            # A stage may be queried once per explored beam branch, so
+            # this accumulates (never overwrites) across every query call
+            # at this stage.
+            tk = f"{key}_query_telemetry"
+            summary = trace.setdefault(tk, {
+                "queries": 0, "any_retry": False, "any_exception": False,
+                "max_attempts_used": 0, "exception_types": [],
+            })
+            summary["queries"] += 1
+            summary["max_attempts_used"] = max(summary["max_attempts_used"], query_telemetry.get("attempts", 1))
+            if query_telemetry.get("outcome") == "success_after_retry":
+                summary["any_retry"] = True
+            if query_telemetry.get("outcome") in ("exception", "retry_exhausted"):
+                summary["any_exception"] = True
+                exc_type = query_telemetry.get("exception_type")
+                if exc_type and exc_type not in summary["exception_types"]:
+                    summary["exception_types"].append(exc_type)
             return result
 
         # ── Stage 0 ──────────────────────────────────────────────────
@@ -357,57 +503,109 @@ class HierarchyBeamSearchEngine:
         Returns a list of ``ScoredPoint`` objects (empty list on any error).
 
         query_telemetry : dict, optional
-            Task 25: when provided, populated (as a side effect, mirroring
-            the existing ``trace`` dict convention used throughout this
-            module) with this single query's outcome so a caller can tell
-            a genuine successful zero-hit response apart from a swallowed
-            exception -- both previously returned an indistinguishable
-            empty list. Always sets ``"outcome"`` ("success" | "exception")
-            and ``"duration_ms"``; only on ``"exception"`` also sets
-            ``"exception_type"`` (the exception's class name) and
-            ``"exception_message"`` (``str(exc)``, sanitized via
-            ``_sanitize_exception_message`` -- bounded length, single line,
-            never a stack trace, never the query vector/text). Omitted
-            (None, the default) reproduces prior behaviour exactly for
-            every existing caller.
+            Task 25/27: when provided, populated (as a side effect,
+            mirroring the existing ``trace`` dict convention used
+            throughout this module) with this query's outcome so a
+            caller can tell a genuine successful zero-hit response apart
+            from a swallowed exception, and (Task 27) a first-attempt
+            success apart from a retried success or a retry-exhausted
+            failure. Always sets ``"outcome"`` (one of ``"success"``,
+            ``"success_after_retry"``, ``"exception"`` (non-retryable, or
+            retryable-but-``max_query_attempts``-is-1), ``"retry_exhausted"``
+            (retryable exception type, every attempt failed)),
+            ``"attempts"`` (int, how many attempts were actually made),
+            ``"duration_ms"`` (float, TOTAL wall time across every
+            attempt and any backoff -- for the default
+            ``max_query_attempts=1`` this is byte-identical to Task 25's
+            original single-attempt semantics), and
+            ``"attempt_durations_ms"`` (list[float], one entry per
+            attempt). Only on ``"exception"``/``"retry_exhausted"`` also
+            sets ``"exception_type"`` (the LAST attempt's exception class
+            name), ``"exception_message"`` (the last attempt's
+            ``str(exc)``, sanitized via ``_sanitize_exception_message`` --
+            bounded length, single line, never a stack trace, never the
+            query vector/text), and ``"retryable"`` (bool, whether that
+            last exception was in the Task 27 retry allowlist -- see
+            ``_is_retryable_exception``). Omitted (None, the default)
+            reproduces prior behaviour exactly for every existing caller.
         """
-        t0 = time.perf_counter()
-        try:
-            query_filter = None
-            if parent_code is not None:
-                query_filter = Filter(
-                    must=[
-                        FieldCondition(
-                            key="parent_code",
-                            match=MatchValue(value=parent_code),
-                        )
-                    ]
+        query_filter = None
+        if parent_code is not None:
+            query_filter = Filter(
+                must=[FieldCondition(key="parent_code", match=MatchValue(value=parent_code))]
+            )
+
+        t_total_start = time.perf_counter()
+        attempt_durations_ms: list[float] = []
+        last_exc: Optional[BaseException] = None
+
+        for attempt_num in range(1, self.max_query_attempts + 1):
+            t_attempt_start = time.perf_counter()
+            try:
+                response = self._client.query_points(
+                    collection_name=collection,
+                    query=query_vec,
+                    query_filter=query_filter,
+                    limit=limit,
+                    with_payload=True,
                 )
+            except Exception as exc:  # noqa: BLE001 - classified below, never silently swallowed
+                attempt_durations_ms.append(round((time.perf_counter() - t_attempt_start) * 1000, 3))
+                last_exc = exc
+                retryable = _is_retryable_exception(exc)
+                more_attempts_remain = attempt_num < self.max_query_attempts
+                if retryable and more_attempts_remain:
+                    _logger.warning(
+                        "HierarchyBeamSearchEngine: query on '%s' failed on attempt %d/%d "
+                        "(retryable): %s -- retrying.",
+                        collection, attempt_num, self.max_query_attempts, exc,
+                    )
+                    if self.retry_backoff_seconds > 0:
+                        time.sleep(self.retry_backoff_seconds)
+                    continue
+                # Non-retryable, or retryable but attempts exhausted: fail closed.
+                _logger.warning(
+                    "HierarchyBeamSearchEngine: query on '%s' failed (attempt %d/%d, "
+                    "retryable=%s): %s",
+                    collection, attempt_num, self.max_query_attempts, retryable, exc,
+                )
+                if query_telemetry is not None:
+                    # "retry_exhausted" is reported only when retry was
+                    # actually configured/possible (max_query_attempts > 1)
+                    # AND the exception was retryable -- under the default
+                    # max_query_attempts=1, no retry was ever attempted or
+                    # even possible, so the outcome stays plain "exception",
+                    # byte-for-byte identical to Task 25's original
+                    # semantics regardless of whether the single exception
+                    # happened to be a retryable-shaped one.
+                    is_retry_exhausted = retryable and self.max_query_attempts > 1
+                    query_telemetry["outcome"] = "retry_exhausted" if is_retry_exhausted else "exception"
+                    query_telemetry["attempts"] = attempt_num
+                    query_telemetry["duration_ms"] = round((time.perf_counter() - t_total_start) * 1000, 3)
+                    query_telemetry["attempt_durations_ms"] = attempt_durations_ms
+                    query_telemetry["exception_type"] = type(exc).__name__
+                    query_telemetry["exception_message"] = _sanitize_exception_message(str(exc))
+                    query_telemetry["retryable"] = retryable
+                return []
+            else:
+                attempt_durations_ms.append(round((time.perf_counter() - t_attempt_start) * 1000, 3))
+                if query_telemetry is not None:
+                    query_telemetry["outcome"] = "success" if attempt_num == 1 else "success_after_retry"
+                    query_telemetry["attempts"] = attempt_num
+                    query_telemetry["duration_ms"] = round((time.perf_counter() - t_total_start) * 1000, 3)
+                    query_telemetry["attempt_durations_ms"] = attempt_durations_ms
+                return response.points
 
-            response = self._client.query_points(
-                collection_name=collection,
-                query=query_vec,
-                query_filter=query_filter,
-                limit=limit,
-                with_payload=True,
-            )
-            if query_telemetry is not None:
-                query_telemetry["outcome"] = "success"
-                query_telemetry["duration_ms"] = round((time.perf_counter() - t0) * 1000, 3)
-            return response.points
-
-        except Exception as exc:
-            _logger.warning(
-                "HierarchyBeamSearchEngine: query on '%s' failed: %s",
-                collection,
-                exc,
-            )
-            if query_telemetry is not None:
-                query_telemetry["outcome"] = "exception"
-                query_telemetry["duration_ms"] = round((time.perf_counter() - t0) * 1000, 3)
-                query_telemetry["exception_type"] = type(exc).__name__
-                query_telemetry["exception_message"] = _sanitize_exception_message(str(exc))
-            return []
+        # Unreachable: the loop always returns or continues; a final
+        # non-retryable/exhausted failure returns inside the except
+        # branch above. Kept only as a fail-closed guard against a
+        # future refactor accidentally falling through.
+        if query_telemetry is not None and last_exc is not None:  # pragma: no cover
+            query_telemetry["outcome"] = "exception"
+            query_telemetry["attempts"] = self.max_query_attempts
+            query_telemetry["exception_type"] = type(last_exc).__name__
+            query_telemetry["exception_message"] = _sanitize_exception_message(str(last_exc))
+        return []
 
 
 def _sanitize_exception_message(message: str) -> str:

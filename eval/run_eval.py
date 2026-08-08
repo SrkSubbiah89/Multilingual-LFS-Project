@@ -420,6 +420,36 @@ class CaseResult:
     flat_query_exception_type: str = ""
     flat_query_exception_message: str = ""
 
+    # Task 27: additive bounded-retry telemetry. flat_query_outcome may
+    # now additionally take the values "success_after_retry" and
+    # "retry_exhausted" -- ONLY when a caller has explicitly opted into
+    # max_query_attempts > 1 (QDRANT_QUERY_MAX_ATTEMPTS env var or an
+    # explicit HierarchicalISCOStore(max_query_attempts=...) argument).
+    # Under the unchanged default (max_query_attempts=1, no retry), only
+    # "success"/"exception" ever appear and flat_query_attempts is always
+    # 1 -- fully backward-compatible with every Task 25 consumer.
+    # flat_query_attempts: total attempts made (None when the flat query
+    # path did not run for this row, same convention as flat_query_outcome).
+    # flat_query_attempt_durations_ms: JSON list, one entry per attempt.
+    flat_query_attempts: Optional[int] = None
+    flat_query_attempt_durations_ms: str = "[]"
+
+    # Task 27: separate, clearly-named hierarchical-stage retry/exception
+    # telemetry -- distinct from the flat_query_* fields above (never
+    # overloaded/misused as stage evidence; check_strict_hierarchical()
+    # never inspects this field). JSON object keyed "stage1".."stage4",
+    # present only for stages that actually issued a live Qdrant query
+    # (absent for a keyword-anchor-seeded or leaf_vote-overridden stage
+    # 1, which never calls _query() at all). Each stage's value is
+    # {"queries": int, "any_retry": bool, "any_exception": bool,
+    # "max_attempts_used": int, "exception_types": [str, ...]} --
+    # aggregated across every beam-branch query issued at that stage, so
+    # a single genuinely-retried or genuinely-failed query anywhere in
+    # that stage is never hidden by an average or a last-write-wins
+    # overwrite. Default "{}" for every row where the hierarchical beam
+    # search did not run (flat/bm25 systems) or trace was not requested.
+    hier_stage_query_telemetry: str = "{}"
+
     reranker_fired: Optional[bool] = None
     reranker_input_candidates: str = "[]"  # JSON
     reranker_output: str = "{}"            # JSON: {"code", "reasoning"}
@@ -663,6 +693,22 @@ def run_one_case(
     result.flat_query_duration_ms = _safe_round(trace.get("flat_query_duration_ms"), 3)
     result.flat_query_exception_type = trace.get("flat_query_exception_type", "")
     result.flat_query_exception_message = trace.get("flat_query_exception_message", "")
+    result.flat_query_attempts = trace.get("flat_query_attempts")
+    result.flat_query_attempt_durations_ms = json.dumps(trace.get("flat_query_attempt_durations_ms", []))
+
+    # Task 27: aggregate every stage's "stageN_query_telemetry" trace
+    # bucket (written by hierarchy_engine.HierarchyBeamSearchEngine.search()'s
+    # _timed_query()) into one JSON object, keyed by stage name -- kept
+    # separate from flat_query_* by construction (this key never appears
+    # in a flat-only run's trace).
+    _hier_stage_telemetry = {
+        f"stage{i}": trace[f"stage{i}_query_telemetry"]
+        for i in range(1, 5)
+        if f"stage{i}_query_telemetry" in trace
+    }
+    if _hier_stage_telemetry:
+        result.hier_stage_query_telemetry = json.dumps(_hier_stage_telemetry, ensure_ascii=False)
+
     result.retrieval_latency_ms = round(
         sum(v for i in range(1, 5) if (v := trace.get(f"stage{i}_latency_ms")) is not None),
         2,
