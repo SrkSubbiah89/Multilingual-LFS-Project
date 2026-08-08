@@ -41,12 +41,14 @@ and current closure status.
 | [WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md](WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md) | Step 7A: strict leakage audit of the WISCO benchmark split, the v2 group-aware split fix, and the prepared (not yet executed) Step 7B evaluation plan |
 | [STEP_7_COMMAND.md](STEP_7_COMMAND.md) | Superseded by `WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md` — kept for Step 6's historical record only |
 | `generated/` | Landing directory for every JSON/CSV/MD artifact the tooling below produces (`MEASURED_EVALUATION_EVIDENCE_SUMMARY.md` lives here) |
+| [FLAT_BASELINE_COVERAGE_AUDIT.md](FLAT_BASELINE_COVERAGE_AUDIT.md) | Task 19: why the legacy `isco_occupations` flat baseline can't support a 4-digit accuracy comparison, and the (then-unresolved) 441-vs-436 ISCO-08 unit-group count discrepancy |
+| [ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md](ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md) | Task 20: primary ILO ISCO-08 catalogue import (`eval/verified_catalogue_counts.yaml`) and full code-by-code reconciliation against `backend/rag/load_full_isco.py` — closes Task 19's catalogue-identity blocker; catalogue itself not yet corrected |
 
 ## Code added (by section)
 
 - **Section A** — `backend/agents/method_registry.py`, `backend/agents/classifier_methods.py`
 - **Section B** — `backend/rag/hierarchy_engine.py`; `backend/rag/hierarchical_store.py` refactored to use it (behavior-preserving). Extended by Task 05: `backend/rag/hierarchy_nodes.py`, `backend/rag/standard_hierarchical_store.py`, `backend/rag/build_standard_hierarchical_collections.py` — real, tested (but unevaluated, and not yet built against a live Qdrant instance) ISIC Rev.4 / ISCED-F 2013 hierarchical retrieval, reusing the same generic engine; see [ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md](ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md)
-- **Section C** — `eval/coverage_audit.py`, `eval/standards_reference.yaml`, `eval/catalogue_importer.py` (validates a user-supplied official catalogue file and produces `eval/verified_catalogue_counts.yaml`, the only source of a citable `coverage_percentage`)
+- **Section C** — `eval/coverage_audit.py`, `eval/standards_reference.yaml`, `eval/catalogue_importer.py` (validates a user-supplied official catalogue file and produces `eval/verified_catalogue_counts.yaml`, the only source of a citable `coverage_percentage`). Task 20 supplied the first real catalogue: `eval/normalize_ilo_isco08_catalogue.py` parses the official ILO ISCO-08 structure workbook into `catalogue_importer.py`'s input shape; `eval/verified_catalogue_counts.yaml` now has a real ISCO-08 entry (`{major: 10, submajor: 43, minor: 130, unit: 436}`) — see [ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md](ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md).
 - **Section D** — `eval/manifest.py`, `eval/analyze.py`; `eval/run_eval.py`'s `CaseResult` gained additive ISIC/ISCED-F full-depth prediction columns
 - **Section E** — `eval/ablation_runner.py`; `eval/run_eval.py` gained `--use-llm-reranker` and `--sre` flags
 - **Section F** — `eval/dataset_card_schema.py` (closed 3-value `dataset_label` vocabulary + full 5-group governance schema), `eval/validate_real_lfs_governance.py` (strict fail-closed gate with content-aware synthetic-marker and in-repo-path safeguards); Step 3 hardening pass also touched `eval/manifest.py` and `eval/ablation_runner.py` (label enforcement + `invalid_incomplete_governance` visibility) — see `REAL_LFS_DATA_INTAKE_CHECKLIST.md`
@@ -77,6 +79,28 @@ benchmark run, has not happened yet). New modules: `eval/manifest.py`,
 `eval/select_wisco_reranking_subset.py`, `eval/export_benchmark_to_run_eval_csv.py`,
 plus the `eval/local_runs/` and `eval/local_benchmarks/` gitignored output
 conventions.
+
+### Tasks 09-20 — WISCO Tier 1 evidence line and catalogue reconciliation
+
+Tracked individually under `Documentation/AI_HANDOFF/CLAUDE_TASK_09_*`
+through `CLAUDE_TASK_20_*` (numbered task-handoff reports, not part of
+either the A-J or Step-2-through-7A schemes above). Briefly, in order:
+model-free ISCO evaluation mode; WISCO v2 group-aware measurement
+baseline; Tier-1 preflight and a full Tier-1 run that found 23 silent
+hierarchical fallbacks and stopped (Task 12); a retry/timeout fix (Task
+13) verified by a 524-case strict preflight (Task 15) and then a full
+18,747-case strict run with zero fallbacks (Task 17); a reproducible,
+fail-closed WISCO analysis utility (`eval/analyze_wisco_tier1.py`, Task
+18) whose first real run correctly refused to score the legacy flat
+baseline (§ below); a read-only audit of that refusal
+(`FLAT_BASELINE_COVERAGE_AUDIT.md`, Task 19); and a primary-source ILO
+ISCO-08 catalogue reconciliation (`ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md`,
+Task 20, this section's newest entries above). **No WISCO accuracy
+number has been produced by any of these tasks** — Task 18 produced zero
+metric output (a gate failure, not a bug), and Task 20 explicitly did
+not correct or re-evaluate anything. `eval/local_runs/` and
+`eval/local_catalogues/` (both gitignored) hold every raw artifact these
+tasks produced.
 
 ## What is explicitly out of scope, still
 

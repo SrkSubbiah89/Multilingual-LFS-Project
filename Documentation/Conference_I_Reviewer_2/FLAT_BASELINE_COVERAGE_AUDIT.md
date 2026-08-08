@@ -18,18 +18,30 @@ to count them, or a citation of existing project documentation.
 FLAT_COMPARATOR_IMPLEMENTATION_READY: no
 ```
 
-The legacy flat collection's coverage gap is fully explained (see
-below). But the *count discrepancy* between this project's own
-unit-group catalogue (441 records) and the true ILO ISCO-08 standard
-(436 unit groups) is only explained at the aggregate level — the
-catalogue's exact code-level identity is **not** reconciled: 15 of 19
-"extra" codes and 10 of 14 "missing" codes have never been individually
-verified against the primary ILO ISCO-08 structure document. Building a
-"clean" unit-group-only comparator directly from the current 441-entry
-table would silently bake 19 known-non-standard codes (and the absence
-of 14 real ones) into a supposedly standards-conformant baseline. Per
-this task's own instruction, this is reported as an explicit blocker,
-not resolved by picking a convenient number.
+**Updated by Task 20** (see
+[ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md](ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md)):
+the catalogue-*identity* blocker described in this document's original
+text (below) is now closed — every one of the 33 mismatched codes (plus
+one previously-undocumented mismatched minor-group code) is individually
+identified against a primary ILO source, and `eval/
+verified_catalogue_counts.yaml` now exists. The comparator remains not
+implementation-ready for a different reason: the catalogue itself has
+not been *corrected*, and Task 20 additionally found 84 title mismatches
+among the codes both catalogues share, a handful of which look like
+content misalignment, not spelling. See that document's §6 for the
+staged (not started) correction plan.
+
+Original finding (superseded, kept for history): the legacy flat
+collection's coverage gap is fully explained (see below). But the
+*count discrepancy* between this project's own unit-group catalogue (441
+records) and the true ILO ISCO-08 standard (436 unit groups) was only
+explained at the aggregate level — the catalogue's exact code-level
+identity was **not** reconciled: 15 of 19 "extra" codes and 10 of 14
+"missing" codes had never been individually verified against the primary
+ILO ISCO-08 structure document. Building a "clean" unit-group-only
+comparator directly from the (uncorrected) 441-entry table would still
+silently bake 19 known-non-standard codes (and the absence of 14 real
+ones) into a supposedly standards-conformant baseline.
 
 ---
 
@@ -313,63 +325,82 @@ Three numbers, precisely distinguished:
   per this task's own check (no `eval/verified_catalogue_counts.yaml`
   exists), **still has never been performed**.
 
-### Verdict
+### Verdict — updated by Task 20
 
 ```text
-UNRESOLVED: a full unit-group flat comparator must not be implemented
-until this count and catalogue identity are reconciled.
+RESOLVED (identity level) by Task 20's primary-source reconciliation;
+NOT YET CORRECTED in production code.
 ```
 
-The *numeric magnitude* of the gap (441 vs 436, net +5) is well
-explained at the aggregate level. The *catalogue identity* (exactly
-which 436 of this project's own codes are standards-conformant, and
-which real codes are entirely absent) is not — 25 of the 33 known
-mismatched codes have never been individually checked against the
-primary ILO ISCO-08 structure document. A newly-found, smaller,
-similarly unresolved discrepancy exists at the minor-group level (131
-vs. the declared 130; §2.3) with no prior investigation at all.
+**Update (Task 20):** the catalogue-identity blocker described below was
+closed by importing the official ILO ISCO-08 structure directly from a
+primary, machine-readable source and diffing it code-by-code against
+`_MAJOR`/`_SUBMAJOR`/`_MINOR`/`_UNIT`. Every one of the 33 previously-
+unidentified mismatched codes is now individually identified (an exact,
+code-for-code match to the list below, confirmed against the primary
+source rather than inferred via WISCO), the previously-undocumented
+131-vs-130 minor-group gap is now traced to exactly one fabricated code
+(`913`, "Building and Related Caretakers"), and a new, larger issue was
+found: 84 of the 422 codes present in both catalogues have a mismatched
+title, a handful of which look like genuine content misalignment rather
+than spelling. See
+[ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md](ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md)
+for the full evidence trail and `eval/verified_catalogue_counts.yaml`
+for the machine-readable verified counts (10/43/130/436). **The
+catalogue itself has not been corrected** — this remains a blocker for
+the future comparator in §4 below, now with a fully specified fix list
+instead of an open-ended one.
+
+Original finding (superseded numerically, kept for history): the
+*numeric magnitude* of the gap (441 vs 436, net +5) was well explained
+at the aggregate level from a WISCO-based comparison; the *catalogue
+identity* was not — 25 of the 33 known mismatched codes had never been
+individually checked against the primary ILO ISCO-08 structure document.
+Task 20 closed that gap.
 
 ---
 
-## 4. Future comparator specification — blocked
+## 4. Future comparator specification — still blocked
 
-Per this task's instructions, because catalogue identity is not
-adequately demonstrated (§3), **no implementation-ready specification is
-written here**. What follows is a blocker list only.
+**Updated by Task 20.** Blockers 1 and 3 below are now closed. The
+comparator is still not implementation-ready because the catalogue
+itself has not been corrected (blocker 4 is now the operative one), and
+Task 20 surfaced additional title-level mismatches (§3 update above)
+that widen blocker 1's scope beyond what was known when this list was
+first written.
 
-### Blockers (must all close before implementation)
+### Blockers
 
-1. **Catalogue identity reconciliation.** A full, code-by-code
-   cross-check of `_UNIT`'s 441 codes against the primary ILO ISCO-08
-   structure document (not WISCO — see blocker 2) is required to
-   determine the final accepted code set. This must resolve or
-   explicitly retire each of the 19 extra and 14 missing codes
-   identified in `module_a_week1_report.md` §5.1/§5.2, apply (or
-   formally decline) the verified `6161`-`6164` → `6310`-`6340` fix, and
-   resolve the newly-found 131-vs-130 minor-group discrepancy (§2.3) at
-   least insofar as it might indicate the same class of defect exists
-   at other levels.
-2. **WISCO-independence of any catalogue fix.** Any correction must be
-   sourced from the **primary ILO ISCO-08 structure document** (already
-   identified: `isco.ilo.org/en/isco-08`, per
-   `STANDARDS_SOURCE_PROVENANCE.md`), never from WISCO's own code list —
-   using WISCO as the source of truth to edit the classifier's own
-   knowledge base would leak WISCO-specific knowledge into the system
-   under test, invalidating any future WISCO-based accuracy comparison
-   built on top of the corrected catalogue. WISCO may continue to be
-   used as an independent *cross-check*, as it already has been, but not
-   as a *data source* for the fix.
-3. **A verified (not merely unverified) official count**, produced by
-   running the existing `eval/catalogue_importer.py` against a real,
-   structured ILO ISCO-08 catalogue export, writing
-   `eval/verified_catalogue_counts.yaml` — the tier
-   `STANDARDS_SOURCE_PROVENANCE.md` itself defines as the only one
-   permitted to support a citable `coverage_percentage`. This does not
-   exist today for any standard in this project.
-4. **An explicit, approved decision on catalogue scope**: does the
-   future comparator target exactly 436 (the reconciled official count)
-   or some other explicitly-justified number? This cannot be decided by
-   this audit — it requires a human decision after blockers 1-3 close.
+1. ~~**Catalogue identity reconciliation.**~~ **Closed by Task 20**: a
+   full, code-by-code cross-check of the primary ILO ISCO-08 structure
+   document against `_MAJOR`/`_SUBMAJOR`/`_MINOR`/`_UNIT` is complete —
+   see `ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md` §4 for the exact 19
+   extra / 14 missing / 1 extra-minor code lists and the 84 newly-found
+   title mismatches (a strict superset of what this blocker originally
+   asked for). The verified `6161`-`6164` → `6310`-`6340` fix is now
+   confirmed by primary-source title identity, not just WISCO
+   corroboration. **Not yet done**: applying any of these corrections to
+   production code (that is blocker 4 below).
+2. **WISCO-independence of any catalogue fix** — still required, and
+   already honored in Task 20's own process (zero WISCO input). Any
+   correction must be sourced from the **primary ILO ISCO-08 structure
+   document** (already used directly in Task 20), never from WISCO's own
+   code list.
+3. ~~**A verified (not merely unverified) official count**~~ **Closed by
+   Task 20**: `eval/verified_catalogue_counts.yaml` now exists, produced
+   by a clean `eval/catalogue_importer.py` validation of the
+   Task-20-normalized official catalogue. `eval/coverage_audit.py` can
+   now compute a real `coverage_percentage` for ISCO-08 (not yet run in
+   this task — that would be a new evaluation-adjacent operation, out of
+   scope here).
+4. **Catalogue correction and an explicit, approved decision on final
+   scope** — now the primary remaining blocker. `_MAJOR`/`_SUBMAJOR`/
+   `_MINOR`/`_UNIT` still contain the same 19+1 non-standard codes, are
+   still missing the same 14 real codes, and still carry the 84 newly-
+   found title mismatches (two clusters of which look like content
+   misalignment, not spelling — `ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md`
+   §4.3). This requires the staged, separately-approved plan in that
+   document's §6, starting with human review of the full mismatch list.
 
 ### What such a specification will eventually need to contain (deferred, not written now)
 

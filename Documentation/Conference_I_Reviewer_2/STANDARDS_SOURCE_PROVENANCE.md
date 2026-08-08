@@ -28,6 +28,24 @@ is still useful context (it's real and sourced, not invented), but
 `eval/coverage_audit.py` is hard-coded to never compute a
 `coverage_percentage` from it.
 
+**Update (Task 20): ISCO-08 now has a real Verified-tier entry.**
+`eval/verified_catalogue_counts.yaml` was created for the first time in
+this project by downloading the official ILO ISCO-08 structure workbook
+directly (`https://webapps.ilo.org/ilostat-files/ISCO/newdocs-08-2021/
+ISCO-08/ISCO-08%20EN%20Structure%20and%20definitions.xlsx`), normalizing
+it (`eval/normalize_ilo_isco08_catalogue.py`), and validating it with
+`eval/catalogue_importer.py` — zero issues, verified counts `{major: 10,
+submajor: 43, minor: 130, unit: 436}`, an exact match to this document's
+own unverified figure below. See
+[ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md](ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md)
+for the full retrieval/validation/reconciliation trail. This does
+**not** mean this project's own classifier catalogue is standards-
+conformant — it still has 20 non-standard codes and is missing 14 real
+ones (see that document) — only that the *official count itself* is now
+independently verified rather than merely cited. ISIC Rev.4, ISCED 2011,
+and ISCED-F 2013 remain Unverified-tier only; this update covers ISCO-08
+alone.
+
 ## Source-provenance table
 
 | Standard | Issuing organization | Source URL | Retrieved | Licence/use note |

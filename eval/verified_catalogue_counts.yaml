@@ -1,0 +1,99 @@
+# eval/verified_catalogue_counts.yaml
+#
+# Conference I Reviewer #2 response, Task 20: metadata and VERIFIED counts
+# only. Contains NO raw catalogue rows (no codes, no titles, no parent
+# links) -- see eval/local_catalogues/ilo_isco08_2021/ (git-ignored) for
+# the actual downloaded workbooks and normalized data this record
+# describes. This file exists so eval/coverage_audit.py can compute a
+# citable coverage_percentage for ISCO-08 from a real, validated,
+# primary-source import (see eval/catalogue_importer.py and
+# Documentation/Conference_I_Reviewer_2/STANDARDS_SOURCE_PROVENANCE.md's
+# "Two tiers of official count" section for why this file, not
+# eval/standards_reference.yaml, is the only trusted source for that
+# number).
+#
+# WISCO independence: this import used ONLY the two official ILO URLs
+# below. No WISCO file, title, code, split, or output was read, opened,
+# imported, or otherwise consulted at any point in producing this record
+# -- see Documentation/Conference_I_Reviewer_2/
+# ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md for the full audit trail.
+
+isco08:
+  standard_key: isco08
+  standard_name: "ISCO-08"
+  issuing_organization: "International Labour Organization"
+
+  primary_source_landing_page_url: "https://isco.ilo.org/en/isco-08/"
+  official_workbook_url: "https://webapps.ilo.org/ilostat-files/ISCO/newdocs-08-2021/ISCO-08/ISCO-08%20EN%20Structure%20and%20definitions.xlsx"
+  optional_arabic_workbook_url: "https://webapps.ilo.org/ilostat-files/Documents/ISCO_08_AR_structure_V1.0.xlsx"
+  optional_arabic_workbook_used_for: "documenting available official Arabic labels only; not used for any English code/hierarchy/count decision"
+
+  retrieved_at_utc:
+    english_workbook: "2026-08-08T18:14:27.672819Z"
+    arabic_workbook: "2026-08-08T18:14:39.214312Z"
+    landing_page_confirmation: "2026-08-08"
+
+  raw_workbook_sha256:
+    english: "df10744491b4216ed3580e8263b6324502e774c16667a1d7ecdbee50e85505e7"
+    arabic: "3dd8cf35c11a81ec55554dec174f9b50cfafaa5b3f5ebb43c9462a06e5f03718"
+  raw_workbook_file_size_bytes:
+    english: 303771
+    arabic: 66388
+
+  normalized_catalogue_sha256: "29b7539e25752b9d5b869baaa67d93f395781a107bbe64d371c00f4adaadeea3"
+  normalized_catalogue_row_count: 619
+
+  parser_script: "eval/normalize_ilo_isco08_catalogue.py"
+  parser_script_sha256: "a020374f10ef336e0d8cf5752b8334f96ea33798d055d55e653603e0cfb6fb1a"
+  importer_script: "eval/catalogue_importer.py"
+  importer_script_sha256: "4f4ee557b75a411952c7c62a10a8474352fbdc65196e907eedc5c5c60d17d74a"
+
+  sheet_and_column_mapping:
+    sheet_name: "ISCO-08 EN Struct and defin"
+    level_column: "Level"          # values "1".."4" -> major/submajor/minor/unit
+    code_column: "ISCO 08 Code"
+    title_column: "Title EN"
+    ignored_columns: ["Definition", "Tasks include", "Included occupations", "Excluded occupations", "Notes"]
+    parent_code_derivation: "code[:len(parent_level_code)] -- e.g. a unit code's parent_code is its own first 3 characters"
+
+  verified_counts:
+    major: 10
+    submajor: 43
+    minor: 130
+    unit: 436
+
+  validation:
+    status: "clean -- zero issues at every stage"
+    normalizer_command: >-
+      python eval/normalize_ilo_isco08_catalogue.py
+      --xlsx eval/local_catalogues/ilo_isco08_2021/ISCO-08_EN_Structure_and_definitions.xlsx
+      --out-csv eval/local_catalogues/ilo_isco08_2021/normalized/isco08_official_normalized.csv
+      --report-out eval/local_catalogues/ilo_isco08_2021/normalized/normalization_report.json
+    normalizer_result: "619 rows parsed; counts by level {major: 10, submajor: 43, minor: 130, unit: 436}; zero malformed codes, zero duplicates, zero orphan parents, zero blank titles, zero unexpected-count violations"
+    importer_command: >-
+      python eval/catalogue_importer.py --standard isco08
+      --catalogue eval/local_catalogues/ilo_isco08_2021/normalized/isco08_official_normalized.csv
+      --dry-run
+    importer_result: "rows=619 ok=True; counts by level {major: 10, submajor: 43, minor: 130, unit: 436}; zero issues"
+
+  licence_or_use_note: >-
+    No explicit reuse/redistribution licence text was located on the ILO
+    ISCO-08 landing page or embedded in the downloaded workbook's
+    document properties. The landing page carries a copyright notice
+    ("2021 International Labour Organization (ILO)") but no separate
+    terms-of-use/licence statement governing reuse or redistribution of
+    the structure data. Consistent with the existing characterization in
+    Documentation/Conference_I_Reviewer_2/STANDARDS_SOURCE_PROVENANCE.md
+    ("freely accessible for reference use... verify ILO's terms of use
+    before redistributing any extracted catalogue file"). The raw
+    workbook and normalized catalogue are kept local and git-ignored,
+    never committed, per that same guidance.
+
+  wisco_independence_statement: >-
+    This verified catalogue record is based exclusively on a primary
+    official ILO import (the two URLs above). No WISCO file, title,
+    code, split, or output was read, imported, parsed, or used as a
+    crosswalk source at any point in acquiring, normalizing, or
+    validating this catalogue.
+
+  imported_at_utc: "2026-08-08T18:42:59Z"
