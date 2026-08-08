@@ -679,7 +679,24 @@ class HierarchicalISCOStore:
             )
             return self._empty_result()
 
-        hits = self._query(collection=self._col_flat, query_vec=query_vec, limit=top_k)
+        # Task 25: capture whether this query genuinely succeeded (with
+        # zero or more hits) or raised an exception (e.g. a Qdrant
+        # timeout) -- previously both were collapsed into an identical
+        # empty `hits` list with no telemetry at all, making a real
+        # zero-hit response and a swallowed exception indistinguishable
+        # in the evaluation trace/CSV. Recorded before the `not hits`
+        # early return below so telemetry survives on every outcome,
+        # including the unavailable-result path.
+        query_telemetry: dict = {}
+        hits = self._query(
+            collection=self._col_flat, query_vec=query_vec, limit=top_k,
+            query_telemetry=query_telemetry,
+        )
+        if trace is not None:
+            trace["flat_query_outcome"] = query_telemetry.get("outcome", "")
+            trace["flat_query_duration_ms"] = query_telemetry.get("duration_ms")
+            trace["flat_query_exception_type"] = query_telemetry.get("exception_type", "")
+            trace["flat_query_exception_message"] = query_telemetry.get("exception_message", "")
         if not hits:
             return self._empty_result()
         if trace is not None:
@@ -802,6 +819,7 @@ class HierarchicalISCOStore:
         query_vec: list[float],
         limit: int,
         parent_code: Optional[str] = None,
+        query_telemetry: Optional[dict] = None,
     ):
         """
         Wrap ``client.query_points()`` with an optional parent_code filter.
@@ -810,9 +828,14 @@ class HierarchicalISCOStore:
         Delegates to the generic engine's ``_query`` (same implementation,
         moved to backend/rag/hierarchy_engine.py) so ``_flat_search`` and
         ``_leaf_vote_stage1`` -- which query outside the engine's own
-        stage-based beam loop -- keep working unchanged.
+        stage-based beam loop -- keep working unchanged. ``query_telemetry``
+        (Task 25) is passed straight through -- see
+        ``HierarchyBeamSearchEngine._query()``'s docstring.
         """
-        return self._engine._query(collection=collection, query_vec=query_vec, limit=limit, parent_code=parent_code)
+        return self._engine._query(
+            collection=collection, query_vec=query_vec, limit=limit,
+            parent_code=parent_code, query_telemetry=query_telemetry,
+        )
 
     # ------------------------------------------------------------------
     # Embedding

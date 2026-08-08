@@ -349,12 +349,29 @@ class HierarchyBeamSearchEngine:
         query_vec: list[float],
         limit: int,
         parent_code: Optional[str] = None,
+        query_telemetry: Optional[dict] = None,
     ):
         """
         Wrap ``client.query_points()`` with an optional parent_code filter.
 
         Returns a list of ``ScoredPoint`` objects (empty list on any error).
+
+        query_telemetry : dict, optional
+            Task 25: when provided, populated (as a side effect, mirroring
+            the existing ``trace`` dict convention used throughout this
+            module) with this single query's outcome so a caller can tell
+            a genuine successful zero-hit response apart from a swallowed
+            exception -- both previously returned an indistinguishable
+            empty list. Always sets ``"outcome"`` ("success" | "exception")
+            and ``"duration_ms"``; only on ``"exception"`` also sets
+            ``"exception_type"`` (the exception's class name) and
+            ``"exception_message"`` (``str(exc)``, sanitized via
+            ``_sanitize_exception_message`` -- bounded length, single line,
+            never a stack trace, never the query vector/text). Omitted
+            (None, the default) reproduces prior behaviour exactly for
+            every existing caller.
         """
+        t0 = time.perf_counter()
         try:
             query_filter = None
             if parent_code is not None:
@@ -374,6 +391,9 @@ class HierarchyBeamSearchEngine:
                 limit=limit,
                 with_payload=True,
             )
+            if query_telemetry is not None:
+                query_telemetry["outcome"] = "success"
+                query_telemetry["duration_ms"] = round((time.perf_counter() - t0) * 1000, 3)
             return response.points
 
         except Exception as exc:
@@ -382,4 +402,23 @@ class HierarchyBeamSearchEngine:
                 collection,
                 exc,
             )
+            if query_telemetry is not None:
+                query_telemetry["outcome"] = "exception"
+                query_telemetry["duration_ms"] = round((time.perf_counter() - t0) * 1000, 3)
+                query_telemetry["exception_type"] = type(exc).__name__
+                query_telemetry["exception_message"] = _sanitize_exception_message(str(exc))
             return []
+
+
+def _sanitize_exception_message(message: str) -> str:
+    """Task 25: bound and flatten a raw ``str(exc)`` before it is ever
+    written to an evaluation trace/CSV. Single line, length-capped, and
+    never derived from the query vector/text, a stack trace, or any
+    request payload -- only from the exception's own ``str()``, which for
+    the qdrant-client transport exceptions this wraps (timeouts, connection
+    errors) never includes request/response bodies or credentials."""
+    flat = " ".join(message.split())
+    _MAX_LEN = 300
+    if len(flat) > _MAX_LEN:
+        return flat[:_MAX_LEN] + "...(truncated)"
+    return flat

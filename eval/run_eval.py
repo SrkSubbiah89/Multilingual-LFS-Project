@@ -400,6 +400,26 @@ class CaseResult:
     stage3_latency_ms: Optional[float] = None
     stage4_latency_ms: Optional[float] = None
 
+    # Task 25: additive flat-only-retrieval query telemetry (backend/rag/
+    # hierarchical_store.py::_flat_search(), the official-profile flat
+    # comparator's Qdrant call). Distinguishes a genuine successful
+    # zero-hit Qdrant response from a swallowed query exception (e.g. a
+    # timeout) -- both previously produced an identical empty result with
+    # no telemetry. Populated only when the flat query path actually ran
+    # (official-profile --system flat and any future non-legacy-profile
+    # flat run); blank/None for every hierarchical run and for the
+    # legacy-profile flat path (backend/agents/isco_classifier.py's
+    # _classify_flat(), which uses the separate legacy VectorStore and is
+    # untouched by this task). flat_query_outcome is "success" | "exception"
+    # | "" (flat query path not used for this row). exception_type/message
+    # are populated ONLY when outcome == "exception"; exception_message is
+    # sanitized (bounded length, single line, never raw query text, a
+    # stack trace, or credentials -- see hierarchy_engine._sanitize_exception_message).
+    flat_query_outcome: str = ""
+    flat_query_duration_ms: Optional[float] = None
+    flat_query_exception_type: str = ""
+    flat_query_exception_message: str = ""
+
     reranker_fired: Optional[bool] = None
     reranker_input_candidates: str = "[]"  # JSON
     reranker_output: str = "{}"            # JSON: {"code", "reasoning"}
@@ -635,6 +655,14 @@ def run_one_case(
     result.stage2_latency_ms = _safe_round(trace.get("stage2_latency_ms", 0.0))
     result.stage3_latency_ms = _safe_round(trace.get("stage3_latency_ms", 0.0))
     result.stage4_latency_ms = _safe_round(trace.get("stage4_latency_ms", 0.0))
+
+    # Task 25: flat-only-retrieval query telemetry -- absent (blank/None)
+    # for every row that didn't go through _flat_search() (hierarchical
+    # runs, legacy-profile flat runs).
+    result.flat_query_outcome = trace.get("flat_query_outcome", "")
+    result.flat_query_duration_ms = _safe_round(trace.get("flat_query_duration_ms"), 3)
+    result.flat_query_exception_type = trace.get("flat_query_exception_type", "")
+    result.flat_query_exception_message = trace.get("flat_query_exception_message", "")
     result.retrieval_latency_ms = round(
         sum(v for i in range(1, 5) if (v := trace.get(f"stage{i}_latency_ms")) is not None),
         2,
