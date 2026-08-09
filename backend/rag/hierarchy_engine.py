@@ -86,6 +86,36 @@ DEFAULT_RETRY_BACKOFF_SECONDS = 0.0
 MAX_RETRY_BACKOFF_SECONDS_HARD_CAP = 2.0
 
 
+# ---------------------------------------------------------------------------
+# Task 34.1: minimum practical client-side deadline
+# ---------------------------------------------------------------------------
+#
+# Audited finding (qdrant-client 1.17.0, direct source reading of
+# ``qdrant_client.qdrant_remote.QdrantRemote.__init__``): the public
+# ``QdrantClient(timeout=...)`` constructor parameter is NOT stored
+# as-given. It is unconditionally rounded UP to the nearest whole
+# second before use --
+#
+#     _timeout = math.ceil(timeout) if timeout is not None else None
+#     # it has been changed from float to int.
+#     # convert it to the closest greater or equal int value (e.g. 0.5 -> 1)
+#
+# -- and that rounded integer is what actually reaches the underlying
+# ``httpx.Client``'s timeout configuration. This means a fractional
+# constructor timeout can never be honoured exactly: the smallest
+# distinct, non-zero client-side deadline obtainable through the public
+# constructor -- one that is guaranteed not to be rounded UP past
+# whatever remaining budget is available -- is exactly one whole
+# second (requesting less than 1 would either round up past the
+# budget, or, at 0, construct an invalid/zero timeout). Below this
+# threshold, Task 34.1's ``_QdrantClientDeadlinePool``/``_query()``
+# refuse to start a request at all rather than construct a client
+# whose timeout could exceed the caller's actual remaining stage
+# budget -- see ``_query()``'s stage-budget check and
+# ``_QdrantClientDeadlinePool.get()`` in hierarchical_store.py.
+MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS = 1.0
+
+
 def _is_retryable_exception(exc: BaseException) -> bool:
     """
     Task 27: strict, type-based (never message-substring-based) retry
@@ -252,7 +282,13 @@ class HierarchyBeamSearchEngine:
             The callable is expected to be cheap to call repeatedly
             (e.g. backed by a small bounded pool/cache) -- see
             ``HierarchicalISCOStore``'s ``_QdrantClientDeadlinePool`` for
-            the production implementation.
+            the production implementation. (Task 34.1: when this is set
+            and a stage budget is active, ``_query()`` refuses to start
+            an attempt at all -- reporting ``stage_budget_exhausted`` --
+            once the remaining stage budget drops below
+            ``MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS``, rather than
+            request a client-side deadline that could round up past the
+            actual remaining time.)
         """
         if len(stages) < 2:
             raise ValueError(
@@ -697,6 +733,33 @@ class HierarchyBeamSearchEngine:
                         "HierarchyBeamSearchEngine: stage budget exhausted before "
                         "querying '%s' (attempt %d/%d) -- not starting a query.",
                         collection, attempt_num, self.max_query_attempts,
+                    )
+                    _fill_budget_exhausted_telemetry(attempt_num - 1)
+                    return []
+                # Task 34.1: when a deadline-aware client provider is
+                # configured, an attempt below would request a genuinely
+                # new client-side timeout for this specific remaining
+                # budget. qdrant-client's own constructor rounds any
+                # timeout UP to the nearest whole second (see this
+                # module's MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS
+                # docstring above), so below that threshold no positive
+                # integer-second client timeout can be requested without
+                # either exceeding the actual remaining budget or being
+                # zero/invalid. Refuse to start the attempt at all in
+                # that case -- exactly like an already-exhausted budget,
+                # never a client-side deadline longer than what is
+                # actually left.
+                if (
+                    self._client_for_deadline is not None
+                    and remaining_seconds < MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS
+                ):
+                    _logger.warning(
+                        "HierarchyBeamSearchEngine: remaining stage budget "
+                        "(%.3fs) before querying '%s' (attempt %d/%d) is below "
+                        "the minimum practical client-side deadline (%.1fs) -- "
+                        "not starting a query.",
+                        remaining_seconds, collection, attempt_num,
+                        self.max_query_attempts, MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS,
                     )
                     _fill_budget_exhausted_telemetry(attempt_num - 1)
                     return []

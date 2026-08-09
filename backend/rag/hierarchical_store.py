@@ -279,7 +279,7 @@ def _resolve_retry_backoff_seconds() -> float:
 
 
 # ---------------------------------------------------------------------------
-# Task 34: bounded client-side deadline pool
+# Task 34 / Task 34.1: bounded client-side deadline pool
 # ---------------------------------------------------------------------------
 #
 # Audited finding (qdrant-client 1.17.0, REST transport): the public
@@ -290,34 +290,67 @@ def _resolve_retry_backoff_seconds() -> float:
 # query string (``?timeout=N``), never as an httpx per-call timeout
 # override. The actual client-side connect/read/write/pool timeout is
 # governed exclusively by the ``httpx.Client`` a ``QdrantClient`` was
-# CONSTRUCTED with (``QdrantClient(timeout=N)`` -- confirmed directly:
-# a bare int/float applies uniformly to all four httpx sub-timeouts).
-# qdrant-client's own public call chain (``ApiClient.send_inner()`` ->
-# ``self._client.send(request)``) never forwards any per-call timeout
-# override into httpx, so there is no public, per-call way to shrink an
-# ALREADY-CONSTRUCTED client's timeout for one specific request.
+# CONSTRUCTED with (``QdrantClient(timeout=N)``). qdrant-client's own
+# public call chain (``ApiClient.send_inner()`` -> ``self._client.send(
+# request)``) never forwards any per-call timeout override into httpx,
+# so there is no public, per-call way to shrink an ALREADY-CONSTRUCTED
+# client's timeout for one specific request.
+#
+# Task 34.1 correction: Task 34's report stated that "a bare int/float
+# applies uniformly" to the constructed client's timeout. That is true
+# only up to a rounding step Task 34 did not audit deeply enough: direct
+# source reading of ``qdrant_client.qdrant_remote.QdrantRemote.__init__``
+# shows the constructor's ``timeout`` value is unconditionally passed
+# through ``math.ceil()`` before it ever reaches httpx --
+#
+#     _timeout = math.ceil(timeout) if timeout is not None else None
+#     # it has been changed from float to int.
+#     # convert it to the closest greater or equal int value (e.g. 0.5 -> 1)
+#
+# -- so a fractional remaining stage budget (e.g. 7.01s) previously
+# produced ``ceil(7.01) == 8``, an 8-second client deadline that EXCEEDS
+# the 7.01s actually remaining. This pool now selects
+# ``floor(deadline_seconds)`` (never ``ceil``) as the integer second
+# count requested from the constructor: because it is already an
+# integer, qdrant-client's own internal ``math.ceil()`` is a no-op on
+# it, so the resulting client timeout is always
+# ``floor(deadline_seconds) <= deadline_seconds`` -- never rounded
+# upward past the caller's requested deadline. Below
+# ``hierarchy_engine.MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS`` (1 whole
+# second -- the smallest non-zero value ``floor()`` can produce),
+# ``get()`` refuses outright (see its docstring) rather than construct
+# a zero/invalid timeout or round up; callers (``_query()``) check the
+# remaining budget against that same constant BEFORE calling ``get()``
+# and report ``stage_budget_exhausted`` themselves, so ``get()``'s
+# refusal is a defensive backstop, not the primary enforcement point.
 #
 # The only public, documented way to get a genuinely different
 # client-side timeout is therefore to construct a client with that
 # timeout. This pool does exactly that, bounded and cleanly closed:
-# requesting the store's own already-resolved default deadline returns
-# the store's existing primary client (zero behaviour change, zero new
-# construction, for the overwhelming common case); any other
-# (necessarily smaller, stage-budget-capped) deadline gets its own
-# client, constructed with the public ``check_compatibility=False``
+# requesting a deadline that is EXACTLY EQUAL to the store's own
+# already-resolved default deadline returns the store's existing
+# primary client (zero behaviour change, zero new construction, for
+# the overwhelming common case) -- this equality check now compares
+# the raw requested deadline directly, not a rounded cache key, so a
+# deadline merely rounding to the same integer as the primary (e.g.
+# 7.99s when the primary is 8s) is never mistaken for the true default
+# and correctly gets its own, smaller, dedicated client instead. Any
+# other (necessarily smaller, stage-budget-capped) deadline gets its
+# own client, constructed with the public ``check_compatibility=False``
 # constructor parameter (skips qdrant-client's own default
 # construction-time server-version HTTP probe -- confirmed by direct
 # source reading of ``QdrantRemote.__init__`` -- so acquiring a new
 # pooled client never itself performs an extra, unbounded network call
-# before our own deadline is even in effect), cached by its rounded
+# before our own deadline is even in effect), cached by its floored
 # integer-second value, bounded to at most ``max_size`` distinct
 # additional clients with least-recently-used eviction. Every evicted
 # or explicitly-closed client's connection is closed via its own public
 # ``QdrantClient.close()``.
 class _QdrantClientDeadlinePool:
-    """Task 34: see the module-level comment above for the full audited
-    rationale. Not used by any caller that omits `client_for_deadline`
-    when constructing `HierarchyBeamSearchEngine` -- purely additive."""
+    """Task 34/34.1: see the module-level comment above for the full
+    audited rationale. Not used by any caller that omits
+    `client_for_deadline` when constructing `HierarchyBeamSearchEngine`
+    -- purely additive."""
 
     def __init__(
         self,
@@ -337,12 +370,34 @@ class _QdrantClientDeadlinePool:
 
     def get(self, deadline_seconds: float) -> QdrantClient:
         """Return a QdrantClient whose own constructor-level timeout is
-        `max(1, ceil(deadline_seconds))`. Never constructs a new client
-        for the store's own primary/default deadline -- returns the
-        existing primary client directly in that case."""
-        key = max(1, math.ceil(deadline_seconds))
-        if key == self._primary_deadline_seconds:
+        `floor(deadline_seconds)` (Task 34.1: never `ceil` -- see the
+        module-level comment above for why `floor` is required to keep
+        the resulting client timeout from ever exceeding the caller's
+        requested deadline). Never constructs a new client for a
+        deadline that is exactly equal to the store's own
+        primary/default deadline -- returns the existing primary client
+        directly in that case.
+
+        Raises ``ValueError`` if `deadline_seconds` is below
+        `hierarchy_engine.MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS`: no
+        positive integer-second client timeout can be constructed below
+        that threshold without either rounding up past the requested
+        deadline or being zero/invalid. Callers are expected to check
+        the remaining budget against that same constant themselves
+        BEFORE calling `get()` (see `hierarchy_engine._query()`) and
+        report `stage_budget_exhausted` directly -- this exception is a
+        defensive backstop, not the primary enforcement point."""
+        if deadline_seconds < hierarchy_engine.MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS:
+            raise ValueError(
+                f"_QdrantClientDeadlinePool.get(): deadline_seconds={deadline_seconds!r} "
+                "is below hierarchy_engine.MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS="
+                f"{hierarchy_engine.MIN_PRACTICAL_CLIENT_DEADLINE_SECONDS!r}; callers must "
+                "check this themselves and treat it as stage-budget-exhausted rather "
+                "than call get()."
+            )
+        if deadline_seconds == self._primary_deadline_seconds:
             return self._primary_client
+        key = math.floor(deadline_seconds)
         if key in self._pool:
             self._order.remove(key)
             self._order.append(key)
