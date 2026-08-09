@@ -199,6 +199,7 @@ class HierarchyBeamSearchEngine:
         max_query_attempts: int = DEFAULT_MAX_QUERY_ATTEMPTS,
         retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
         query_timeout_seconds: Optional[float] = None,
+        client_for_deadline: Optional[Callable[[float], QdrantClient]] = None,
     ) -> None:
         """
         max_query_attempts : int, default 1 (Task 27)
@@ -236,6 +237,22 @@ class HierarchyBeamSearchEngine:
             ``max_stage_latency_ms``), the actual per-attempt timeout
             used is the smaller of this value and the remaining stage
             budget -- see ``_query()``.
+        client_for_deadline : callable, optional (Task 34)
+            ``(deadline_seconds: float) -> QdrantClient``. When provided,
+            ``_query()`` calls this for every attempt instead of always
+            using ``client`` directly, requesting a client whose own
+            constructor-level ``timeout`` genuinely bounds that attempt's
+            client-side connect/read/write/pool wait (audited: Qdrant's
+            ``query_points(timeout=...)`` parameter is a server-side
+            operation-timeout hint only -- see this module's Task 34
+            documentation and the final report for the full finding).
+            Default ``None`` reproduces prior behaviour exactly: every
+            attempt always uses ``client``, with no client-side deadline
+            beyond whatever that client was already constructed with.
+            The callable is expected to be cheap to call repeatedly
+            (e.g. backed by a small bounded pool/cache) -- see
+            ``HierarchicalISCOStore``'s ``_QdrantClientDeadlinePool`` for
+            the production implementation.
         """
         if len(stages) < 2:
             raise ValueError(
@@ -274,6 +291,7 @@ class HierarchyBeamSearchEngine:
         self.query_timeout_seconds = (
             float(query_timeout_seconds) if query_timeout_seconds is not None else None
         )
+        self._client_for_deadline = client_for_deadline
 
     # ------------------------------------------------------------------
     # Public API
@@ -706,7 +724,17 @@ class HierarchyBeamSearchEngine:
                     # hint delivered via the request's query string, per
                     # the audited qdrant-client 1.17.0 source).
                     query_points_kwargs["timeout"] = max(1, math.ceil(effective_timeout_seconds))
-                response = self._client.query_points(**query_points_kwargs)
+                # Task 34: a GENUINE client-side connect/read/write/pool
+                # deadline for this attempt, if a deadline-aware client
+                # provider was configured -- see client_for_deadline's
+                # docstring above. Falls back to the single configured
+                # client (byte-for-byte prior behaviour) when no provider
+                # was given, or when there is no timeout value to request
+                # a specific client for.
+                active_client = self._client
+                if self._client_for_deadline is not None and effective_timeout_seconds is not None:
+                    active_client = self._client_for_deadline(effective_timeout_seconds)
+                response = active_client.query_points(**query_points_kwargs)
             except Exception as exc:  # noqa: BLE001 - classified below, never silently swallowed
                 attempt_durations_ms.append(round((time.perf_counter() - t_attempt_start) * 1000, 3))
                 last_exc = exc

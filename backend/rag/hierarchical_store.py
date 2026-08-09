@@ -107,6 +107,7 @@ print(result.code, result.label_en, result.confidence)
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -275,6 +276,101 @@ def _resolve_retry_backoff_seconds() -> float:
         )
         return hierarchy_engine.DEFAULT_RETRY_BACKOFF_SECONDS
     return value
+
+
+# ---------------------------------------------------------------------------
+# Task 34: bounded client-side deadline pool
+# ---------------------------------------------------------------------------
+#
+# Audited finding (qdrant-client 1.17.0, REST transport): the public
+# ``query_points(timeout=...)`` parameter is a Qdrant SERVER-side
+# operation-timeout hint only -- confirmed by direct source reading of
+# ``qdrant_client/http/api/search_api.py``'s generated
+# ``_build_for_query_points()``, which places it in the REST request's
+# query string (``?timeout=N``), never as an httpx per-call timeout
+# override. The actual client-side connect/read/write/pool timeout is
+# governed exclusively by the ``httpx.Client`` a ``QdrantClient`` was
+# CONSTRUCTED with (``QdrantClient(timeout=N)`` -- confirmed directly:
+# a bare int/float applies uniformly to all four httpx sub-timeouts).
+# qdrant-client's own public call chain (``ApiClient.send_inner()`` ->
+# ``self._client.send(request)``) never forwards any per-call timeout
+# override into httpx, so there is no public, per-call way to shrink an
+# ALREADY-CONSTRUCTED client's timeout for one specific request.
+#
+# The only public, documented way to get a genuinely different
+# client-side timeout is therefore to construct a client with that
+# timeout. This pool does exactly that, bounded and cleanly closed:
+# requesting the store's own already-resolved default deadline returns
+# the store's existing primary client (zero behaviour change, zero new
+# construction, for the overwhelming common case); any other
+# (necessarily smaller, stage-budget-capped) deadline gets its own
+# client, constructed with the public ``check_compatibility=False``
+# constructor parameter (skips qdrant-client's own default
+# construction-time server-version HTTP probe -- confirmed by direct
+# source reading of ``QdrantRemote.__init__`` -- so acquiring a new
+# pooled client never itself performs an extra, unbounded network call
+# before our own deadline is even in effect), cached by its rounded
+# integer-second value, bounded to at most ``max_size`` distinct
+# additional clients with least-recently-used eviction. Every evicted
+# or explicitly-closed client's connection is closed via its own public
+# ``QdrantClient.close()``.
+class _QdrantClientDeadlinePool:
+    """Task 34: see the module-level comment above for the full audited
+    rationale. Not used by any caller that omits `client_for_deadline`
+    when constructing `HierarchyBeamSearchEngine` -- purely additive."""
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        primary_client: QdrantClient,
+        primary_deadline_seconds: int,
+        max_size: int = 8,
+    ) -> None:
+        self._host = host
+        self._port = port
+        self._primary_client = primary_client
+        self._primary_deadline_seconds = primary_deadline_seconds
+        self._max_size = max_size
+        self._pool: dict[int, QdrantClient] = {}
+        self._order: list[int] = []  # least-recently-used first
+
+    def get(self, deadline_seconds: float) -> QdrantClient:
+        """Return a QdrantClient whose own constructor-level timeout is
+        `max(1, ceil(deadline_seconds))`. Never constructs a new client
+        for the store's own primary/default deadline -- returns the
+        existing primary client directly in that case."""
+        key = max(1, math.ceil(deadline_seconds))
+        if key == self._primary_deadline_seconds:
+            return self._primary_client
+        if key in self._pool:
+            self._order.remove(key)
+            self._order.append(key)
+            return self._pool[key]
+        client = QdrantClient(
+            host=self._host, port=self._port, timeout=key, check_compatibility=False,
+        )
+        self._pool[key] = client
+        self._order.append(key)
+        if len(self._pool) > self._max_size:
+            oldest_key = self._order.pop(0)
+            evicted = self._pool.pop(oldest_key)
+            try:
+                evicted.close()
+            except Exception as exc:  # noqa: BLE001 - cleanup best-effort, never fatal
+                _logger.debug("_QdrantClientDeadlinePool: failed to close evicted client: %s", exc)
+        return client
+
+    def close_all(self) -> None:
+        """Close every pooled (non-primary) client. Safe to call more
+        than once; safe even if some clients were already closed."""
+        for client in self._pool.values():
+            try:
+                client.close()
+            except Exception as exc:  # noqa: BLE001 - cleanup best-effort, never fatal
+                _logger.debug("_QdrantClientDeadlinePool: failed to close pooled client: %s", exc)
+        self._pool.clear()
+        self._order.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +550,18 @@ class HierarchicalISCOStore:
         _resolved_retry_backoff_seconds = (
             retry_backoff_seconds if retry_backoff_seconds is not None else _resolve_retry_backoff_seconds()
         )
+        # Task 34: bounded pool providing a genuinely deadline-specific
+        # client (public QdrantClient(timeout=...) constructor, never a
+        # private-attribute override) whenever a query's effective
+        # per-attempt timeout is smaller than this store's own resolved
+        # default (i.e. a shared stage budget has genuinely capped it) --
+        # see _QdrantClientDeadlinePool's module-level docstring above
+        # for the full audited rationale. Requesting the default deadline
+        # itself always returns self._client unchanged.
+        self._client_deadline_pool = _QdrantClientDeadlinePool(
+            host=_host, port=_port,
+            primary_client=self._client, primary_deadline_seconds=_timeout,
+        )
         self._engine = HierarchyBeamSearchEngine(
             client=self._client,
             stages=[
@@ -473,7 +581,24 @@ class HierarchicalISCOStore:
             # timeout (see HierarchyBeamSearchEngine._query()'s docstring
             # for exactly what this Qdrant REST parameter controls).
             query_timeout_seconds=_timeout,
+            # Task 34: genuine client-side connect/read/write/pool
+            # deadline enforcement -- see _QdrantClientDeadlinePool above.
+            client_for_deadline=self._client_deadline_pool.get,
         )
+
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Task 34: close every pooled deadline-specific Qdrant client
+        (never the primary client, which callers may still be using).
+        Optional -- this store has no other lifecycle management and
+        nothing in this codebase currently calls this automatically
+        (existing singleton/long-lived usage is unaffected); provided so
+        a caller that wants to release pooled connections explicitly
+        can. Safe to call more than once."""
+        self._client_deadline_pool.close_all()
 
     # ------------------------------------------------------------------
     # Public API
