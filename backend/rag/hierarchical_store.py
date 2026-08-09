@@ -117,6 +117,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from sentence_transformers import SentenceTransformer
 
+from backend.rag import hierarchy_engine
 from backend.rag.hierarchy_engine import HierarchyBeamSearchEngine, SeedSpec, StageConfig, StageOverride
 from backend.rag.official_isco08_catalogue import PROFILE_COLLECTION_NAMES
 
@@ -214,6 +215,68 @@ def _resolve_qdrant_timeout_seconds() -> int:
     return value
 
 
+def _resolve_max_query_attempts() -> int:
+    """Task 27: read QDRANT_QUERY_MAX_ATTEMPTS from the environment; fail
+    SAFE to hierarchy_engine.DEFAULT_MAX_QUERY_ATTEMPTS (1 -- no retry,
+    never raise, never crash startup) on a missing, malformed, or
+    out-of-[1, MAX_QUERY_ATTEMPTS_HARD_CAP]-range value. This mirrors
+    _resolve_qdrant_timeout_seconds()'s exact precedent: an ambient
+    environment variable degrades gracefully. A value passed directly as
+    a HierarchicalISCOStore/HierarchyBeamSearchEngine constructor
+    argument is validated differently -- see
+    HierarchyBeamSearchEngine.__init__, which raises ValueError
+    immediately on an invalid explicit value instead."""
+    raw = os.getenv("QDRANT_QUERY_MAX_ATTEMPTS")
+    if raw is None or not raw.strip():
+        return hierarchy_engine.DEFAULT_MAX_QUERY_ATTEMPTS
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        _logger.warning(
+            "HierarchicalISCOStore: QDRANT_QUERY_MAX_ATTEMPTS=%r is not a valid "
+            "integer; using the default %s (no retry).",
+            raw, hierarchy_engine.DEFAULT_MAX_QUERY_ATTEMPTS,
+        )
+        return hierarchy_engine.DEFAULT_MAX_QUERY_ATTEMPTS
+    if not (1 <= value <= hierarchy_engine.MAX_QUERY_ATTEMPTS_HARD_CAP):
+        _logger.warning(
+            "HierarchicalISCOStore: QDRANT_QUERY_MAX_ATTEMPTS=%r must be in "
+            "[1, %s]; using the default %s (no retry).",
+            raw, hierarchy_engine.MAX_QUERY_ATTEMPTS_HARD_CAP,
+            hierarchy_engine.DEFAULT_MAX_QUERY_ATTEMPTS,
+        )
+        return hierarchy_engine.DEFAULT_MAX_QUERY_ATTEMPTS
+    return value
+
+
+def _resolve_retry_backoff_seconds() -> float:
+    """Task 27: read QDRANT_QUERY_RETRY_BACKOFF_SECONDS from the
+    environment; fail SAFE to hierarchy_engine.DEFAULT_RETRY_BACKOFF_SECONDS
+    (0.0) on a missing, malformed, or out-of-range value. Same precedent
+    as _resolve_max_query_attempts()/_resolve_qdrant_timeout_seconds()."""
+    raw = os.getenv("QDRANT_QUERY_RETRY_BACKOFF_SECONDS")
+    if raw is None or not raw.strip():
+        return hierarchy_engine.DEFAULT_RETRY_BACKOFF_SECONDS
+    try:
+        value = float(raw.strip())
+    except ValueError:
+        _logger.warning(
+            "HierarchicalISCOStore: QDRANT_QUERY_RETRY_BACKOFF_SECONDS=%r is not "
+            "a valid number; using the default %ss.",
+            raw, hierarchy_engine.DEFAULT_RETRY_BACKOFF_SECONDS,
+        )
+        return hierarchy_engine.DEFAULT_RETRY_BACKOFF_SECONDS
+    if not (0 <= value <= hierarchy_engine.MAX_RETRY_BACKOFF_SECONDS_HARD_CAP):
+        _logger.warning(
+            "HierarchicalISCOStore: QDRANT_QUERY_RETRY_BACKOFF_SECONDS=%r must be "
+            "in [0, %s]; using the default %ss.",
+            raw, hierarchy_engine.MAX_RETRY_BACKOFF_SECONDS_HARD_CAP,
+            hierarchy_engine.DEFAULT_RETRY_BACKOFF_SECONDS,
+        )
+        return hierarchy_engine.DEFAULT_RETRY_BACKOFF_SECONDS
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Result models
 # ---------------------------------------------------------------------------
@@ -291,6 +354,8 @@ class HierarchicalISCOStore:
         port: Optional[int] = None,
         timeout_seconds: Optional[int] = None,
         profile: str = LEGACY_PROFILE,
+        max_query_attempts: Optional[int] = None,
+        retry_backoff_seconds: Optional[float] = None,
     ) -> None:
         """
         Parameters
@@ -319,6 +384,22 @@ class HierarchicalISCOStore:
             unrecognized profile raises ``UnknownISCOCatalogueProfileError``
             immediately (fail closed; never silently falls back to
             legacy collection names).
+        max_query_attempts : int, optional (Task 27)
+            Total attempts per Qdrant query call before it is treated as
+            failed. Existing callers that omit this (default None) get
+            the value resolved from the ``QDRANT_QUERY_MAX_ATTEMPTS``
+            environment variable, or 1 (no retry -- byte-for-byte prior
+            behaviour) if that variable is absent, empty, malformed, or
+            outside ``[1, hierarchy_engine.MAX_QUERY_ATTEMPTS_HARD_CAP]``
+            -- see ``_resolve_max_query_attempts()``. An explicit value
+            passed here instead is validated (and raises ``ValueError``
+            on an invalid one) by ``HierarchyBeamSearchEngine.__init__``.
+        retry_backoff_seconds : float, optional (Task 27)
+            Fixed delay between attempts, only consulted when
+            ``max_query_attempts`` > 1. Existing callers that omit this
+            get the value resolved from
+            ``QDRANT_QUERY_RETRY_BACKOFF_SECONDS``, or 0.0 if absent/
+            invalid -- see ``_resolve_retry_backoff_seconds()``.
         """
         if profile not in _PROFILE_COLLECTIONS:
             raise UnknownISCOCatalogueProfileError(
@@ -367,6 +448,12 @@ class HierarchicalISCOStore:
         # EngineResult -- the actual beam-search logic lives in the engine.
         # Same engine class for every profile (Task 21 adapts collection
         # names only; it does not implement a new search algorithm).
+        _resolved_max_query_attempts = (
+            max_query_attempts if max_query_attempts is not None else _resolve_max_query_attempts()
+        )
+        _resolved_retry_backoff_seconds = (
+            retry_backoff_seconds if retry_backoff_seconds is not None else _resolve_retry_backoff_seconds()
+        )
         self._engine = HierarchyBeamSearchEngine(
             client=self._client,
             stages=[
@@ -376,6 +463,8 @@ class HierarchicalISCOStore:
                 StageConfig(name="unit", collection=col_unit, weight=_W4),
             ],
             hitl_threshold=HITL_THRESHOLD,
+            max_query_attempts=_resolved_max_query_attempts,
+            retry_backoff_seconds=_resolved_retry_backoff_seconds,
         )
 
     # ------------------------------------------------------------------
@@ -697,6 +786,13 @@ class HierarchicalISCOStore:
             trace["flat_query_duration_ms"] = query_telemetry.get("duration_ms")
             trace["flat_query_exception_type"] = query_telemetry.get("exception_type", "")
             trace["flat_query_exception_message"] = query_telemetry.get("exception_message", "")
+            # Task 27: additive -- attempts is 1 and attempt_durations_ms
+            # is a single-element list for every existing (no-retry,
+            # default max_query_attempts=1) caller, so flat_query_duration_ms
+            # above remains byte-identical to Task 25's original semantics
+            # in that default case.
+            trace["flat_query_attempts"] = query_telemetry.get("attempts")
+            trace["flat_query_attempt_durations_ms"] = query_telemetry.get("attempt_durations_ms", [])
         if not hits:
             return self._empty_result()
         if trace is not None:
