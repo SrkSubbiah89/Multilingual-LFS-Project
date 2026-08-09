@@ -92,6 +92,51 @@ def test_mcnemar_known_small_case_b2_10_c4():
     assert 0.0 < p < 1.0
 
 
+def _direct_binom_two_sided_p(b: int, c: int) -> float:
+    """Independent reference: the OLD direct-combinatorics form
+    (math.comb(n, k) * p**k * (1-p)**(n-k)), used only to cross-check
+    the log-space implementation at an n small enough not to overflow."""
+    import math as _math
+    n, k = b + c, min(b, c)
+
+    def pmf(k_: int) -> float:
+        return _math.comb(n, k_) * (0.5 ** k_) * (0.5 ** (n - k_))
+
+    p_value = sum(pmf(i) for i in range(0, k + 1))
+    p_value += sum(pmf(i) for i in range(n - k, n + 1) if i > k)
+    return min(1.0, p_value)
+
+
+def test_mcnemar_log_space_matches_direct_combinatorics_at_moderate_n():
+    # Task 37: proves the log-space (lgamma-based) implementation is
+    # numerically equivalent to the old direct math.comb form at an n
+    # small enough for the old form to still work (below is where it
+    # would start overflowing) -- a pure numerical-stability fix, not a
+    # change in what is computed.
+    for b, c in [(5, 5), (1, 15), (10, 4), (1, 9), (37, 52), (100, 137)]:
+        stat, p = an.mcnemar_test(b, c)
+        assert stat == float(min(b, c))
+        assert p == pytest.approx(_direct_binom_two_sided_p(b, c), abs=1e-9)
+
+
+def test_mcnemar_does_not_overflow_at_wisco_full_run_scale():
+    # Task 37: the OLD direct-combinatorics implementation raised
+    # OverflowError on Task 36's real 18,747-row official-profile paired
+    # comparison (several thousand discordant pairs) -- math.comb(n, k)
+    # for n/k in the thousands produces an int too large to convert to
+    # float. This is a regression guard against reintroducing that.
+    stat, p = an.mcnemar_test(3000, 3200)
+    assert stat == 3000.0
+    assert 0.0 <= p <= 1.0
+    stat2, p2 = an.mcnemar_test(9000, 100)
+    assert stat2 == 100.0
+    assert 0.0 <= p2 <= 1.0
+    # A near-full 18,747-pair split (extreme asymmetry) must not overflow.
+    stat3, p3 = an.mcnemar_test(18000, 700)
+    assert stat3 == 700.0
+    assert 0.0 <= p3 <= 1.0
+
+
 # ---------------------------------------------------------------------------
 # _exact_match_metric / isco_accuracy / isic_accuracy / isced_accuracy
 # ---------------------------------------------------------------------------

@@ -81,6 +81,21 @@ def mcnemar_test(b: int, c: int) -> tuple[float, float]:
 
     Returns (statistic, p_value). statistic here is min(b, c), following
     the common exact-test convention (not a chi-square statistic).
+
+    Task 37: `math.comb(n, k) * p**k * (1-p)**(n-k)` raises
+    `OverflowError` once `math.comb(n, k)` exceeds what a Python float
+    can represent (~1.8e308) -- which a full 18,747-row paired WISCO
+    comparison can reach: it takes only a few hundred discordant pairs
+    (b+c) to overflow, and thousands are routine at this scale. Below
+    that threshold, this still uses the original exact-integer
+    combinatorics (bit-for-bit identical to every prior caller/test,
+    including exact-fraction cases like b=c=1 that land on a power of
+    two). Only on `OverflowError` does it fall back to an equivalent
+    LOG-SPACE computation (`math.lgamma`-based `log(C(n, k))`, summed
+    then exponentiated) -- mathematically identical, numerically stable
+    at any n, but not guaranteed bit-exact (routine float error, ~1e-15)
+    since it no longer benefits from exact power-of-two fractions the
+    way the direct form incidentally does for tiny n.
     """
     if b < 0 or c < 0:
         raise ValueError("b and c must be >= 0")
@@ -89,13 +104,22 @@ def mcnemar_test(b: int, c: int) -> tuple[float, float]:
         return 0.0, 1.0
     k = min(b, c)
 
-    def _binom_pmf(k_: int, n_: int, p_: float = 0.5) -> float:
-        return math.comb(n_, k_) * (p_ ** k_) * ((1 - p_) ** (n_ - k_))
+    def _binom_pmf_exact(k_: int, n_: int) -> float:
+        return math.comb(n_, k_) * (0.5 ** k_) * (0.5 ** (n_ - k_))
+
+    def _binom_pmf_log(k_: int, n_: int) -> float:
+        # log(C(n_, k_) * 0.5**n_) -- p=0.5 is fixed for McNemar's exact test.
+        log_choose = math.lgamma(n_ + 1) - math.lgamma(k_ + 1) - math.lgamma(n_ - k_ + 1)
+        return math.exp(log_choose - n_ * math.log(2))
 
     # Two-sided exact p-value: sum the probability of every outcome at
     # least as extreme as the observed split, under the null p=0.5.
-    p_value = sum(_binom_pmf(i, n) for i in range(0, k + 1))
-    p_value += sum(_binom_pmf(i, n) for i in range(n - k, n + 1) if i > k)
+    try:
+        p_value = sum(_binom_pmf_exact(i, n) for i in range(0, k + 1))
+        p_value += sum(_binom_pmf_exact(i, n) for i in range(n - k, n + 1) if i > k)
+    except OverflowError:
+        p_value = sum(_binom_pmf_log(i, n) for i in range(0, k + 1))
+        p_value += sum(_binom_pmf_log(i, n) for i in range(n - k, n + 1) if i > k)
     p_value = min(1.0, p_value)
     return float(k), p_value
 
