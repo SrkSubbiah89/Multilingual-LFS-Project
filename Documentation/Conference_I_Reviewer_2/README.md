@@ -38,7 +38,9 @@ and current closure status.
 | [SRE_COUPLING_BUGFIX.md](SRE_COUPLING_BUGFIX.md) | Step 5.1: root-cause + fix for the `--sre off` also disabling ISIC/ISCED classification bug |
 | [CONTROLLED_BENCHMARK_AUDIT.md](CONTROLLED_BENCHMARK_AUDIT.md) | Step 6: audit of every candidate benchmark dataset in the repo (incl. the newly-found WISCO dataset) against a 10-item provenance checklist |
 | [CONTROLLED_BENCHMARK_DATASET_CARD_TEMPLATE.md](CONTROLLED_BENCHMARK_DATASET_CARD_TEMPLATE.md) | Template for any controlled (non-real-LFS) benchmark package, e.g. WISCO |
-| [WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md](WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md) | Step 7A: strict leakage audit of the WISCO benchmark split, the v2 group-aware split fix, and the prepared (not yet executed) Step 7B evaluation plan |
+| [WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md](WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md) | Step 7A: strict leakage audit of the WISCO benchmark split, the v2 group-aware split fix, and the Step 7B evaluation plan — non-reranked tier now completed, see below |
+| [OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md](OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md) | **Tasks 36/37.1 (2026-08-10): the canonical, manuscript-ready WISCO v2 official-profile controlled result** — headline/paired/subgroup tables, exact hashes, evidence chain, and safe/unsafe interpretation. Read this first for any WISCO accuracy citation. |
+| [MANUSCRIPT_SAFE_WISCO_WORDING.md](MANUSCRIPT_SAFE_WISCO_WORDING.md) | Ready-to-paste abstract/methods/results/limitations wording and reviewer-comment responses for the WISCO result above, plus an explicit "do not write" list |
 | [STEP_7_COMMAND.md](STEP_7_COMMAND.md) | Superseded by `WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md` — kept for Step 6's historical record only |
 | `generated/` | Landing directory for every JSON/CSV/MD artifact the tooling below produces (`MEASURED_EVALUATION_EVIDENCE_SUMMARY.md` lives here) |
 | [FLAT_BASELINE_COVERAGE_AUDIT.md](FLAT_BASELINE_COVERAGE_AUDIT.md) | Task 19: why the legacy `isco_occupations` flat baseline can't support a 4-digit accuracy comparison, and the (then-unresolved) 441-vs-436 ISCO-08 unit-group count discrepancy |
@@ -71,8 +73,9 @@ provenance + verified-vs-unverified coverage counts), Step 3 (real-LFS
 governance hardening), Step 4 (`--dry-run` mode), Step 5/5.1 (measured
 synthetic-fixture run + a real bug found and fixed), Step 6 (controlled-
 benchmark audit — found and prepared the WISCO dataset), Step 7A (WISCO
-leakage audit + group-aware split fix; Step 7B, the actual measured
-benchmark run, has not happened yet). New modules: `eval/manifest.py`,
+leakage audit + group-aware split fix). Step 7B, the actual measured
+benchmark run, is tracked as Tasks 23-37.1 below (non-reranked tier
+completed 2026-08-10; reranking tier still not run). New modules: `eval/manifest.py`,
 `eval/dataset_card_schema.py`, `eval/validate_real_lfs_governance.py`,
 `eval/validate_evaluation_discipline.py`, `eval/controlled_benchmark_schema.py`,
 `eval/validate_controlled_benchmark.py`, `eval/build_wisco_isco_benchmark.py`
@@ -103,14 +106,38 @@ flat comparator built against that verified catalogue (Task 21); and
 the real, guarded local Qdrant collection-build execution for those
 same five official collections (dual acknowledgement, no-overwrite,
 ordered create+verify, manifest — `OFFICIAL_ISCO08_RUNTIME_AND_FLAT_COMPARATOR.md`,
-Task 22, this section's newest entries above). **No WISCO accuracy
-number has been produced by any of these tasks** — Task 18 produced
-zero metric output (a gate failure, not a bug), Task 20 explicitly did
-not correct or re-evaluate anything, and Tasks 21-22 built runtime/build
-infrastructure only (zero Qdrant collections built, zero evaluations
-run, zero live Qdrant connections at any point). `eval/local_runs/` and
+Task 22). As of Task 22, no WISCO accuracy number had yet been
+produced by any of these tasks — Task 18 produced zero metric output (a
+gate failure, not a bug), Task 20 explicitly did not correct or
+re-evaluate anything, and Tasks 21-22 built runtime/build infrastructure
+only (zero Qdrant collections built, zero evaluations run, zero live
+Qdrant connections at any point). `eval/local_runs/` and
 `eval/local_catalogues/` (both gitignored) hold every raw artifact
 these tasks produced.
+
+### Tasks 23-37.1 — client-side deadline hardening, and the completed official-profile WISCO Tier-1 run
+
+Tracked individually under `Documentation/AI_HANDOFF/CLAUDE_TASK_23_*`
+through `CLAUDE_TASK_37_1_*`. Tasks 23-34.1 audited and hardened the
+Qdrant retrieval transport's client-side deadline enforcement (a
+reliability prerequisite, not a WISCO-specific change); Tasks 32/33/35
+validated it under live, increasingly realistic preflights. **Task 36
+then executed the official ILO 2021 ISCO-08 profile's Tier-1 run to
+completion**: both flat and strict hierarchical retrieval, full
+18,747-case WISCO v2 heldout split, no LLM reranking, zero errors/
+retries/exceptions/fallbacks. **Task 37** produced the first offline
+accuracy analysis and disclosed one read-only, out-of-scope Qdrant call
+made outside the analyzer itself (never hidden — see the canonical
+document below). **Task 37.1** independently reproduced that analysis
+with zero Qdrant connection anywhere in its own execution and is the
+clean-reproduction record. **A real WISCO accuracy number now exists**:
+flat retrieval 21.19% exact 4-digit accuracy vs. strict hierarchical
+retrieval's 10.35% (McNemar p ≈ 1.86e-301) — see
+[OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md](OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md)
+for the full, exact, citable record. This is a **controlled WISCO v2
+benchmark result, not real Labour Force Survey validation**, and covers
+only the non-reranked ISCO-08 tier — the reranking tier and any ISIC/
+ISCED/SRE measurement on WISCO remain not run.
 
 ## What is explicitly out of scope, still
 

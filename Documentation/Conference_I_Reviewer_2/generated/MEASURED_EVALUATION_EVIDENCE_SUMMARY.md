@@ -198,3 +198,56 @@ pipeline-integration evidence on the other 4 configs; only its `no_sre` vs.
 `with_sre` ISIC/ISCED comparison is superseded — see that directory's
 `SUPERSEDED_FOR_SRE_COMPARISON.md` and
 `pre_fix_vs_post_fix_sre_comparison.json` for the full before/after record.
+
+---
+
+## 9. Task 36/37.1 — controlled WISCO v2 official-profile evidence (2026-08-10)
+
+**This section is a distinct, separately-scaled evidence record. It must
+never be merged, averaged, or otherwise combined with the `n=5`
+synthetic-fixture numbers in §1-8 above** — those remain a
+manuscript-ineligible pipeline-integration proof at `n=5`; this section
+is a real, `n=18,747` controlled-benchmark measurement. The canonical,
+authoritative version of everything in this section is
+`Documentation/Conference_I_Reviewer_2/OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md`
+— read that document in full before citing any number below.
+
+**Dataset and scope**: WISCO v2 controlled multilingual ISCO-08
+benchmark (externally sourced, CC-BY-4.0, Zenodo DOI
+`10.5281/zenodo.8262593`; not real Labour Force Survey respondent data),
+full 18,747-case frozen heldout split, official ILO 2021 ISCO-08
+catalogue profile (10/43/130/436 verified counts). Zero reranker, zero
+LLM, zero ISIC, zero ISCED, and zero SRE activity in either comparison
+arm — `reranker_fired=False`, zero tokens/cost, blank ISIC/ISCED
+predictions, and `sre_status=not_applicable` on every one of the 37,494
+rows across both systems.
+
+**Headline** (exact 4-digit ISCO-08 match only):
+
+| System | n | Correct | Accuracy | 95% Wilson CI |
+|---|---:|---:|---:|---|
+| Flat | 18,747 | 3,973 | 21.1927% | [20.6136%, 21.7836%] |
+| Strict hierarchical | 18,747 | 1,941 | 10.3537% | [9.9256%, 10.7979%] |
+
+**Paired comparison**: both correct 1,341; flat-only correct 2,632;
+hierarchical-only correct 600; both incorrect 14,174; hierarchical minus
+flat = -10.8391 percentage points; McNemar exact two-sided
+p = 1.8573559951149046e-301.
+
+**Raw-file identities**: flat CSV SHA-256
+`d0692b4a87db11945dbd046ead79a32dcc36d715fbaa66fcc4e4853102be5f02`;
+hierarchical CSV SHA-256
+`b72193c8411b076df827abf2fa8bc6c2c72ac60f86799e435b94ff5eb237a8a4`;
+heldout export SHA-256
+`41c20fcc9eeec42358bdd90f211f6a344a47394b4b76fdf02c4ed5305cd1931c`.
+Evidence chain: Task 36 (raw run) →  Task 37 (first analysis; disclosed
+one out-of-scope read-only Qdrant call, never hidden) → Task 37.1
+(clean offline reproduction with zero Qdrant connection — the citable
+clean-reproduction record).
+
+**Strict limitation**: this is a controlled WISCO benchmark result, not
+real Labour Force Survey validation, and does not resolve Reviewer #2
+comment 3. It supports no ISIC, ISCED, SRE, cost, coverage,
+generalization, or production-performance claim. The result is a
+negative finding for hierarchical retrieval relative to flat retrieval
+in this one non-reranked configuration, not a system superiority claim.

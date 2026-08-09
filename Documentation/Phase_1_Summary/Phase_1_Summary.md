@@ -5,6 +5,57 @@
 
 ---
 
+## 2026-08-10 Evidence Addendum
+
+**Everything below this addendum is the original 2026-08-02 point-in-time
+snapshot, preserved unchanged as historical record. It is not current.**
+This addendum does not rewrite that snapshot — it adds what has changed
+since, with pointers to the current authoritative sources.
+
+- **Canonical WISCO result**: a real, controlled ISCO-08 accuracy
+  measurement now exists — see
+  `Documentation/Conference_I_Reviewer_2/OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md`
+  (Tasks 36/37.1, 2026-08-10) for the full, exact, citable record. In
+  brief: on the WISCO v2 controlled multilingual ISCO-08 benchmark
+  (18,747-case heldout split, official ILO 2021 ISCO-08 catalogue
+  profile, no LLM reranking), flat retrieval reached 21.1927% exact
+  4-digit accuracy (3,973/18,747) versus strict hierarchical retrieval's
+  10.3537% (1,941/18,747; McNemar exact two-sided p ≈ 1.8574e-301).
+  **This is a controlled WISCO v2 benchmark result, not real Labour
+  Force Survey validation**, and does not resolve the thesis's real-LFS
+  validation gap.
+- **Catalogue count distinction**: §4/§5 below describe this project's
+  **historical legacy** ISCO-08 implementation snapshot as of
+  2026-08-02 — "441 unit groups" and "131 minor groups" across "10
+  major / 43 submajor / 131 minor / 441 unit" collections
+  (`backend/rag/load_full_isco.py`). The WISCO result above uses a
+  **separate, later-built official ILO 2021 ISCO-08 catalogue profile**
+  with **verified** counts **10 major / 43 sub-major / 130 minor / 436
+  unit groups** (`eval/verified_catalogue_counts.yaml`,
+  `backend/rag/official_isco08_catalogue.py`). These are two different
+  catalogues; the legacy 131/441 counts below do not equal, and must
+  never be reported as equal to, the official 130/436 counts.
+- **Test count**: §6 below reports **1,178 passed** as of 2026-08-02.
+  That count is superseded. The current verified full-suite result (Task
+  37.1, 2026-08-10, independently reproduced with zero live
+  Qdrant/network/model dependency) is:
+  ```
+  2185 passed, 1 deselected, 1 warning
+  ```
+  See `Documentation/AI_HANDOFF/CLAUDE_TASK_37_1_FINAL_REPORT.md` for
+  the exact command and full verification detail. The growth from 1,178
+  to 2,185 reflects substantial work across Tasks 09-37.1 (WISCO
+  evidence line, official-catalogue runtime, client-side deadline
+  hardening, and this evidence-analysis tooling), not a correction of
+  the 2026-08-02 count, which was accurate for its own date.
+- **Manuscript-safe wording**: for any Reviewer #2 response or
+  manuscript text citing the WISCO result, use
+  `Documentation/Conference_I_Reviewer_2/MANUSCRIPT_SAFE_WISCO_WORDING.md`
+  — it lists explicitly prohibited phrasing alongside ready-to-paste
+  safe wording.
+
+---
+
 ## 1. Purpose of This Document
 
 This is the Phase 1 status summary for the thesis project *"Multilingual Conversational AI for Labour Force Surveys."* It consolidates:

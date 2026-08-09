@@ -157,12 +157,17 @@ integrity ok=True, hash_match=True
 | Split method | Group-aware, fixed seed 42, reproducible from `eval/build_wisco_isco_benchmark_v2_group_split.py` alone |
 | Eligibility | **Suitable for a later controlled ISCO-08 benchmark run** (Step 7B) — ISCO-08 only; see Phase D.3 for ISIC/ISCED/SRE |
 
-## Phase D — Evaluation plan (prepared, NOT executed)
+## Phase D — Evaluation plan (prepared, NOT executed as of Step 7A)
 
 All commands below are for **Step 7B**. Nothing in this list was run in
-Step 7A.
+Step 7A itself. **Update (2026-08-10): Tier 1 (D.1, non-reranked) has
+since been executed to completion by Tasks 23-37.1 — see "Post-execution
+update: Tasks 23-37.1" at the end of this document and
+`OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md` for the result. Tier 2
+(D.2, reranking subset) has NOT been run — everything below describing
+D.2 as not-yet-executed remains accurate.**
 
-### D.1 Full held-out, no-LLM comparison — feasible over the complete heldout set
+### D.1 Full held-out, no-LLM comparison — feasible over the complete heldout set — **COMPLETED 2026-08-10, see post-execution update below**
 
 Two configurations, **neither using an LLM reranker** (so no Ollama call,
 no per-case LLM latency):
@@ -494,8 +499,47 @@ completes, as happened in Task 12.
   execution for those five official collections (dual acknowledgement,
   local-only target, no-overwrite preflight, ordered create+verify,
   success/failure manifest) — 26 hermetic tests against fakes only, zero
-  live Qdrant/embedder use. **Still no collection built, still no
-  evaluation run, still no citable ISCO-08 accuracy number.** The build
-  itself remains gated on the same catalogue-correction staged plan
-  referenced above, plus a separate future task's explicit review and
-  authorization to actually invoke `--execute`.
+  live Qdrant/embedder use. As of Task 22, no collection had been built,
+  no evaluation had been run, and no citable ISCO-08 accuracy number
+  existed. The build itself remained gated on the same
+  catalogue-correction staged plan referenced above, plus a separate
+  future task's explicit review and authorization to actually invoke
+  `--execute`.
+
+## Post-execution update: Tasks 23-37.1 — official-profile Tier-1 run completed (non-reranked tier)
+
+Everything above this section (including Phase D's plan and every
+"NOT executed" / "still no evaluation run" statement) describes the
+state through Task 22 and must be read as history, not current status.
+This section records what actually happened next.
+
+Tasks 23-34.1 (client-side Qdrant deadline hardening — a reliability
+prerequisite unrelated to WISCO-specific logic) and Tasks 32/33/35
+(live preflights validating that hardening at increasingly realistic
+scale) preceded the actual Tier-1 run. **Task 36 executed Phase D.1
+above (the non-reranked tier) to completion**: `--isco-catalogue-profile
+official_ilo2021_v1`, full 18,747-case WISCO v2 heldout split, both flat
+and `--require-genuine-hierarchical --max-stage-latency-ms 30000`
+strict hierarchical, `--use-llm-reranker off` throughout — exit 0, zero
+row-level errors, zero retries, zero exceptions, zero fallbacks, zero
+stage-budget exhaustion in either arm. **Task 37** produced the first
+offline accuracy analysis of that raw output and disclosed one
+read-only, out-of-scope Qdrant metadata call made outside the analyzer
+itself during an operator-side check (no mutation; permanently
+disclosed, never hidden). **Task 37.1** independently reproduced the
+identical analysis with zero Qdrant connection anywhere in its own
+execution — it is the clean-reproduction record.
+
+**Result — flat outperformed strict hierarchical retrieval**: 21.1927%
+exact 4-digit accuracy (3,973/18,747) for flat vs. 10.3537%
+(1,941/18,747) for strict hierarchical, McNemar exact two-sided
+p ≈ 1.8573559951149046e-301. Full headline/paired/subgroup/operational
+tables and exact hashes:
+`Documentation/Conference_I_Reviewer_2/OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md`.
+
+**What remains unexecuted**: Phase D.2's reranking tier (500-record
+subset, both configs) has still not been run and still requires the
+explicit approval this document already specifies. Phase D.3's SRE axis
+remains `not_evaluable_on_wisco_isco_only`, unchanged. This is a
+controlled WISCO v2 benchmark result, not real Labour Force Survey
+validation, and does not resolve Reviewer #2 comment 3.
