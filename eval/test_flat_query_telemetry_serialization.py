@@ -43,7 +43,7 @@ def _fake_isco_instance_with_flat_exception():
     m = MagicMock()
     m.reranker_model_resolved = "none (reranking disabled)"
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             trace["flat_query_outcome"] = "exception"
             trace["flat_query_duration_ms"] = 30125.417
@@ -63,7 +63,7 @@ def _fake_isco_instance_success():
     m = MagicMock()
     m.reranker_model_resolved = "none (reranking disabled)"
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             trace["flat_query_outcome"] = "success"
             trace["flat_query_duration_ms"] = 12.3
@@ -149,7 +149,7 @@ def test_hierarchical_run_leaves_flat_query_telemetry_blank(tmp_path, monkeypatc
         m = MagicMock()
         m.reranker_model_resolved = "none (reranking disabled)"
 
-        def _classify(job_title, language, top_k, use_llm, trace):
+        def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
             if trace is not None:
                 for i in range(1, 5):
                     trace[f"stage{i}"] = [{"code": "8131", "label_en": "x", "score": 0.9}]

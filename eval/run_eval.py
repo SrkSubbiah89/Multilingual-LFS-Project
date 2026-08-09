@@ -237,7 +237,13 @@ class _BM25Adapter:
         self.reranker_model_resolved = "none (bm25 has no reranking stage)"
 
     def classify(self, job_title: str, language: str = "", top_k: int = 5,
-                 use_llm: bool = True, trace: Optional[dict] = None):
+                 use_llm: bool = True, trace: Optional[dict] = None,
+                 max_stage_latency_ms: Optional[float] = None):
+        # max_stage_latency_ms (Task 31): accepted for call-site signature
+        # compatibility with ISCOClassifier.classify() -- unused here.
+        # bm25 has no hierarchical stages/Qdrant queries to budget, and
+        # --require-genuine-hierarchical is already rejected outright for
+        # --system bm25 (see argument validation in main()).
         pred = self._bm25.predict(job_title, top_k=top_k)
         if trace is not None:
             trace["stage1"], trace["stage2"], trace["stage3"] = None, None, None
@@ -592,12 +598,20 @@ def run_one_case(
     input_order_position: Optional[int] = None,
     sre_enabled: bool = True,
     use_llm_reranker: bool = True,
+    max_stage_latency_ms: Optional[float] = None,
 ) -> CaseResult:
     """sre/isic_clf/isced_clf may all be None (Task 09) -- main() only
     constructs them when at least one selected row has both non-blank
     industry_text and education_text; when None, every row's ISIC/ISCED/SRE
     block below takes the "not_applicable" branch, matching the guard's
-    own per-row industry_text/education_text check."""
+    own per-row industry_text/education_text check.
+
+    max_stage_latency_ms (Task 31): opt-in strict stage deadline budget,
+    passed straight through to clf.classify(). Callers should pass this
+    only when BOTH --system hierarchical and --require-genuine-hierarchical
+    are active (see main()) -- matching --max-stage-latency-ms's existing
+    documented relationship to --require-genuine-hierarchical. Default
+    None reproduces prior behaviour exactly for every other case."""
     result = CaseResult(
         case_id=case_id,
         input_text=input_text,
@@ -631,6 +645,7 @@ def run_one_case(
             top_k=5,
             use_llm=use_llm_reranker,
             trace=trace,
+            max_stage_latency_ms=max_stage_latency_ms,
         )
     except Exception as exc:  # noqa: BLE001 - a failed case must not crash the run
         result.error = f"{type(exc).__name__}: {exc}\n{traceback.format_exc(limit=5)}"
@@ -1333,6 +1348,20 @@ def main() -> None:
         print(f"B2: capture_pool_metadata enabled  seed={args.seed}"
               + (f"  jsonl_output={args.jsonl_output}" if args.jsonl_output else ""))
 
+    # Task 31: the strict stage-level deadline budget is threaded into
+    # live retrieval ONLY when both --system hierarchical and
+    # --require-genuine-hierarchical are active -- the exact same
+    # documented relationship --max-stage-latency-ms already has to
+    # --require-genuine-hierarchical for the (still-unchanged) post-hoc
+    # check_strict_hierarchical() guard below. Every other invocation
+    # (including a plain --system hierarchical run without the strict
+    # flag) passes None and sees zero behavioural change.
+    effective_stage_budget_ms = (
+        args.max_stage_latency_ms
+        if (args.system == "hierarchical" and args.require_genuine_hierarchical)
+        else None
+    )
+
     results: list[CaseResult] = []
     t_run_start = time.perf_counter()
     for i, row in enumerate(rows):
@@ -1357,6 +1386,7 @@ def main() -> None:
             input_order_position=i,
             sre_enabled=(args.sre == "on"),
             use_llm_reranker=(args.use_llm_reranker == "on"),
+            max_stage_latency_ms=effective_stage_budget_ms,
         )
 
         if args.require_genuine_hierarchical:

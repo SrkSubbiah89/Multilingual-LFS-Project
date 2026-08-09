@@ -465,6 +465,14 @@ class HierarchicalISCOStore:
             hitl_threshold=HITL_THRESHOLD,
             max_query_attempts=_resolved_max_query_attempts,
             retry_backoff_seconds=_resolved_retry_backoff_seconds,
+            # Task 31: reliable per-request timeout propagation -- reuses
+            # the SAME resolved value already used to construct this
+            # store's QdrantClient(timeout=_timeout) above, so every
+            # query_points() call now also carries an explicit,
+            # request-level timeout matching the client's own configured
+            # timeout (see HierarchyBeamSearchEngine._query()'s docstring
+            # for exactly what this Qdrant REST parameter controls).
+            query_timeout_seconds=_timeout,
         )
 
     # ------------------------------------------------------------------
@@ -482,6 +490,7 @@ class HierarchicalISCOStore:
         branch_collapse: bool = False,
         capture_pool_metadata: bool = False,
         trace: Optional[dict] = None,
+        max_stage_latency_ms: Optional[float] = None,
     ) -> HierarchicalResult:
         """
         Run 4-stage hierarchical ISCO-08 retrieval for *query*.
@@ -576,6 +585,17 @@ class HierarchicalISCOStore:
             purely additive logging for the evaluation harness (see
             eval/run_eval.py). Existing callers that omit this parameter
             see zero behavioural change.
+        max_stage_latency_ms : float, optional (Task 31)
+            Opt-in strict stage deadline budget in milliseconds, passed
+            straight through to
+            ``HierarchyBeamSearchEngine.search(max_stage_latency_ms=...)``
+            -- see that method's docstring for the full semantics.
+            Default ``None`` (every existing caller that omits this)
+            reproduces prior behaviour exactly -- no deadline is ever
+            established. Intended to be threaded only from
+            ``eval/run_eval.py``'s strict ``--max-stage-latency-ms``
+            configuration (via ``ISCOClassifier.classify()``), never
+            silently imposed on production/default classification calls.
 
         Returns
         -------
@@ -594,6 +614,7 @@ class HierarchicalISCOStore:
                 reranker_candidates=max(1, int(reranker_candidates)),
                 branch_collapse=branch_collapse,
                 capture_pool_metadata=capture_pool_metadata, trace=trace,
+                max_stage_latency_ms=max_stage_latency_ms,
             )
             if result is not None:
                 return result
@@ -621,6 +642,7 @@ class HierarchicalISCOStore:
         branch_collapse: bool = False,
         capture_pool_metadata: bool = False,
         trace: Optional[dict] = None,
+        max_stage_latency_ms: Optional[float] = None,
     ) -> Optional[HierarchicalResult]:
         """
         Execute a beam-search hierarchical pipeline across 4 stages.
@@ -691,6 +713,7 @@ class HierarchicalISCOStore:
             branch_collapse=branch_collapse,
             capture_pool_metadata=capture_pool_metadata,
             trace=attempt_trace,
+            max_stage_latency_ms=max_stage_latency_ms,
         )
 
         retried = False
@@ -713,6 +736,7 @@ class HierarchicalISCOStore:
                 branch_collapse=branch_collapse,
                 capture_pool_metadata=capture_pool_metadata,
                 trace=attempt_trace,
+                max_stage_latency_ms=max_stage_latency_ms,
             )
 
         if trace is not None:

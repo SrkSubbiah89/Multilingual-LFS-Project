@@ -699,6 +699,7 @@ class ISCOClassifier:
         top_k: int = 5,
         use_llm: bool = True,
         trace: Optional[dict] = None,
+        max_stage_latency_ms: Optional[float] = None,
     ) -> ISCOClassification:
         """
         Classify a free-text job title to the best ISCO-08 occupation.
@@ -719,6 +720,18 @@ class ISCOClassifier:
             Instrumentation-only passthrough to
             HierarchicalISCOStore.search(trace=...) — see that method's
             docstring. No effect when omitted (default None).
+        max_stage_latency_ms : float, optional (Task 31)
+            Opt-in strict stage deadline budget in milliseconds, passed
+            straight through to the hierarchical path's
+            ``HierarchicalISCOStore.search(max_stage_latency_ms=...)`` --
+            see that method's and
+            ``HierarchyBeamSearchEngine.search()``'s docstrings for the
+            full semantics. Has no effect on the flat retrieval path.
+            Default ``None`` (every existing caller that omits this)
+            reproduces prior behaviour exactly. Intended to be threaded
+            only from ``eval/run_eval.py``'s strict
+            ``--max-stage-latency-ms`` configuration, never silently
+            imposed on production/default classification calls.
 
         Returns
         -------
@@ -747,6 +760,7 @@ class ISCOClassifier:
         if self._hierarchical_store is not None:
             return self._classify_hierarchical(
                 job_title, context, lang, top_k, major_hint=major_hint, use_llm=use_llm, trace=trace,
+                max_stage_latency_ms=max_stage_latency_ms,
             )
 
         # ── Flat fallback path (hierarchical store failed at init time, or
@@ -766,6 +780,7 @@ class ISCOClassifier:
         major_hint: str = "",
         use_llm: bool = True,
         trace: Optional[dict] = None,
+        max_stage_latency_ms: Optional[float] = None,
     ) -> ISCOClassification:
         """Run the 4-stage hierarchical pipeline, then optionally re-rank with LLM.
 
@@ -799,6 +814,7 @@ class ISCOClassifier:
                 reranker_candidates=self._reranker_candidates,
                 branch_collapse=self._branch_collapse,
                 capture_pool_metadata=self._capture_pool_metadata, trace=trace,
+                max_stage_latency_ms=max_stage_latency_ms,
             )
 
         if not h.code:

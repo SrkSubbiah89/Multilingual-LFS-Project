@@ -47,7 +47,7 @@ def make_fake_clf(clf_result=None, trace_updates=None):
 
     clf = MagicMock()
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         trace.update(trace_updates)
         return clf_result
 
@@ -339,7 +339,7 @@ def test_run_one_case_passes_input_text_to_classify_verbatim():
     with NO transformation applied to input_text anywhere along the way."""
     captured = {}
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         captured["job_title"] = job_title
         return make_clf_result()
 
@@ -370,7 +370,7 @@ def test_dev_set_and_full130_style_calls_produce_identical_job_title():
     classify() call site for the exact same underlying string."""
     captured = []
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         captured.append(job_title)
         return make_clf_result()
 
@@ -417,7 +417,7 @@ def test_dev_sweep_csv_to_classify_chain_is_verbatim_end_to_end(tmp_path):
 
     captured = {}
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         captured["job_title"] = job_title
         return make_clf_result()
 

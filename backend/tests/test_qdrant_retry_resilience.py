@@ -58,8 +58,10 @@ class ScriptedQdrantClient:
         self.script = list(script)
         self.hits = hits if hits is not None else []
         self.calls = 0
+        self.timeouts: list = []  # Task 31: one entry per query_points() call, in order
 
-    def query_points(self, collection_name, query, query_filter, limit, with_payload):
+    def query_points(self, collection_name, query, query_filter, limit, with_payload, timeout=None):
+        self.timeouts.append(timeout)
         idx = min(self.calls, len(self.script) - 1)
         entry = self.script[idx]
         self.calls += 1
@@ -75,8 +77,10 @@ class EmptyHitQdrantClient:
 
     def __init__(self):
         self.calls = 0
+        self.timeouts: list = []
 
-    def query_points(self, collection_name, query, query_filter, limit, with_payload):
+    def query_points(self, collection_name, query, query_filter, limit, with_payload, timeout=None):
+        self.timeouts.append(timeout)
         self.calls += 1
         return SimpleNamespace(points=[])
 

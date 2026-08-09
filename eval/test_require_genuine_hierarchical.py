@@ -40,7 +40,7 @@ def _fake_isco_instance(pred_method="hierarchical_semantic"):
     m.reranker_model_resolved = "none (reranking disabled)"
     stage = '[{"code": "2512", "label_en": "Software Developers", "score": 0.9}]'
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             trace["stage1"] = [{"code": "2", "label_en": "x", "score": 0.9}]
             trace["stage2"] = [{"code": "25", "label_en": "x", "score": 0.9}]
@@ -260,7 +260,7 @@ def test_strict_guard_aborts_run_on_exceeded_stage_latency(tmp_path, monkeypatch
     slow_clf = MagicMock()
     slow_clf.reranker_model_resolved = "none (reranking disabled)"
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             trace["stage1"] = [{"code": "2", "label_en": "x", "score": 0.9}]
             trace["stage2"] = [{"code": "25", "label_en": "x", "score": 0.9}]

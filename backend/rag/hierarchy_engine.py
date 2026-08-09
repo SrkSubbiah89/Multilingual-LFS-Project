@@ -32,6 +32,7 @@ filter on, which a length-1 stage list cannot provide.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -197,6 +198,7 @@ class HierarchyBeamSearchEngine:
         hitl_threshold: float,
         max_query_attempts: int = DEFAULT_MAX_QUERY_ATTEMPTS,
         retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
+        query_timeout_seconds: Optional[float] = None,
     ) -> None:
         """
         max_query_attempts : int, default 1 (Task 27)
@@ -218,6 +220,22 @@ class HierarchyBeamSearchEngine:
             Must be a number in [0, MAX_RETRY_BACKOFF_SECONDS_HARD_CAP]
             (currently 2.0); any other value raises ValueError
             immediately at construction.
+        query_timeout_seconds : float, optional (Task 31)
+            The per-request timeout value passed explicitly to every
+            ``client.query_points(..., timeout=...)`` call (see
+            ``_query()``'s docstring and Task 31's final report for the
+            full audited explanation of what this Qdrant REST parameter
+            actually controls -- a server-side operation-timeout hint,
+            not a client-side socket timeout). Default ``None`` means no
+            explicit ``timeout=`` is passed at all, reproducing every
+            prior caller's exact behaviour (the client's own
+            constructor-level default, if any, still applies). Must be a
+            positive number or ``None``; any other value raises
+            ``ValueError`` immediately at construction. When a stage
+            budget is active for a given call (see ``search()``'s
+            ``max_stage_latency_ms``), the actual per-attempt timeout
+            used is the smaller of this value and the remaining stage
+            budget -- see ``_query()``.
         """
         if len(stages) < 2:
             raise ValueError(
@@ -239,11 +257,23 @@ class HierarchyBeamSearchEngine:
                 f"retry_backoff_seconds must be a number in [0, {MAX_RETRY_BACKOFF_SECONDS_HARD_CAP}]; "
                 f"got {retry_backoff_seconds!r}"
             )
+        if query_timeout_seconds is not None and (
+            not isinstance(query_timeout_seconds, (int, float))
+            or isinstance(query_timeout_seconds, bool)
+            or query_timeout_seconds <= 0
+        ):
+            raise ValueError(
+                f"query_timeout_seconds must be a positive number or None; "
+                f"got {query_timeout_seconds!r}"
+            )
         self._client = client
         self.stages = stages
         self.hitl_threshold = hitl_threshold
         self.max_query_attempts = max_query_attempts
         self.retry_backoff_seconds = float(retry_backoff_seconds)
+        self.query_timeout_seconds = (
+            float(query_timeout_seconds) if query_timeout_seconds is not None else None
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -260,10 +290,40 @@ class HierarchyBeamSearchEngine:
         branch_collapse: bool = False,
         capture_pool_metadata: bool = False,
         trace: Optional[dict] = None,
+        max_stage_latency_ms: Optional[float] = None,
     ) -> Optional[EngineResult]:
         """
         Run the beam search. Returns ``None`` only if every explored branch
         returns zero hits at the final stage (caller decides the fallback).
+
+        max_stage_latency_ms : float, optional (Task 31)
+            Opt-in, clearly-named strict stage deadline budget in
+            milliseconds. Default ``None`` preserves prior behaviour
+            exactly -- no deadline is ever established, and this method
+            behaves byte-for-byte as before this parameter existed. When
+            provided, a single fresh monotonic deadline
+            (``time.monotonic() + max_stage_latency_ms / 1000``) is
+            established once at the START of each stage's processing
+            (stage 0's own query, and each of stages 1..N-1's parent-
+            filtered beam expansion) and shared across EVERY beam-branch
+            query, retry, and retry backoff issued for that stage --
+            never per-query, never reset mid-stage. Before every branch
+            query and before every retry/backoff sleep, the remaining
+            budget is computed; a query is never started and a backoff
+            is never slept once the budget is exhausted (see
+            ``_query()``). On exhaustion, the affected query returns an
+            empty hit list with ``query_telemetry["outcome"] ==
+            "stage_budget_exhausted"`` -- never a fabricated candidate --
+            which naturally propagates through this method's existing
+            zero-hits handling (``if not hits: continue`` /
+            ``if hits0 is empty: return None``) into the SAME existing
+            flat-fallback path already used for a genuine zero-hit
+            response, an exception, or retry exhaustion. No new
+            fallback-detection logic is required: the caller's existing
+            ``pred_method`` prefix check (unmodified since Task 13)
+            already rejects any state that is not genuine, complete
+            hierarchical evidence, regardless of which of these causes
+            produced it.
         """
         stage_overrides = stage_overrides or {}
         n = len(self.stages)
@@ -285,23 +345,39 @@ class HierarchyBeamSearchEngine:
                     "score": round(float(hit.score), 4),
                 })
 
-        def _timed_query(stage_idx: int, **kwargs):
+        def _stage_deadline_for(stage_idx: int) -> Optional[float]:
+            # Task 31: one fresh deadline established at the start of
+            # THIS stage's processing, shared by every branch query,
+            # retry, and backoff issued for this stage_idx -- computed
+            # once per call site (stage 0's single query, or once per
+            # stage_idx before its branch loop begins), never per-query.
+            if max_stage_latency_ms is None:
+                return None
+            return time.monotonic() + (max_stage_latency_ms / 1000.0)
+
+        def _timed_query(stage_idx: int, stage_deadline_monotonic: Optional[float] = None, **kwargs):
             key = f"stage{stage_idx + 1}"
             if trace is None:
-                return self._query(**kwargs)
+                return self._query(stage_deadline_monotonic=stage_deadline_monotonic, **kwargs)
             t0 = time.perf_counter()
             query_telemetry: dict = {}
-            result = self._query(query_telemetry=query_telemetry, **kwargs)
+            result = self._query(
+                query_telemetry=query_telemetry,
+                stage_deadline_monotonic=stage_deadline_monotonic,
+                **kwargs,
+            )
             elapsed_ms = (time.perf_counter() - t0) * 1000
             lk = f"{key}_latency_ms"
             # Task 13: this already includes the full duration of every
             # attempt and any Task 27 retry backoff, since _query()'s own
             # internal retry loop is inside the single self._query() call
             # timed here -- --max-stage-latency-ms is never blind to
-            # retry/backoff time.
+            # retry/backoff time. Task 31: also includes any time spent
+            # before a budget-exhaustion short-circuit -- elapsed_ms is
+            # measured around the whole _query() call regardless of outcome.
             trace[lk] = trace.get(lk, 0.0) + elapsed_ms
-            # Task 27: separate, clearly-named per-stage retry/exception
-            # telemetry -- never written into the flat_query_* fields
+            # Task 27/31: separate, clearly-named per-stage retry/exception/
+            # budget telemetry -- never written into the flat_query_* fields
             # (those are exclusively HierarchicalISCOStore._flat_search()'s).
             # A stage may be queried once per explored beam branch, so
             # this accumulates (never overwrites) across every query call
@@ -310,16 +386,29 @@ class HierarchyBeamSearchEngine:
             summary = trace.setdefault(tk, {
                 "queries": 0, "any_retry": False, "any_exception": False,
                 "max_attempts_used": 0, "exception_types": [],
+                "stage_budget_exhausted": False,
+                "configured_query_timeout_seconds": self.query_timeout_seconds,
+                "initial_stage_budget_ms": max_stage_latency_ms,
+                "queries_detail": [],
             })
             summary["queries"] += 1
-            summary["max_attempts_used"] = max(summary["max_attempts_used"], query_telemetry.get("attempts", 1))
-            if query_telemetry.get("outcome") == "success_after_retry":
+            summary["max_attempts_used"] = max(summary["max_attempts_used"], query_telemetry.get("attempts", 0))
+            outcome = query_telemetry.get("outcome")
+            if outcome == "success_after_retry":
                 summary["any_retry"] = True
-            if query_telemetry.get("outcome") in ("exception", "retry_exhausted"):
+            if outcome in ("exception", "retry_exhausted"):
                 summary["any_exception"] = True
                 exc_type = query_telemetry.get("exception_type")
                 if exc_type and exc_type not in summary["exception_types"]:
                     summary["exception_types"].append(exc_type)
+            if outcome == "stage_budget_exhausted":
+                summary["stage_budget_exhausted"] = True
+            summary["queries_detail"].append({
+                "outcome": outcome,
+                "attempts": query_telemetry.get("attempts", 0),
+                "attempt_durations_ms": query_telemetry.get("attempt_durations_ms", []),
+                "remaining_stage_budget_ms_at_entry": query_telemetry.get("remaining_stage_budget_ms_at_entry"),
+            })
             return result
 
         # ── Stage 0 ──────────────────────────────────────────────────
@@ -348,7 +437,10 @@ class HierarchyBeamSearchEngine:
             if not s0_candidates:
                 return None
         else:
-            hits0 = _timed_query(0, collection=self.stages[0].collection, query_vec=query_vec, limit=beam)
+            hits0 = _timed_query(
+                0, collection=self.stages[0].collection, query_vec=query_vec, limit=beam,
+                stage_deadline_monotonic=_stage_deadline_for(0),
+            )
             if not hits0:
                 return None
             _trace_hits(0, hits0)
@@ -371,6 +463,10 @@ class HierarchyBeamSearchEngine:
             stage = self.stages[stage_idx]
             is_final = stage_idx == n - 1
             next_frontier: list[dict] = []
+            # Task 31: ONE deadline for this stage_idx, shared by every
+            # branch below (not recomputed per branch) -- see
+            # _stage_deadline_for()'s docstring reference in search().
+            stage_deadline = _stage_deadline_for(stage_idx)
 
             for br in frontier:
                 parent_code = br["codes"][-1]
@@ -378,6 +474,7 @@ class HierarchyBeamSearchEngine:
                 hits = _timed_query(
                     stage_idx, collection=stage.collection, query_vec=query_vec,
                     limit=limit, parent_code=parent_code,
+                    stage_deadline_monotonic=stage_deadline,
                 )
                 if not hits:
                     continue
@@ -496,31 +593,42 @@ class HierarchyBeamSearchEngine:
         limit: int,
         parent_code: Optional[str] = None,
         query_telemetry: Optional[dict] = None,
+        stage_deadline_monotonic: Optional[float] = None,
     ):
         """
         Wrap ``client.query_points()`` with an optional parent_code filter.
 
-        Returns a list of ``ScoredPoint`` objects (empty list on any error).
+        Returns a list of ``ScoredPoint`` objects (empty list on any error
+        or on stage-budget exhaustion -- never a fabricated candidate).
 
         query_telemetry : dict, optional
-            Task 25/27: when provided, populated (as a side effect,
+            Task 25/27/31: when provided, populated (as a side effect,
             mirroring the existing ``trace`` dict convention used
             throughout this module) with this query's outcome so a
             caller can tell a genuine successful zero-hit response apart
-            from a swallowed exception, and (Task 27) a first-attempt
-            success apart from a retried success or a retry-exhausted
-            failure. Always sets ``"outcome"`` (one of ``"success"``,
+            from a swallowed exception, a first-attempt success apart
+            from a retried success or a retry-exhausted failure, and
+            (Task 31) any of those apart from stage-budget exhaustion.
+            Always sets ``"outcome"`` (one of ``"success"``,
             ``"success_after_retry"``, ``"exception"`` (non-retryable, or
             retryable-but-``max_query_attempts``-is-1), ``"retry_exhausted"``
-            (retryable exception type, every attempt failed)),
-            ``"attempts"`` (int, how many attempts were actually made),
-            ``"duration_ms"`` (float, TOTAL wall time across every
-            attempt and any backoff -- for the default
-            ``max_query_attempts=1`` this is byte-identical to Task 25's
-            original single-attempt semantics), and
-            ``"attempt_durations_ms"`` (list[float], one entry per
-            attempt). Only on ``"exception"``/``"retry_exhausted"`` also
-            sets ``"exception_type"`` (the LAST attempt's exception class
+            (retryable exception type, every attempt failed),
+            ``"stage_budget_exhausted"`` (Task 31: the remaining stage
+            budget reached zero before this attempt could be started, or
+            before a retry/backoff could proceed -- never a fabricated
+            result)), ``"attempts"`` (int, how many attempts were
+            actually made; may be 0 if the budget was already exhausted
+            before the first attempt), ``"duration_ms"`` (float, TOTAL
+            wall time across every attempt and any backoff -- for the
+            default ``max_query_attempts=1`` and no active stage budget
+            this is byte-identical to Task 25's original single-attempt
+            semantics), ``"attempt_durations_ms"`` (list[float], one
+            entry per attempt actually made), and (Task 31)
+            ``"remaining_stage_budget_ms_at_entry"`` (float or None: the
+            remaining stage budget, in ms, at the moment this call
+            began -- None when no stage budget is active). Only on
+            ``"exception"``/``"retry_exhausted"`` also sets
+            ``"exception_type"`` (the LAST attempt's exception class
             name), ``"exception_message"`` (the last attempt's
             ``str(exc)``, sanitized via ``_sanitize_exception_message`` --
             bounded length, single line, never a stack trace, never the
@@ -528,6 +636,13 @@ class HierarchyBeamSearchEngine:
             last exception was in the Task 27 retry allowlist -- see
             ``_is_retryable_exception``). Omitted (None, the default)
             reproduces prior behaviour exactly for every existing caller.
+
+        stage_deadline_monotonic : float, optional (Task 31)
+            An absolute ``time.monotonic()``-based deadline shared by
+            every branch query/retry/backoff within one stage (see
+            ``search()``'s ``max_stage_latency_ms``). Default ``None``
+            reproduces prior behaviour exactly -- no budget is ever
+            checked or applied.
         """
         query_filter = None
         if parent_code is not None:
@@ -539,29 +654,89 @@ class HierarchyBeamSearchEngine:
         attempt_durations_ms: list[float] = []
         last_exc: Optional[BaseException] = None
 
+        remaining_at_entry_ms: Optional[float] = None
+        if stage_deadline_monotonic is not None:
+            remaining_at_entry_ms = round((stage_deadline_monotonic - time.monotonic()) * 1000, 3)
+
+        def _fill_budget_exhausted_telemetry(attempts_made: int) -> None:
+            if query_telemetry is None:
+                return
+            query_telemetry["outcome"] = "stage_budget_exhausted"
+            query_telemetry["attempts"] = attempts_made
+            query_telemetry["duration_ms"] = round((time.perf_counter() - t_total_start) * 1000, 3)
+            query_telemetry["attempt_durations_ms"] = list(attempt_durations_ms)
+            query_telemetry["remaining_stage_budget_ms_at_entry"] = remaining_at_entry_ms
+
         for attempt_num in range(1, self.max_query_attempts + 1):
+            # Task 31: never start a query once the shared stage budget
+            # (if active) has run out -- checked fresh before EVERY
+            # attempt, including the first.
+            effective_timeout_seconds = self.query_timeout_seconds
+            if stage_deadline_monotonic is not None:
+                remaining_seconds = stage_deadline_monotonic - time.monotonic()
+                if remaining_seconds <= 0:
+                    _logger.warning(
+                        "HierarchyBeamSearchEngine: stage budget exhausted before "
+                        "querying '%s' (attempt %d/%d) -- not starting a query.",
+                        collection, attempt_num, self.max_query_attempts,
+                    )
+                    _fill_budget_exhausted_telemetry(attempt_num - 1)
+                    return []
+                effective_timeout_seconds = (
+                    remaining_seconds if effective_timeout_seconds is None
+                    else min(effective_timeout_seconds, remaining_seconds)
+                )
+
             t_attempt_start = time.perf_counter()
             try:
-                response = self._client.query_points(
+                query_points_kwargs = dict(
                     collection_name=collection,
                     query=query_vec,
                     query_filter=query_filter,
                     limit=limit,
                     with_payload=True,
                 )
+                if effective_timeout_seconds is not None:
+                    # Task 31: explicit, finite, per-request timeout,
+                    # derived from the configured timeout value and
+                    # capped by any remaining stage budget -- see this
+                    # method's docstring and Task 31's final report for
+                    # what qdrant-client's own `timeout` parameter here
+                    # actually controls (a server-side operation-timeout
+                    # hint delivered via the request's query string, per
+                    # the audited qdrant-client 1.17.0 source).
+                    query_points_kwargs["timeout"] = max(1, math.ceil(effective_timeout_seconds))
+                response = self._client.query_points(**query_points_kwargs)
             except Exception as exc:  # noqa: BLE001 - classified below, never silently swallowed
                 attempt_durations_ms.append(round((time.perf_counter() - t_attempt_start) * 1000, 3))
                 last_exc = exc
                 retryable = _is_retryable_exception(exc)
                 more_attempts_remain = attempt_num < self.max_query_attempts
+                budget_remains_for_retry = True
+                backoff = self.retry_backoff_seconds
+                if stage_deadline_monotonic is not None:
+                    remaining_for_backoff = stage_deadline_monotonic - time.monotonic()
+                    budget_remains_for_retry = remaining_for_backoff > 0
+                    if backoff > 0:
+                        backoff = max(0.0, min(backoff, remaining_for_backoff))
+                if retryable and more_attempts_remain and not budget_remains_for_retry:
+                    # Would have retried, but the shared stage budget is
+                    # exhausted -- never sleep, never start another attempt.
+                    _logger.warning(
+                        "HierarchyBeamSearchEngine: stage budget exhausted after a "
+                        "retryable failure on '%s' (attempt %d/%d) -- not retrying.",
+                        collection, attempt_num, self.max_query_attempts,
+                    )
+                    _fill_budget_exhausted_telemetry(attempt_num)
+                    return []
                 if retryable and more_attempts_remain:
                     _logger.warning(
                         "HierarchyBeamSearchEngine: query on '%s' failed on attempt %d/%d "
                         "(retryable): %s -- retrying.",
                         collection, attempt_num, self.max_query_attempts, exc,
                     )
-                    if self.retry_backoff_seconds > 0:
-                        time.sleep(self.retry_backoff_seconds)
+                    if backoff > 0:
+                        time.sleep(backoff)
                     continue
                 # Non-retryable, or retryable but attempts exhausted: fail closed.
                 _logger.warning(
@@ -586,6 +761,7 @@ class HierarchyBeamSearchEngine:
                     query_telemetry["exception_type"] = type(exc).__name__
                     query_telemetry["exception_message"] = _sanitize_exception_message(str(exc))
                     query_telemetry["retryable"] = retryable
+                    query_telemetry["remaining_stage_budget_ms_at_entry"] = remaining_at_entry_ms
                 return []
             else:
                 attempt_durations_ms.append(round((time.perf_counter() - t_attempt_start) * 1000, 3))
@@ -594,6 +770,7 @@ class HierarchyBeamSearchEngine:
                     query_telemetry["attempts"] = attempt_num
                     query_telemetry["duration_ms"] = round((time.perf_counter() - t_total_start) * 1000, 3)
                     query_telemetry["attempt_durations_ms"] = attempt_durations_ms
+                    query_telemetry["remaining_stage_budget_ms_at_entry"] = remaining_at_entry_ms
                 return response.points
 
         # Unreachable: the loop always returns or continues; a final

@@ -40,7 +40,7 @@ class FakeQdrantClient:
     def get_collections(self):
         return SimpleNamespace(collections=[SimpleNamespace(name=n) for n in self.existing_collections])
 
-    def query_points(self, collection_name, query, query_filter, limit, with_payload):
+    def query_points(self, collection_name, query, query_filter, limit, with_payload, timeout=None):
         parent_code = None
         if query_filter is not None:
             parent_code = query_filter.must[0].match.value

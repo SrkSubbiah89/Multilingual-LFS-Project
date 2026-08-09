@@ -67,7 +67,7 @@ def _run_with_fake_classifier(tmp_path, monkeypatch, classify_fn, system="flat",
 
 
 def test_flat_default_no_retry_attempts_field_is_one(tmp_path, monkeypatch):
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             trace["flat_query_outcome"] = "success"
             trace["flat_query_duration_ms"] = 12.3
@@ -85,7 +85,7 @@ def test_flat_default_no_retry_attempts_field_is_one(tmp_path, monkeypatch):
 
 
 def test_flat_success_after_retry_serializes_new_outcome_value(tmp_path, monkeypatch):
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             trace["flat_query_outcome"] = "success_after_retry"
             trace["flat_query_duration_ms"] = 145.9
@@ -103,7 +103,7 @@ def test_flat_success_after_retry_serializes_new_outcome_value(tmp_path, monkeyp
 
 
 def test_flat_retry_exhausted_serializes_correctly_and_no_fabricated_code(tmp_path, monkeypatch):
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             trace["flat_query_outcome"] = "retry_exhausted"
             trace["flat_query_duration_ms"] = 300.0
@@ -125,7 +125,7 @@ def test_flat_retry_exhausted_serializes_correctly_and_no_fabricated_code(tmp_pa
 
 
 def test_hierarchical_row_leaves_new_flat_fields_blank(tmp_path, monkeypatch):
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             for i in range(1, 5):
                 trace[f"stage{i}"] = [{"code": "8131", "label_en": "x", "score": 0.9}]
@@ -147,7 +147,7 @@ def test_hierarchical_row_leaves_new_flat_fields_blank(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_hier_stage_query_telemetry_serializes_and_is_distinct_from_flat(tmp_path, monkeypatch):
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             for i in range(1, 5):
                 trace[f"stage{i}"] = [{"code": "8131", "label_en": "x", "score": 0.9}]

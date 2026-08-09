@@ -41,7 +41,7 @@ def _make_fake_isco_clf(clf_result=None, trace_updates=None):
     trace_updates = trace_updates or {}
     clf = MagicMock()
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         trace.update(trace_updates)
         return clf_result
 

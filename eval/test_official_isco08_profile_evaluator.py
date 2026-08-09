@@ -40,7 +40,7 @@ def _fake_isco_instance(pred_method):
     m = MagicMock()
     m.reranker_model_resolved = "none (reranking disabled)"
 
-    def _classify(job_title, language, top_k, use_llm, trace):
+    def _classify(job_title, language, top_k, use_llm, trace, max_stage_latency_ms=None):
         if trace is not None:
             for i in range(1, 5):
                 trace[f"stage{i}"] = [{"code": "2512"[:i] if i < 4 else "2512", "label_en": "x", "score": 0.9}]
