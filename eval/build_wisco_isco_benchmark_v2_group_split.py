@@ -130,6 +130,55 @@ def _split_for_group(group_root: str, member_keys: list[str]) -> str:
     return SPLIT_DEV if int(digest[:8], 16) % 10 == 0 else SPLIT_HELDOUT
 
 
+GOLD_CODE_TEXT_CONFLICT_REASON_TEMPLATE = (
+    "gold-code text conflict: this record's exact (language, normalized text) "
+    "pair is shared with {n_other} other WISCO source key(s) ({other_keys}) "
+    "that carry a DIFFERENT gold_code ({other_codes}) for byte-identical text "
+    "in this language -- a deterministic classifier necessarily predicts the "
+    "same code for both, so at most one of the conflicting records can ever "
+    "be scored correct. gold_code is left as WISCO's own published value "
+    "(never fabricated or blanked); this flag exists so downstream analysis "
+    "can exclude or separately account for the conflict. See "
+    "Documentation/Conference_I_Reviewer_2/WISCO_GOLD_LABEL_AMBIGUITY_AUDIT.md."
+)
+
+
+def detect_gold_code_text_conflicts(
+    records: list[BenchmarkRecord],
+) -> dict[str, tuple[list[str], list[str]]]:
+    """
+    Finds exact (language, normalized input_text) collisions -- the same
+    text-duplicate grouping `audit_wisco_benchmark_leakage.py` already uses
+    for split-safety -- and flags the narrower, previously-unchecked case
+    where the colliding records disagree on `gold_code`. Text duplicates
+    that all agree on gold_code (the common case: a genuine repeated/
+    synonymous title) are NOT conflicts and are left untouched.
+
+    Returns {benchmark_id: (other_source_keys, other_gold_codes)} for every
+    record that participates in a genuine gold-code conflict -- i.e. only
+    the specific (key, language) records whose literal text collides AND
+    whose gold_code differs, never every language variant of the source
+    keys involved (a key's OTHER language texts are frequently not
+    duplicates at all and are not ambiguous).
+    """
+    by_text: dict[tuple[str, str], list[BenchmarkRecord]] = defaultdict(list)
+    for rec in records:
+        by_text[(rec.language, normalize_text(rec.input_text))].append(rec)
+
+    conflicts: dict[str, tuple[list[str], list[str]]] = {}
+    for (_lang, _text), group in by_text.items():
+        codes = {r.gold_code for r in group}
+        if len(group) < 2 or len(codes) < 2:
+            continue
+        for rec in group:
+            others = [r for r in group if r is not rec]
+            conflicts[rec.benchmark_id] = (
+                [o.benchmark_id.rsplit("-", 1)[0].removeprefix("WISCO-") for o in others],
+                sorted({o.gold_code for o in others}),
+            )
+    return conflicts
+
+
 def build_records(wisco_records: list[dict]) -> tuple[list[BenchmarkRecord], dict]:
     key_to_group, n_merges = build_groups(wisco_records)
 
@@ -172,9 +221,27 @@ def build_records(wisco_records: list[dict]) -> tuple[list[BenchmarkRecord], dic
                 exclusion_reason=None,
                 split=split,
             )
-            payload = rec.model_dump_json(exclude={"record_hash"}, exclude_none=False).encode("utf-8")
-            rec.record_hash = hashlib.sha256(payload).hexdigest()
             records.append(rec)
+
+    # Flag genuine gold-code text conflicts (never touching v1 -- this pass
+    # runs only over v2's own freshly-built record list) before finalizing
+    # any record_hash, so the hash reflects the final, flagged state.
+    conflicts = detect_gold_code_text_conflicts(records)
+    for rec in records:
+        conflict = conflicts.get(rec.benchmark_id)
+        if conflict is None:
+            continue
+        other_keys, other_codes = conflict
+        rec.ambiguity_flag = True
+        rec.exclusion_reason = GOLD_CODE_TEXT_CONFLICT_REASON_TEMPLATE.format(
+            n_other=len(other_keys),
+            other_keys=", ".join(other_keys),
+            other_codes=", ".join(other_codes),
+        )
+
+    for rec in records:
+        payload = rec.model_dump_json(exclude={"record_hash"}, exclude_none=False).encode("utf-8")
+        rec.record_hash = hashlib.sha256(payload).hexdigest()
 
     meta = {
         "fixed_seed": FIXED_SEED,
@@ -182,6 +249,7 @@ def build_records(wisco_records: list[dict]) -> tuple[list[BenchmarkRecord], dic
         "n_groups": len(group_members),
         "n_merges_from_duplicate_text": n_merges,
         "n_groups_with_more_than_one_member": sum(1 for m in group_members.values() if len(m) > 1),
+        "n_records_flagged_gold_code_text_conflict": len(conflicts),
     }
     return records, meta
 

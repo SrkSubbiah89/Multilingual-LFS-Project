@@ -70,10 +70,18 @@ collected via this project's survey flow and not real Labour Force Survey
 respondent data. It is a group-aware, leakage-audited split (fixed seed
 42, union-find duplicate-text grouping): 20,760 records, **2,013 dev /
 18,747 heldout**, dataset hash
-`a3b3c1a31abd24369643d265c17d13dea8a5bcc9dbf1d6582b13153011dd287c`. This
-result uses the **frozen 18,747-case heldout split only** — the dev split
-was never consulted for this evaluation. Full leakage-audit history:
-`WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md`.
+`2bbd5fa1e2815ce01757ae2fbfb927dc4e759fabb4a28ae49b9ee0b719a662e2`
+(updated 2026-08-10 after a gold-label audit added `ambiguity_flag`
+metadata to 2 of 20,760 records — see
+`WISCO_GOLD_LABEL_AMBIGUITY_AUDIT.md`; the record/dev/heldout counts,
+every gold code, every input text, and the frozen heldout export's own
+SHA-256 below are all unchanged by that update, so this result remains
+exactly as measured and exactly reproducible from the same input; the
+dataset hash prior to that update was
+`a3b3c1a31abd24369643d265c17d13dea8a5bcc9dbf1d6582b13153011dd287c`).
+This result uses the **frozen 18,747-case heldout split only** — the dev
+split was never consulted for this evaluation. Full leakage-audit
+history: `WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md`.
 
 ## Official ILO 2021 ISCO-08 catalogue profile
 
