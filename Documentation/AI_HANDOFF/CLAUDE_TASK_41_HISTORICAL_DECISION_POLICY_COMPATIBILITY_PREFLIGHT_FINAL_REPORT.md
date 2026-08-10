@@ -3,7 +3,7 @@
 ## 1. Branch, SHAs
 
 - **Branch:** `reviewer2-legacy-decision-policy-compatibility-preflight-20260810`
-- **Final commit SHA:** `e3a12f8f48dac589f99843843750e97efe122437`
+- **Final commit SHA:** self-referential and therefore not embeddable exactly — filling in this commit's own resulting hash changes the commit content, which changes the hash again (no fixed point exists). The exact final SHA is whatever `git log -1 --format=%H reviewer2-legacy-decision-policy-compatibility-preflight-20260810` reports on the pushed branch; the commit immediately prior to this documentation-only note was `c00dc9bde7918ad18fa260e1d812e855355bb8a0`, one amend behind the branch's true final HEAD.
 - **Verified base SHA:** `reviewer2-legacy-runtime-provenance-recovery-20260810` @ `28ccd8d12eb28fe20e86c7d56231b6e358743c77` (confirmed via `git rev-parse origin/<base branch>` and `git merge-base HEAD 28ccd8d1...` before any file was written)
 - **Historical policy source SHA:** `824fcf235ae2f8787706cf479a07620519c914de` ("Add two-stage ISCO-08 classifier agent"; parent `1d03e751a79af8ee6cc503bbc6706a44316616f9`)
 
