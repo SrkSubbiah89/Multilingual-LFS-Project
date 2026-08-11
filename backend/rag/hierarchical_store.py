@@ -1005,7 +1005,7 @@ class HierarchicalISCOStore:
             # hierarchical, retrieval (HierarchicalResult.fallback_used=True
             # is the authoritative flag; this just keeps the trace non-empty).
             flat_bucket = [
-                {"code": h.payload.get("code", ""), "label_en": h.payload.get("label_en", ""),
+                {"code": h.payload.get("code", ""), "label_en": hierarchy_engine.extract_label_en(h.payload),
                  "score": round(float(h.score), 4)}
                 for h in hits
             ]
@@ -1019,7 +1019,7 @@ class HierarchicalISCOStore:
         top_candidates = [
             UnitCandidate(
                 code=hit.payload.get("code", ""),
-                label_en=hit.payload.get("label_en", ""),
+                label_en=hierarchy_engine.extract_label_en(hit.payload),
                 label_ar=hit.payload.get("label_ar", ""),
                 score=round(float(hit.score), 4),
             )
@@ -1050,7 +1050,7 @@ class HierarchicalISCOStore:
 
         return HierarchicalResult(
             code=code,
-            label_en=p.get("label_en", ""),
+            label_en=hierarchy_engine.extract_label_en(p),
             label_ar=p.get("label_ar", ""),
             confidence=score,
             stage_confidences={

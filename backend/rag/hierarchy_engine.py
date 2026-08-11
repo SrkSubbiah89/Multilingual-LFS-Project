@@ -189,6 +189,36 @@ class StageOverride:
 
 
 # ---------------------------------------------------------------------------
+# Payload label extraction
+# ---------------------------------------------------------------------------
+
+def extract_label_en(payload: dict) -> str:
+    """
+    Returns a hit's English label, tolerant of which collection builder
+    produced the payload.
+
+    The legacy collection builder (``load_full_isco.py``) writes a
+    ``label_en`` key. The official-profile collection builder
+    (``build_official_isco08_collections.py::_build_payload()``) writes
+    ``title_en`` instead and never writes ``label_en`` at all -- every
+    raw-payload read that only checked ``payload.get("label_en", "")``
+    therefore silently returned an empty string for every official-
+    profile candidate/result (discovered during Task 43's live-reranker
+    work, where the official flat and hierarchical collections both hit
+    this gap; harmless for exact-code-match accuracy scoring, since
+    Task 36's evaluation never reads label text, but real for anything
+    that displays or otherwise uses these labels). Checking ``label_en``
+    first preserves the legacy collection's existing behaviour exactly;
+    falling back to ``title_en`` recovers the official collection's real
+    title instead of silently returning "".
+    """
+    label_en = payload.get("label_en")
+    if label_en:
+        return label_en
+    return payload.get("title_en", "")
+
+
+# ---------------------------------------------------------------------------
 # Result models
 # ---------------------------------------------------------------------------
 
@@ -395,7 +425,7 @@ class HierarchyBeamSearchEngine:
                 seen.add(code)
                 bucket.append({
                     "code": code,
-                    "label_en": hit.payload.get("label_en", ""),
+                    "label_en": extract_label_en(hit.payload),
                     "score": round(float(hit.score), 4),
                 })
 
@@ -549,7 +579,7 @@ class HierarchyBeamSearchEngine:
                         branch_hits_plain.append([
                             {
                                 "code": hit.payload.get("code", ""),
-                                "label_en": hit.payload.get("label_en", ""),
+                                "label_en": extract_label_en(hit.payload),
                                 "label_ar": hit.payload.get("label_ar", ""),
                                 "score": float(hit.score),
                                 "branch_id": branch_id,
@@ -605,7 +635,7 @@ class HierarchyBeamSearchEngine:
             final_key = f"stage{n}"
             if not branch_collapse:
                 trace[f"{final_key}_pool"] = [
-                    {"code": h.payload.get("code", ""), "label_en": h.payload.get("label_en", ""),
+                    {"code": h.payload.get("code", ""), "label_en": extract_label_en(h.payload),
                      "score": round(float(h.score), 4)}
                     for h in pool_sorted
                 ]
@@ -617,7 +647,7 @@ class HierarchyBeamSearchEngine:
         top_candidates = [
             EngineCandidate(
                 code=hit.payload.get("code", ""),
-                label_en=hit.payload.get("label_en", ""),
+                label_en=extract_label_en(hit.payload),
                 label_ar=hit.payload.get("label_ar", ""),
                 score=round(float(hit.score), 4),
             )
@@ -626,7 +656,7 @@ class HierarchyBeamSearchEngine:
 
         return EngineResult(
             code=final_top.payload.get("code", ""),
-            label_en=final_top.payload.get("label_en", ""),
+            label_en=extract_label_en(final_top.payload),
             label_ar=final_top.payload.get("label_ar", ""),
             confidence=confidence,
             stage_confidences=stage_confidences,
