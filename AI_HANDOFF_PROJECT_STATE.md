@@ -11,7 +11,11 @@ changes. If anything below conflicts with what you observe in the repo,
 moment someone else (human or AI) makes an uncoordinated change, which is
 exactly the failure mode it exists to reduce.
 
-Generated: 2026-08-10. Verified against the live repository at that time.
+Generated: 2026-08-12. Verified against the live repository at that time.
+**This is a full rewrite, not an incremental edit** — the previous version
+(dated 2026-08-10) described a much earlier state (pre-Task-27) and was
+badly stale by the time this was written; do not trust cached knowledge
+of its contents.
 
 ---
 
@@ -23,252 +27,339 @@ interviews in English, Arabic (MSA + Gulf dialect), Urdu, Hindi, and
 Tagalog, classifies job titles to **ISCO-08**, industries to **ISIC
 Rev.4**, and education to **ISCED 2011 / ISCED-F 2013**, and implements a
 full UAE Labour Force Survey questionnaire (Sections A–K) with dynamic skip
-logic. It is an M.Tech thesis project (IIIT Kottayam) also being prepared
-as a Conference I paper submission.
+logic. It is an M.Tech thesis project (IIIT Kottayam, supervisor Dr.
+Goutam Mali) also being prepared as a Conference I paper submission.
 
-**Read `README.md` at the repo root first** — it's a substantial (1,183-
-line), largely accurate architecture reference: system diagram, tech
-stack, the Semantic Relation Engine (a real thesis contribution — a
-three-way ISCO/ISIC/ISCED coherence crosswalk), the full questionnaire
-field reference, API reference, DB schema, directory structure. Treat its
-banner line ("1,178 tests passing") as **stale** — see §4 for the current
-number. Everything else in it about architecture/endpoints/DB schema was
-last verified accurate as of its "Last Updated: June 2026" note; re-verify
-before relying on specifics if it's been a while.
+**Read `README.md` at the repo root first** — updated 2026-08-11, its
+banner line and test counts are now accurate (2,347 tests, 88 files).
+Everything else in it about architecture/endpoints/DB schema/directory
+structure was last spot-verified accurate as of that date.
 
 ## 2. Repository identity
 
 - GitHub: `SrkSubbiah89/Multilingual-LFS-Project`
-- You are almost certainly working in a local clone at
-  `c:\Multilingual_LFS_Project` (Windows).
+- Local clone: `c:\Multilingual_LFS_Project` (Windows, PowerShell/git-bash).
 
 ## 3. ⚠️ Git state — read this before doing anything with branches or commits
 
-This is the single most important section in this document.
+**This is not the same situation the previous version of this document
+described (uncommitted working-tree changes on `master`). That has been
+completely superseded.**
 
-- **Current branch: `master`**, up to date with `origin/master`.
-- **A second remote branch exists: `conference1-b2-evaluation`**, which is
-  **3 commits ahead of `master`** and contains substantial, unmerged
-  "B2 evaluation hardening" work: `eval/pre_run_check.py`,
-  `eval/full130_access_guard.py` (both **do not exist on `master` at all**),
-  plus much more extensive versions of `eval/dev_sweep.py`,
-  `eval/validate_dev_set.py`, `eval/dev_set_schema.md`,
-  `eval/test_validate_dev_set.py`, `eval/test_dev_set_v1_readiness_report.md`,
-  and a `scikit-learn==1.6.1` addition to `requirements.txt`. Diff size:
-  ~5,100 lines across 20 files.
-- **These two branches have diverged and were never reconciled.** All of
-  the "Conference I Reviewer #2 response" work described in §5 below was
-  built entirely on top of `master`'s (older, less-hardened) version of
-  `eval/dev_set_schema.md`, `eval/validate_dev_set.py`,
-  `eval/test_run_eval_b2.py`, and `requirements.txt` — all four of which
-  **also independently exist and differ on `conference1-b2-evaluation`**.
-  Merging the two branches today would very likely produce real conflicts
-  in those four files, and `pre_run_check.py`/`full130_access_guard.py`
-  would need to be evaluated for whether they should now depend on/be
-  updated for the newer governance/manifest machinery built in Steps 3-6
-  below (they predate it).
-- **Every file described in §5 is currently UNCOMMITTED** — 53 changed/new
-  files sitting in the working tree on top of `master`, never committed,
-  never pushed, never merged anywhere. If you `git stash`, `git checkout .`,
-  `git reset --hard`, switch branches, or do anything else that discards
-  working-tree changes, **all of Steps 1 through 7A described below are
-  permanently lost** unless you've verified a backup exists. There is no
-  safety net beyond the working directory right now.
+- **`master` is far behind.** `origin/master`'s tip is
+  `5e0ff5d88c6c973f636b48cacc25e5885c11d41c` ("gitignore Software/ and
+  *.exe..."), predating essentially everything in §5 below.
+- **All real work since then lives on a long, linear chain of task-specific
+  branches**, each created from the previous task's final commit, each
+  fully committed and pushed to `origin`, **none merged back into
+  `master`, none opened as a PR** — this has been the standing, explicit
+  workflow for every task (Task 27 through the branch you're likely on
+  now). There is nothing sitting uncommitted in a working tree waiting to
+  be lost — check `git status --porcelain` yourself to confirm the tree
+  is clean before you start; if it isn't, that's new since this was
+  written and you should investigate before proceeding.
+- **Current branch** (as of this writing):
+  `reviewer2-live-reranker-wisco-dev-run-20260810`, final commit
+  `066d792ff64698bd6bec8adbda42f33bde073cea`. Run `git branch
+  --show-current` and `git log -1` yourself — a later session may have
+  created a further branch on top of this one.
+- **The branch chain, most recent first** (each entry is that task's own
+  branch tip; run `git log --oneline -40` for the full commit-level
+  history): live-reranker/Ollama work and documentation alignment →
+  Task 43 (live Anthropic reranker attempt, blocked on zero account
+  credit, root-caused and fixed; Ollama fallback run) → Task 42 (flat
+  retrieval wired to Task 41's policy, WISCO dev) → WISCO gold-label audit
+  → Task 41 (historical decision-policy compatibility study) → Task 40.1 /
+  Task 40 (historical qdrant-client provenance investigation, Outcome C —
+  no defensible historical version) → Task 39 (literal legacy
+  reproduction attempt, blocked, correctly stopped rather than shimmed) →
+  Tasks 27-38 (Qdrant resilience, precise client-side deadlines, the full
+  official WISCO Tier-1 run and its analysis, Phase 1/Reviewer-2 doc
+  alignment).
+- **Nothing here has been merged, rebased, or force-pushed anywhere.**
+  Every task's own instructions explicitly forbade PRs; that has held
+  throughout. If your task requires reconciling this branch chain with
+  `master`, that is a decision for the user to make explicitly — do not
+  decide it yourself.
 - **Do not commit, push, merge, rebase, or switch branches without the
-  user's explicit, current-session approval** — this has been the standing
-  rule throughout the work described below, and remains binding on you.
-  If your task requires resolving the branch divergence, that is a
-  decision for the user to make (which branch is authoritative, whether to
-  cherry-pick the B2-hardening work forward, whether `pre_run_check.py`/
-  `full130_access_guard.py` are still wanted) — do not decide it yourself.
-
-**Action for you, if your task touches any of**: `eval/dev_set_schema.md`,
-`eval/validate_dev_set.py`, `eval/dev_sweep.py`, `eval/test_run_eval_b2.py`,
-or `requirements.txt` — stop and confirm with the user which branch's
-version is authoritative before editing. Editing blind risks silently
-discarding the other branch's work when someone eventually reconciles them.
+  user's explicit, current-session approval** for that specific action —
+  standing rule, still binding.
+- The `conference1-b2-evaluation` branch mentioned in the previous version
+  of this document was **not re-checked in this pass** — assume it may
+  still be diverged from the current branch chain; verify before touching
+  anything it also touches (`eval/dev_set_schema.md`,
+  `eval/validate_dev_set.py`, `eval/dev_sweep.py`, `eval/test_run_eval_b2.py`,
+  `requirements.txt`).
 
 ## 4. Test suite — current verified state
 
 ```
 pytest backend/tests eval/ -q
 ```
-→ **2,347 passed, 0 failed, 1 deselected, 1 warning**
-(last run: 2026-08-11, ~7.5 min wall clock).
+→ **2,347 passed, 0 failed, 1 deselected, 1 warning** (~7.5 min wall clock).
+Backend-only (`pytest backend/tests -q`): **1,522 passed** (~6 min).
+`eval/`-only: **825 passed**. 88 test files total (44 + 44).
 
-**The "1 known pre-existing failure" this section used to document no
-longer exists** — `test_isco_classifier_extended.py::TestHierarchicalStages::
-test_llm_used_for_low_similarity` (the mock-signature mismatch previously
-noted here) now **passes**, confirmed by running it in isolation. It was
-fixed at some point without this document being updated; do not assume a
-failure here means something you did broke it — there is no longer a
-standing known failure to compare against. If a new failure appears,
-treat it as real and investigate it, not as this old, no-longer-relevant one.
+No known standing failures. If you see one, it's new — investigate it as
+real, don't assume it's a previously-documented artifact (the one
+formerly documented here, a mock-signature mismatch in
+`test_isco_classifier_extended.py`, was checked directly in this pass and
+now passes — it was fixed at some point without this doc being updated,
+exactly the staleness failure mode this document exists to prevent).
 
-**`Documentation/Conference_I_Reviewer_2/FINAL_QA_BASELINE.md` says "1501
-passed"** — that is Step 1's historical snapshot, not current. Always
-re-run the command above rather than trusting any written-down test count,
-including this one (this file's own count above will itself go stale the
-moment the suite grows further).
+## 5. What's been built — chronological, real state only
 
-## 5. What's been built: the "Conference I Reviewer #2 response" work
+### 5a. Qdrant resilience and precise deadlines (Tasks 27-35)
 
-A reviewer gave 8 criticisms of the manuscript (Springer formatting,
-unclear novelty, no real-LFS validation, missing computational analysis,
-an abstract overclaiming ISIC coverage, unclear multi-LLM division of
-labour, low-res figures, untraceable claims). The response has been an
-extended, multi-session effort to build **defensible, non-fabricated
-evidence and instrumentation** — never manuscript text itself — governed by
-one hard rule that has held across every step: **an unmeasured/unmeasurable
-value is `null` + an explicit reason string, never a placeholder or
-fabricated number.** All work lives under `Documentation/Conference_I_Reviewer_2/`
-(docs) and `eval/` (tooling), plus a few `backend/` additions.
+Bounded, opt-in Qdrant query retry with a strict exception allowlist;
+per-request timeouts and strict stage-level deadline budgets; a
+client-side deadline pool corrected from `ceil()` to `floor()` (Task 34.1,
+a real precision bug: qdrant-client's own internal rounding could exceed
+the caller's budget under `ceil()`). All integrated into the official WISCO
+evidence line and live-preflighted before each full run.
 
-**Start here**: `Documentation/Conference_I_Reviewer_2/REVIEWER_RESPONSE_IMPLEMENTATION_MATRIX.md`
-is the authoritative index — one row per reviewer comment (5 allowed status
-labels only), plus a dated section per numbered Step summarizing what that
-step did. Read it before reading anything else in that directory.
+### 5b. The official WISCO Tier-1 evaluation — RUN, ANALYZED, PUBLISHED
 
-### Step-by-step summary (chronological)
+**This is the single most important correction to the previous version of
+this document, which said "no accuracy number for WISCO exists anywhere
+in this repo." That is no longer true and has not been true since Task 36.**
 
-1. **Initial pass (Sections A-J)**: classifier method registry
-   (`backend/agents/method_registry.py`), a generic hierarchical-retrieval
-   engine extracted from the ISCO-specific one
-   (`backend/rag/hierarchy_engine.py`), coverage-audit tooling
-   (`eval/coverage_audit.py`), evaluation/reproducibility manifests
-   (`eval/manifest.py`, `eval/analyze.py`), ablation infrastructure
-   (`eval/ablation_runner.py`), real-LFS-intake governance schema
-   (`eval/dataset_card_schema.py`, `eval/validate_real_lfs_governance.py`),
-   Semantic Relation Engine evidence tracking, figure-data exports.
-2. **Step 2** — official classification-standard provenance: distinguishes
-   a sourced-but-unverified official count from a verified one (only ever
-   produced by importing a real catalogue file via
-   `eval/catalogue_importer.py`); `coverage_percentage` is `null` unless
-   verified.
-3. **Step 3** — hardened the real-LFS governance gate: expanded
-   `DatasetCard` to ~45 fields, closed 3-value `dataset_label` vocabulary
-   (`synthetic_or_operationally_realistic` / `approved_real_lfs_validation`
-   / `invalid_incomplete_governance`), fail-closed validator with a
-   synthetic-marker content safeguard and an in-repo-path safeguard.
-4. **Step 4** — added a genuine `--dry-run` mode to `eval/run_eval.py` and
-   `eval/ablation_runner.py`: validates everything, writes a full manifest,
-   makes **zero** model/Qdrant/LLM/network calls. New
-   `evaluation_status` field (`"measured"` / `"dry_run_not_measured"`),
-   orthogonal to `dataset_label`.
-5. **Step 5 / 5.1** — ran an actual measured (non-dry-run) evaluation
-   against a tiny (n=5) synthetic fixture, purely as a pipeline-integration
-   check — new `evaluation_status="measured_synthetic_fixture_only"` value
-   and a `manuscript_eligible` manifest field (computed automatically,
-   never caller-supplied; only `True` for `measured` + `approved_real_lfs_validation`).
-   **This run found and Step 5.1 fixed a real bug**: `--sre off` was
-   accidentally also disabling ISIC/ISCED classification (shared
-   conditional in `eval/run_eval.py`), not just the SRE coherence check —
-   see `SRE_COUPLING_BUGFIX.md`.
-6. **Step 6** — audited every candidate benchmark dataset already in the
-   repo for label provenance. Finding: the existing "130-case ISCO set"
-   (`eval/test_set_full130.csv`) has **no documented label source** and is
-   not benchmark-defensible. **But a much stronger, previously-dormant
-   asset was found**: `backend/evaluation/wisco/` — a real, externally
-   published (Zenodo DOI `10.5281/zenodo.8262593`, CC-BY-4.0), multilingual
-   (61 languages, 5 of which are this project's target set)
-   occupation-title-to-ISCO-08-code dataset ("WISCO"), downloaded in an
-   earlier project phase for an unrelated purpose and never used as an
-   evaluation benchmark. New schema (`eval/controlled_benchmark_schema.py`)
-   and validator (`eval/validate_controlled_benchmark.py`) built; WISCO
-   converted into a 20,760-record benchmark package
-   (`eval/build_wisco_isco_benchmark.py` →
-   `eval/local_benchmarks/wisco_isco08_v1/`, **gitignored**, regenerate
-   from tracked source + script).
-7. **Step 7A** — strict leakage audit of that v1 package
-   (`eval/audit_wisco_benchmark_leakage.py`, deterministic, zero
-   model/network calls). **Found real leakage**: 4 cross-split
-   exact-duplicate-title groups (different WISCO entries, same text, same
-   code, split apart by chance). Built a corrected, group-aware **v2**
-   (`eval/build_wisco_isco_benchmark_v2_group_split.py`, fixed seed 42 →
-   `eval/local_benchmarks/wisco_isco08_v2_group_split/`, **gitignored**)
-   — re-audited clean. v1 retained unaltered as the audit record. A
-   detailed, cost/time-aware Step 7B execution plan was prepared (deterministic
-   stratified 500-record reranking subset, full-heldout no-LLM tier, exact
-   commands, wall-clock/Ollama-call estimates) but **not executed**.
+- **Task 36** ran the full official Tier-1 evaluation against the frozen
+  18,747-case WISCO v2 heldout split (dataset: Zenodo DOI
+  `10.5281/zenodo.8262593`, official ILO 2021 ISCO-08 catalogue profile,
+  10/43/130/436 major/submajor/minor/unit groups), flat and strict
+  hierarchical, both arms fully clean (zero errors) under the precise
+  client-side deadline enforcement.
+- **Task 37 / 37.1** analyzed it. Task 37 disclosed one out-of-scope
+  read-only Qdrant call during its own preservation check; Task 37.1 is
+  the clean, fully-offline reproduction of record and is the citable one.
+- **Published, canonical result** (character-for-character source of
+  truth: `Documentation/Conference_I_Reviewer_2/OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md`):
 
-### What has NOT happened yet
+  | Metric | Flat | Strict hierarchical |
+  |---|---:|---:|
+  | Exact 4-digit accuracy | **21.19%** (3,973/18,747) | **10.35%** (1,941/18,747) |
+  | 95% Wilson CI | [20.61%, 21.78%] | [9.93%, 10.80%] |
 
-- **Step 7B — the actual measured WISCO benchmark run — has not been run.**
-  Nothing in `eval/local_benchmarks/wisco_isco08_v2_group_split/` has been
-  fed through `eval/run_eval.py` or `eval/ablation_runner.py`. No accuracy
-  number for WISCO exists anywhere in this repo. The exact commands and a
-  full resource/time estimate are in
-  `Documentation/Conference_I_Reviewer_2/WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md`
-  — running the reranking-subset tier (~5-6.5 hours of local LLM inference)
-  explicitly requires user approval before it happens.
-- No real, permissioned LFS respondent dataset has ever been obtained —
+  Paired difference (hierarchical − flat): **−10.84 percentage points**
+  (McNemar exact two-sided p ≈ 1.86×10⁻³⁰¹, 18,747 pairs). **Hierarchical
+  retrieval is substantially worse than flat in this configuration** — a
+  genuine, disclosed negative finding, never to be described as
+  hierarchical improving accuracy. Safe/unsafe manuscript phrasing is
+  pre-drafted in `MANUSCRIPT_SAFE_WISCO_WORDING.md` — use it verbatim
+  rather than re-deriving wording.
+- **Task 38** aligned Phase 1 and Reviewer-2 documentation to these real
+  numbers (replacing whatever earlier placeholder/target figures existed).
+- **A gold-label audit** (separate from Tasks 36-38, done later) checked
+  WISCO's own gold codes for correctness: they exactly match the official
+  436-code catalogue with one narrow exception — two records share
+  identical English text ("Veterinary assistant") with different gold
+  codes, now flagged via `ambiguity_flag` in the benchmark schema, proven
+  to have zero effect on the published numbers above (byte-identical
+  re-export of the scored CSV, confirmed by hash).
+
+### 5c. Historical/legacy reproduction investigation (Tasks 39-41) — closed, correctly
+
+An attempt to literally re-run the earliest (Feb 2026) ISCO classifier
+commit's exact conditional-LLM decision policy hit a real, permanent
+blocker: `qdrant-client`'s `QdrantClient.search()` method (which that
+historical code calls literally) no longer exists in any qdrant-client
+version installable today. Tasks 40/40.1 exhaustively searched git
+history, local archives, Python environments, and Docker image metadata
+for a defensible historical version pin — found one via a Docker image
+built one day after the legacy commit (`qdrant-client==1.17.0`), but that
+recovered version is the *same* version already proven incompatible, so
+recovery didn't unblock anything; it confirmed the incompatibility was
+present essentially from day one. Per explicit operator decision, **no
+shim/monkeypatch was ever applied** — Task 41 instead built a disclosed
+**Historical Decision-Policy Compatibility Study**: the old policy's exact
+decision logic (5 candidates, 0.92 threshold, exactly-once reranker call,
+candidate-only selection, historical prompt fields, fallback behavior)
+reimplemented as a small additive component
+(`eval/legacy_decision_policy41/policy.py`), explicitly and repeatedly
+labeled as *not* a literal reproduction.
+
+### 5d. Live reranker integration (Tasks 42-43) — infrastructure works, real numbers still pending
+
+- **Task 42** wired Task 41's policy component to the real, current flat
+  retrieval (`eval/legacy_decision_policy41/flat_retrieval_adapter.py`),
+  ran it against the WISCO dev split with **zero LLM calls** (a
+  `PENDING_RERANK_NO_LLM_CALLED` dry-run design) to find out, for free, how
+  many cases would need a reranker: **0 of 2,013 dev cases reached the
+  0.92 fast-path threshold** — every case would need one.
+- **Task 43** built the real Anthropic reranker
+  (`eval/legacy_decision_policy41/live_reranker.py`) and a hierarchical
+  retrieval adapter. **First attempt found a serious silent-failure bug**:
+  the configured Anthropic account had zero credit for the entire
+  session; every reranker call failed with `BadRequestError`, and because
+  `classify_with_policy` (correctly, by design) treats any reranker
+  exception the same as a malformed response, this silently produced
+  thousands of `method="llm_ranked"` rows that were actually just
+  semantic-top-1 predictions — caught only because the flat-heldout run's
+  predictions matched Task 36's non-reranked baseline for **100% of
+  18,747 cases**, which is not statistically plausible for a working
+  reranker. **Fixed**: a `fatal_tracker` mechanism now aborts the whole
+  run immediately, by name, on a fatal (non-retryable, non-parsing)
+  reranker failure, instead of silently completing with mislabeled rows.
+  No real Claude 3.5 Sonnet reranked accuracy number was ever obtained —
+  **Anthropic credit is still required** for that; do not cite any number
+  from this task as a real Claude result.
+- **A free Ollama (`llama3.2:latest`) fallback was run instead** (full
+  2,013-case WISCO dev, flat retrieval): **17.19% (346/2,013)** — real,
+  genuine (344 distinct codes used, confirmed not another silent-fallback
+  incident), but a different, weaker, free local model, not Claude —
+  label results accordingly. One operational incident during this run
+  (a `tasklist`-based liveness check gave a false "process is dead"
+  reading, leading to an accidental concurrent duplicate 150-row batch)
+  was caught and cleanly deduplicated; full account in
+  `Documentation/AI_HANDOFF/CLAUDE_TASK_43_LIVE_RERANKER_WISCO_RUN_FINAL_REPORT.md`.
+
+### 5e. Real bugs found and fixed live (2026-08-11/12)
+
+- **`label_en`/`label_ar` payload-key gap**: the official-profile Qdrant
+  collections write `title_en`, never `label_en`, and have no Arabic
+  title at all; every raw-payload read across `hierarchical_store.py`/
+  `hierarchy_engine.py` checked only `label_en`, so official-profile
+  search results always had a blank English label (harmless to Task 36's
+  exact-code scoring, real for any UI/display use). Fixed via
+  `hierarchy_engine.extract_label_en()`.
+- **Subsistence-farming unit-code mis-numbering**: the legacy knowledge
+  base (`backend/rag/load_full_isco.py`) had codes 6161-6164 filed under a
+  sub-major group with no defined parent at all, when the correct parent
+  (sub-major 63) already existed correctly. Renumbered to 6310-6340.
+  **This fix required a live database action to actually take effect** —
+  `start.bat`'s own logic skips reloading Qdrant collections that already
+  exist, so the source fix alone did nothing until
+  `python -m backend.rag.load_full_isco --recreate` was run. Verified live
+  end-to-end via `/debug/isco/subsistence crop farmer` → `6310`. **15**
+  further non-standard codes and **10** missing-official codes from the
+  same original finding remain unresolved (need a full official-standard
+  cross-check, not a guess — see
+  `Documentation/Phase_2/Week_1/module_a_week1_report.md` §5).
+- **A real, currently-was-broken DB migration gap**: `models.py` already
+  referenced `SurveyResponse.supersedes_id`, but the live database was one
+  migration behind (`a3f9c1d2e4b6_add_survey_response_supersedes_id`) —
+  any code path using that column would have failed. Applied; DB now at
+  head.
+
+### 5f. Phase 2 (thesis) work — real, partial, and reviewed against an external plan
+
+`Documentation/Phase_2/Week_1/` and `Week_2/` contain real, dated Module A
+(WISCO external validation) work: the canonical WISCO file/DOI verified
+directly (`8262593`, not `7598568` — an externally-supplied "corrected"
+plan actually had this backwards), 4,232 clean parsed occupation records,
+9/9 integrity checks, and the root cause of the subsistence-farming bug
+above. A later externally-supplied "Phase II Comprehensive Plan" document
+was checked against this real work and against the Task 36 evidence
+above; found to contain several factual errors (wrong WISCO DOI, a
+Phase-I baseline of "85.3% ISCO accuracy / hierarchical +6.4pp" that
+doesn't match the real measured 21.19%/10.35%/−10.84pp, a "13-agent"
+architecture claim that doesn't match the actual 12-agent codebase) — full
+itemized corrections in `Documentation/Phase_2/PHASE_II_PLAN_CORRECTIONS.md`.
+A subsequent module-by-module code review (same file, §8) found Modules
+B/C (ISIC/ISCED-F hierarchical retrieval) and Module D's LOW-severity SRE
+gap already have real, tested infrastructure the external plan didn't know
+about — remaining gaps are data-coverage (134/419 ISIC classes, 63/~80
+ISCED-F fields) and a live-Qdrant deployment decision (`--execute`, never
+run), not missing code. Module H's "delegation correctness" framing
+doesn't apply to this codebase at all (zero CrewAI hierarchical-delegation
+usage anywhere, confirmed exhaustively; needs rescoping to "orchestration
+correctness"). Module E (pilot, n=30) has the longest lead time of
+anything in the plan and, as of the last check, still has no ethics
+application submitted — the single most time-critical open item across
+the whole project, independent of any code work.
+
+### 5g. `start.bat` end-to-end verification (2026-08-11/12)
+
+Every step actually run, not just read: Docker/Postgres/Redis/Qdrant/
+Ollama health, pip install, Alembic migration (found and fixed the gap in
+§5e), Qdrant collection reload (found and fixed the staleness in §5e),
+backend startup (`/ready`, `/health` both green — DB/Redis/Qdrant/Ollama
+all connected), frontend startup (all 4 pages 200), and a real functional
+test through the actual running API: OTP request → verify → JWT → create
+survey session. **The backend (port 8000) and frontend (port 3000) may
+still be running** from this test — check before assuming they aren't,
+and check with the user before stopping them if they might be using it.
+
+## 6. What has NOT happened yet
+
+- **A real Claude 3.5 Sonnet reranked WISCO accuracy number.** Blocked
+  purely on Anthropic account credit (§5d). The code is ready; adding
+  credit and re-running (dev split first, ~$3-8) is the immediate next
+  step once available.
+- **No real, permissioned LFS respondent dataset has ever been obtained.**
   `approved_real_lfs_validation` has never been used for anything but test
   fixtures proving the governance gate works.
-- ISIC Rev.4 and ISCED-F 2013 **hierarchical retrieval** (new Qdrant
-  collections, live multi-stage search) was never built — only
-  method-label stubs. Do not describe ISIC/ISCED as "hierarchical RAG" in
-  any manuscript-facing text.
-- The B2-hardening work on `conference1-b2-evaluation` (§3) has not been
-  merged or reconciled with any of the above.
+- **Module E (pilot, n=30)**: not started. No ethics application
+  submitted as of the last check — this is the highest-lead-time item in
+  the entire project.
+- **ISIC/ISCED-F hierarchical retrieval**: infrastructure built and
+  tested (§5f), but the live Qdrant collections have never been populated
+  (`--execute` never run) and data coverage is well short of the 419/~80
+  targets. Do not describe ISIC/ISCED as "deployed hierarchical RAG" —
+  only ISCO-08's is live.
+- **The SRE crosswalk tables** (`_ISCO_MAJOR_TO_ISIC` etc. in
+  `semantic_relation.py`) are confirmed still hand-built, not yet rebuilt
+  from the official ILO ISCO-08 Volume I / UNESCO ISCED 2011 Operational
+  Manual Table 7 correspondence tables.
+- **The remaining 15/10 legacy-knowledge-base code discrepancies** (§5e) —
+  only the 4-code subsistence-farming cluster was fixed; the rest needs a
+  full official ISCO-08 cross-check, not a guess.
+- **The `conference1-b2-evaluation` branch** — not re-checked in this
+  pass; assume still diverged (§3).
 
-## 6. Conventions you must follow if you touch `eval/` or governance code
+## 7. Conventions you must follow
 
-These were established deliberately, tested extensively, and violating
-them will look like regression to anyone continuing this work:
+Established deliberately, tested extensively, violating them will look
+like regression to anyone continuing this work:
 
 - **Null + reason, never a placeholder.** Any metric that can't be
   measured is `None`/`null` with a sibling `<field>_unavailable_reason`
   string. Never 0, never `"N/A"` alone, never silently omitted.
 - **`dataset_label`** is a closed 3-value enum
-  (`eval/dataset_card_schema.py::DATASET_LABELS`) — never a free string.
-  A controlled benchmark (WISCO, any future one) can **never** be
-  `approved_real_lfs_validation`, by design, unconditionally, regardless of
-  label quality — it's reference/dictionary data, not LFS respondent data.
-- **`evaluation_status`** (`eval/manifest.py::EVALUATION_STATUSES`) is
-  orthogonal to `dataset_label` — one describes data realness, the other
-  describes whether metrics were actually measured.
-- **`manuscript_eligible`** on every manifest is computed automatically
-  inside `build_manifest()`, never caller-supplied, and is `True` only for
-  `evaluation_status="measured"` + `dataset_label="approved_real_lfs_validation"`.
-- **Gitignored local-output convention**: `eval/local_runs/` (dry-run and
-  measured-run artifacts) and `eval/local_benchmarks/` (generated benchmark
-  packages) are both gitignored unconditionally. Regenerate from tracked
-  source + script; never try to commit their contents. Never write to the
-  tracked `eval/results/` directory without an explicit reason — check
-  `git status` after any `run_eval.py`/`ablation_runner.py` invocation that
-  doesn't pass `--output-root`.
-- **No paid LLM/API call without a separate, explicit pre-approval** naming
-  the model/provider, estimated call count, cost method, and reason —
-  every run so far has used local Ollama (`llama3.2:1b`), which is free.
-- **Never commit/push/PR/delete without explicit approval in the current
-  session** — a standing rule across every step above, not just a
-  one-time instruction.
+  (`eval/dataset_card_schema.py::DATASET_LABELS`). A controlled benchmark
+  (WISCO, any future one) can **never** be `approved_real_lfs_validation`,
+  unconditionally — it's reference/dictionary data, not LFS respondent data.
+- **`evaluation_status`** is orthogonal to `dataset_label` — one describes
+  data realness, the other whether metrics were actually measured.
+- **`manuscript_eligible`** is computed automatically, never
+  caller-supplied.
+- **Gitignored local-output convention**: `eval/local_runs/` and
+  `eval/local_benchmarks/` are both gitignored unconditionally. Regenerate
+  from tracked source + script; never try to commit their contents.
+- **No paid LLM/API call without explicit, separate pre-approval** naming
+  model/provider, estimated call count, cost, and reason. (Task 43 learned
+  this the hard way in the other direction too: verify credit is actually
+  present with a trivial real call before trusting a "smoke test" that
+  only checks the call *completed*, not that it *succeeded* — a caught
+  exception can look identical to a real answer at the call site.)
+- **Any reranker/external-call wrapper used to drive many rows must have a
+  fatal-vs-retryable distinction that can abort the whole run**, not just
+  retry-then-silently-fall-back — the exact lesson from §5d.
+- **For long local-inference runs, use short checkpointed batches with a
+  liveness check based on output-file growth, not `tasklist`/process
+  listing** — `tasklist` gave a false negative twice in this session
+  (§5d, §5g) for processes that were, in fact, still running.
+- **Never commit/push/merge/rebase/PR without explicit approval in the
+  current session** for that specific action.
+- **Branch-per-task workflow**: verify the exact base branch/SHA the task
+  specifies before creating a new branch; commit only task-specific files;
+  push only the new branch; never touch protected/prior branches; no PR
+  ever, unless a task explicitly says otherwise.
 
-## 7. Other issues found during this review (2026-08-10)
+## 8. Suggested next steps (for the user to prioritize)
 
-- `Documentation/Conference_I_Reviewer_2/README.md`'s document index was
-  stale (missing Steps 4-7A's docs) — **fixed** as part of this review.
-- `.git` is 1.2 GB locally. A 1.2 GB installer (`Software/OllamaSetup.exe`)
-  was previously committed by accident and stripped from history
-  (2026-08-05, see `.gitignore`'s comment) — the strip may not have
-  reclaimed local `.git` size (a `git gc --aggressive` would need explicit
-  approval since it rewrites packfiles; not done here).
-- No leftover `TODO`/`FIXME`/`XXX` markers in any `eval/*.py` file added
-  during this work — checked, clean.
-- `requirements.txt` currently only differs from committed `HEAD` by one
-  line (`+pyyaml`, a genuine dependency of `eval/coverage_audit.py`/
-  `catalogue_importer.py`) — legitimate, not an issue on its own; the
-  `conference1-b2-evaluation` branch's additional `scikit-learn==1.6.1` is
-  not needed by anything on `master` today (verified: no current file
-  imports `sklearn`), only relevant if that branch's `dev_sweep.py`
-  extensions are later merged in.
-
-## 8. Suggested next steps (not started, for the user to prioritize)
-
-1. Decide what to do about the branch divergence (§3) before any further
-   `eval/` work — this is the highest-risk open item.
-2. If continuing the Reviewer #2 response: Step 7B (execute the prepared
-   WISCO evaluation plan) is the natural next step, gated on user approval
-   for the reranking tier's runtime.
-3. Commit the current working-tree state (53 files) to *something* soon —
-   it has no backup beyond the local working directory right now.
+1. **Ethics submission for Module E (pilot)** — the single most
+   time-critical item in the project, independent of all code work.
+2. **Add Anthropic credit and get the real Claude 3.5 Sonnet reranked
+   WISCO number** — infrastructure ready, dev split first (~$3-8) before
+   committing to the full heldout.
+3. Decide whether to deploy the ISIC/ISCED-F hierarchical Qdrant
+   collections (`--execute`) and/or prioritize their data-coverage
+   expansion.
+4. Decide whether/when to rebuild the SRE crosswalk tables from real
+   official ILO/UNESCO source documents.
+5. Decide whether to pursue the remaining 15/10 legacy-knowledge-base code
+   discrepancies, and whether/when to reconcile `conference1-b2-evaluation`.
+6. Stop or keep running the backend/frontend test instances from §5g, per
+   the user's actual intent.
