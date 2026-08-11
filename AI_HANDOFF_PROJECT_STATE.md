@@ -93,22 +93,23 @@ discarding the other branch's work when someone eventually reconciles them.
 ```
 pytest backend/tests eval/ -q
 ```
-→ **1656 passed, 1 known pre-existing failure, 1 deselected, 1 warning**
-(last run: this session, ~22-25 min wall clock — has been getting slower
-as the suite grows; budget accordingly, don't assume the old ~4 min figure).
+→ **2,347 passed, 0 failed, 1 deselected, 1 warning**
+(last run: 2026-08-11, ~7.5 min wall clock).
 
-The one known failure:
-`backend/tests/test_isco_classifier_extended.py::TestHierarchicalStages::test_llm_used_for_low_similarity`
-— a pre-existing mock-signature mismatch (`clf.<locals>.<lambda>() got an
-unexpected keyword argument 'temperature'`), unrelated to any Reviewer #2
-work, documented since the first QA baseline in this project. Treat it as
-expected/ignorable; do not "fix" it without being asked, and do not treat
-its presence as a sign something you did broke something.
+**The "1 known pre-existing failure" this section used to document no
+longer exists** — `test_isco_classifier_extended.py::TestHierarchicalStages::
+test_llm_used_for_low_similarity` (the mock-signature mismatch previously
+noted here) now **passes**, confirmed by running it in isolation. It was
+fixed at some point without this document being updated; do not assume a
+failure here means something you did broke it — there is no longer a
+standing known failure to compare against. If a new failure appears,
+treat it as real and investigate it, not as this old, no-longer-relevant one.
 
 **`Documentation/Conference_I_Reviewer_2/FINAL_QA_BASELINE.md` says "1501
 passed"** — that is Step 1's historical snapshot, not current. Always
 re-run the command above rather than trusting any written-down test count,
-including this one.
+including this one (this file's own count above will itself go stale the
+moment the suite grows further).
 
 ## 5. What's been built: the "Conference I Reviewer #2 response" work
 

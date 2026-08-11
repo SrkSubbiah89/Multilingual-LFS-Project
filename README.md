@@ -1,6 +1,6 @@
 # Multilingual LFS Conversational AI
 
-> **Last Updated: June 2026** · 1,178 tests passing · 11 DB tables · 25 test files
+> **Last Updated: 2026-08-11** · 2,347 tests passing (`pytest backend/tests eval/ -q`; 1,522 in `backend/tests`, 825 in `eval/`) · 11 DB tables · 88 test files (44 + 44)
 
 An AI-powered **Labour Force Survey (LFS)** system that conducts employment interviews in **English, Arabic (MSA + Gulf dialect), Urdu, Hindi, and Tagalog**, classifies job titles to [ISCO-08](https://www.ilo.org/public/english/bureau/stat/isco/isco08/) codes (4-digit unit groups), classifies industries to [ISIC Rev.4](https://unstats.un.org/unsd/publication/seriesm/seriesm_4rev4e.pdf) (full 4-level hierarchy: Section → Division → Group → **4-digit Class**), classifies education field of specialisation to [ISCED-F 2013](https://uis.unesco.org/en/topic/international-standard-classification-education-isced) (Broad → Narrow → **4-digit Detailed field**) plus attainment level to [ISCED 2011](https://uis.unesco.org/en/topic/international-standard-classification-education-isced) (levels 0–8), and implements the complete **UAE Labour Force Survey questionnaire** (Sections A–K, 56 fields, ILO ICLS-19 standards) with dynamic skip logic across three employment paths.
 
@@ -42,7 +42,7 @@ A key thesis contribution is the **Semantic Relation Engine** — a three-way cr
 │                                                                            │
 │  ① LanguageProcessor   — langdetect + Unicode script analysis             │
 │     • 6 language codes: en / ar / ar-gulf / ur / hi / tl                  │
-│     • Gulf Arabic normalisation (~30 dialect→MSA token replacements)      │
+│     • Gulf Arabic normalisation (79 dialect→MSA token replacements)       │
 │     • Code-switch detection & per-segment labelling                       │
 │     • NER via CrewAI Agent (Ollama / llama3.2, Claude 3.5 fallback)       │
 │                                                                            │
@@ -936,7 +936,7 @@ pip install -r requirements.txt tf-keras
 pytest backend/tests/ -v
 ```
 
-- **1,178 tests** across **25 test files** — all passing as of June 2026
+- **2,347 tests** (`backend/tests` + `eval/`) across **88 test files** — all passing as of 2026-08-11 (`pytest backend/tests eval/ -q`; 1 deselected slow test, 1 warning). `pytest backend/tests/ -v` alone: **1,522 tests**, 44 files.
 - Zero live infrastructure required — all external calls (DB, Redis, Qdrant, LLM APIs) are mocked or use in-memory fakes (SQLite, FakeRedis)
 - Load/stress tests are marked `@pytest.mark.slow` and excluded by default via `pytest.ini`; run them explicitly with `pytest -m slow`
 
@@ -1024,7 +1024,8 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │   │       └── versions/
 │   │           ├── 001_initial_schema.py
 │   │           ├── 976b9b9c96d4_add_hitlqueue_evaluation_tables.py
-│   │           └── f514fcb81c72_add_deleted_at_soft_delete_columns.py
+│   │           ├── f514fcb81c72_add_deleted_at_soft_delete_columns.py
+│   │           └── a3f9c1d2e4b6_add_survey_response_supersedes_id.py
 │   ├── llm/
 │   │   └── llm_client.py       # LLM factory: Ollama (GENERAL) / Claude (CRITICAL)
 │   ├── rag/
@@ -1032,8 +1033,12 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │   │   ├── hierarchical_store.py  # 4-stage hierarchical ISCO RAG (singleton)
 │   │   └── load_full_isco.py   # Populate ISCO-08 unit groups into Qdrant — currently loads 441;
 │   │   │                       # the true ISCO-08 standard has 436 (confirmed against WISCO,
-│   │   │                       # see Documentation/Phase_2/Week_1/); 19 of the 441 are non-standard
-│   │   │                       # codes and 14 real unit groups are missing — known defect, not yet fixed
+│   │   │                       # see Documentation/Phase_2/Week_1/). One verified 4-code cluster
+│   │   │                       # (subsistence-farming, was 6161-6164 under the wrong sub-major
+│   │   │                       # group) is fixed (Documentation/Phase_2/Week_1/module_a_week1_report.md
+│   │   │                       # Sec.5.3); 15 non-standard codes and 14 real official unit groups
+│   │   │                       # still missing remain — known defect, needs a full official
+│   │   │                       # ISCO-08 cross-check, not fixed
 │   ├── evaluation/
 │   │   ├── evaluate.py         # BM25 / Flat / Hierarchical 3-system comparison (100 synthetic cases)
 │   │   ├── run_comparison.py   # Batch runner for all three systems
@@ -1045,7 +1050,7 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │   │       ├── inspect_wisco.py / analyze_wisco.py / parse_wisco.py
 │   │       ├── requirements.lock.txt
 │   │       └── data/raw|interim|processed/
-│   └── tests/                  # 25 test files (+ conftest + slow-marked load_test), 1,178 tests, zero live infra required
+│   └── tests/                  # 44 test files (+ conftest + slow-marked load_test), 1,522 tests here (2,347 combined with eval/'s 44 files/825 tests), zero live infra required
 │       ├── conftest.py              # Shared fixtures: in-memory DB, auth client, rate limiter reset
 │       ├── test_auth_routes.py
 │       ├── test_auth_and_api_extended.py
@@ -1132,7 +1137,7 @@ All thesis requirements fully implemented as of June 2026:
 |---|---|---|
 | Email OTP + JWT Auth | Done | Gmail SMTP (SendGrid fallback) + HS256 JWT, auto-fill in dev mode |
 | Language Detection (6 codes) | Done | en / ar / ar-gulf / ur / hi / tl; Devanagari fast-path |
-| Gulf Arabic Normalisation | Done | ~30 dialect→MSA token replacements before NER + embedding |
+| Gulf Arabic Normalisation | Done | 79 dialect→MSA token replacements before NER + embedding |
 | Code-Switch Detection | Done | Arabic+Latin and Devanagari+Latin mixing detection |
 | NER — 5 languages | Done | CrewAI agent, JOB_TITLE / INDUSTRY / LOCATION / EDUCATION |
 | Conversation FSM (5 states) | Done | 56 fields, 3 employment paths, 11 conditional skip gates |
@@ -1178,6 +1183,6 @@ All thesis requirements fully implemented as of June 2026:
 | **ValidationAgent Wiring** | **Done** | Runs when FSM enters VALIDATING; populates `validation_issues` + `is_data_valid` in response |
 | **HITL Auto-enqueue** | **Done** | `db.flush()` + `HITLQueue` insert when `clf.hitl_required=True`; AuditLogger records decision |
 | **Load Test Suite** | **Done** | `@pytest.mark.slow` test in `load_test.py`; 5 users, 2 workers, ≥80% success rate assertion |
-| **Test Suite** | **Done** | 1,178 tests, 25 files, zero live infrastructure; `pytest.ini` excludes slow tests by default |
+| **Test Suite** | **Done** | 2,347 tests (`backend/tests` + `eval/`), 88 files, zero live infrastructure; `pytest.ini` excludes slow tests by default |
 | **Nationality Quick-Options** | **Done** | Pills updated to top 8 UAE nationalities (Emirati/Indian/Pakistani/Filipino/Bangladeshi/Egyptian/British/Other) |
 | **Correction Acknowledgment** | **Done** | `_dev_stub_response` now shows "Got it, I've updated that" when correction applied in VALIDATING state |

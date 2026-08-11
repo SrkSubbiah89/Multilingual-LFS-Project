@@ -117,7 +117,7 @@ All items below are implemented and confirmed against the live codebase.
 |---|---|---|
 | Email OTP + JWT Auth | Done | Gmail SMTP (SendGrid fallback) + HS256 JWT, auto-fill in dev mode |
 | Language Detection (6 codes) | Done | en / ar / ar-gulf / ur / hi / tl; Devanagari fast-path |
-| Gulf Arabic Normalisation | Done | ~30 dialect→MSA token replacements before NER + embedding |
+| Gulf Arabic Normalisation | Done | 79 dialect→MSA token replacements before NER + embedding |
 | Code-Switch Detection | Done | Arabic+Latin and Devanagari+Latin mixing detection |
 | NER — 5 languages | Done | CrewAI agent, JOB_TITLE / INDUSTRY / LOCATION / EDUCATION |
 | Conversation FSM (5 states) | Done | 56 fields, 3 employment paths, dynamic conditional skip gates |
