@@ -584,10 +584,23 @@ _UNIT: list[tuple[str, str]] = [
     ("6141","Forestry Workers"),
     ("6142","Charcoal Burners and Related Workers"),
     ("6150","Aquaculture Workers"),
-    ("6161","Subsistence Crop Farmers"),
-    ("6162","Subsistence Livestock Farmers"),
-    ("6163","Subsistence Mixed Crop and Livestock Farmers"),
-    ("6164","Subsistence Fishers, Hunters, Trappers and Gatherers"),
+    # Task: Phase II Module A Week 1 found these 4 unit codes filed under
+    # the wrong sub-major group -- minor groups 613/621/622 and submajor
+    # 61/62 have no matching "616x" parent anywhere in this file's own
+    # _MINOR/_SUBMAJOR tables (verified: no "614", "615", or "616" minor
+    # group is defined at all), while submajor 63 ("Subsistence Farmers,
+    # Fishers, Hunters and Gatherers") and minor groups 631-634 already
+    # exist correctly and were simply missing their unit-group children.
+    # Same occupational content, same labels -- only the code numbers
+    # were wrong. See Documentation/Phase_2/Week_1/module_a_week1_report.md
+    # Sec.5.3. (The remaining 15 project-only / 10 official-only code
+    # discrepancies that report also found are NOT fixed here -- they
+    # need a full cross-check against the official ISCO-08 structure
+    # document, not a guess; see that report's own scope boundary.)
+    ("6310","Subsistence Crop Farmers"),
+    ("6320","Subsistence Livestock Farmers"),
+    ("6330","Subsistence Mixed Crop and Livestock Farmers"),
+    ("6340","Subsistence Fishers, Hunters, Trappers and Gatherers"),
     # 71
     ("7111","House Builders"),
     ("7112","Bricklayers and Related Workers"),
