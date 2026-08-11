@@ -3,9 +3,13 @@
 ## Status
 
 ```text
-LIVE_RERANKER_WISCO_RUN_READY: no
+LIVE_RERANKER_WISCO_RUN_READY: partial
 reason: anthropic_account_had_zero_credit_for_the_entire_session -- no genuine
-        LLM-reranked result exists anywhere in this task's output
+        Claude-3-5-Sonnet-reranked result exists anywhere in this task's output.
+        A genuine result WAS obtained using a free local Ollama model instead
+        (a disclosed, major deviation from the historical model identity) --
+        see "Addendum: Ollama dev-split run" below. 17.19% (346/2,013), WISCO
+        dev split, flat retrieval, llama3.2:latest.
 ```
 
 **No real LLM-reranked accuracy number was obtained.** Every attempted run (dev split, full flat heldout, full hierarchical heldout) silently fell back to plain semantic-retrieval-top-1 for 100% of cases, because the configured Anthropic API key had insufficient credit for every single call made in this session. This was discovered, root-caused, and fixed (so it can never again happen silently) — but it means none of the numbers produced today are what they were reported as at the time. This report exists to correct that record and document the fix.
@@ -105,4 +109,97 @@ All three attempted runs' raw output is preserved, git-ignored, at `eval/local_r
 
 ---
 
-*Report ends. Stopping here — no further live Anthropic calls until credit is confirmed available.*
+## Addendum: Ollama dev-split run (2026-08-11)
+
+With no Anthropic credit available, the operator asked for a free local
+alternative. `ollama_reranker.py` was added (see its own commit) — calls a
+local Ollama server instead of Claude 3.5 Sonnet, **an explicit, major,
+disclosed deviation from Task 41's historical-model identity lock**, used
+only because no paid credit was available. Model: `llama3.2:latest` (this
+project's own existing default general-task model, per
+`backend/llm/llm_client.py`), temperature `0.0`. Everything else —
+prompt, threshold, candidate count, JSON/fallback contract — is Task
+41's `policy.py`, completely unmodified.
+
+### Real result
+
+```text
+n_total: 2013
+n_correct: 346
+accuracy: 17.19% (346/2013)
+n_semantic (fast path): 0
+n_llm_ranked: 2013 (every case genuinely reranked -- 344 distinct codes
+              used across the run, confirming real, varied model output,
+              not a repeated fallback pattern)
+```
+
+WISCO dev split, flat retrieval (`isco08_unit_groups_flat_ilo2021_v1`).
+Confirmed genuine (not a repeat of the Anthropic-credit incident): 344
+distinct predicted codes were used across 2,013 rows, and individual
+predictions were manually spot-checked against real, varied Ollama
+output — this is real reranking, not a hidden fallback.
+
+### Two operational incidents during this run, both disclosed
+
+**1. A single long-running process is fragile on this hardware.** The
+first full-run attempt (2,013 rows in one process) stopped after 318 rows
+with a genuine Qdrant timeout (likely CPU contention with a concurrently-
+running test suite) — correctly caught and reported by name via the
+`fatal_tracker` mechanism (exactly as designed; see the main report
+above). A resume attempt was launched for the remaining 1,695 rows. A
+`tasklist` check appeared to show no Python process running, which was
+**incorrectly** read as "the resume process died silently." Based on
+that misread, the operator's own suggestion — split the remaining work
+into small, independently-checkpointed batches rather than trust one
+multi-hour run — was adopted, and a 150-row "batch 1" was started.
+
+**2. This caused an accidental concurrent duplicate-write.** The
+original resume process was, in fact, still alive and running the entire
+time (11.6 hours total for the 1,695-row resume segment — far slower
+than the ~12-19 sec/call measured in the earlier smoke test, likely
+reflecting sustained load rather than a one-off cold-start cost) and
+completed the full remaining set on its own. Because "batch 1" ran
+concurrently against the same `progress.jsonl`, both processes
+independently reprocessed the same 150 case_ids, producing 150
+duplicated entries (2,163 lines for 2,013 distinct cases). Six of the
+150 duplicate pairs (4%) disagreed on `predicted_code` despite identical
+input and `temperature=0.0` — a real, disclosed finding about Ollama's
+practical (not bit-exact) determinism under concurrent load, not
+something papered over.
+
+**Resolution:** deduplicated by keeping the first-written entry per
+`case_id` (`progress_deduplicated.jsonl`, `deduplicated_final_report.json`,
+both in the run's output directory). The 17.19% figure above is computed
+from this deduplicated set of exactly 2,013 distinct cases. The batching
+approach itself remains a sound idea for future long local-inference
+runs — the actual failure here was a false "the process is dead" read,
+not a flaw in batching as a strategy; batching should be paired with a
+more reliable liveness check (e.g. polling the progress file's growth
+rather than `tasklist`) next time.
+
+### What this result means
+
+17.19% is close to, but below, the earlier plain-semantic-top-1 dev
+figure that the credit-exhaustion incident accidentally produced (18.88%
+— itself just retrieval, mislabeled). A free, small local model
+(`llama3.2:latest`, 3.2B parameters) reranking among 5 candidates with no
+Arabic title or description text to work with (the same official-
+catalogue data limitation disclosed in Task 42) does not improve on
+plain retrieval here, and this data point on its own cannot separate
+"reranking doesn't help for this benchmark" from "this specific small
+local model isn't strong enough at this structured task" — both are
+plausible; distinguishing them would need the real Claude 3.5 Sonnet
+comparison once Anthropic credit is available.
+
+### Files
+
+`eval/legacy_decision_policy41/ollama_reranker.py` +
+`test_ollama_reranker.py` (committed earlier, code + tests only). Raw
+run output (git-ignored): `eval/local_runs/task43_ollama_flat_dev_run_20260810T222055Z/`
+(`progress.jsonl` — the raw, duplicate-containing log, preserved as the
+literal incident record; `progress_deduplicated.jsonl` and
+`deduplicated_final_report.json` — the clean, authoritative result).
+
+---
+
+*Report ends.*
