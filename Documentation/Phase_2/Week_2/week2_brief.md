@@ -50,14 +50,27 @@ decision before Week 9, not during it:
 This is flagged here so it's a known open item carried through Weeks 2–8, not a surprise in
 Week 9. No action needed in Week 2 itself.
 
-### 2.3 Query-time normalisation: lowercase must happen in the harness
+### 2.3 Query-time normalisation — CORRECTED 2026-08-11: this section was factually wrong
 
-`parse_wisco.py` deliberately preserves original title casing (matches the corpus, not the
-query path). Production's `ISCOClassifier.classify()` lowercases queries at call time
-(`backend/agents/isco_classifier.py:372`, `job_title.lower().strip()`). **Week 2's evaluation
-harness must replicate this** — call `.lower().strip()` on each WISCO title before passing it to
-the classifier, or the harness will be testing different input normalisation than production
-actually uses, and any accuracy gap won't be attributable to anything real.
+**Original claim (wrong):** "Production's `ISCOClassifier.classify()` lowercases queries at
+call time (`backend/agents/isco_classifier.py:372`, `job_title.lower().strip()`)."
+
+**Verified against the actual code:** `classify()`'s real entry point only does
+`job_title = job_title.strip()` — it never lowercases the text that gets embedded and searched.
+The only `.lower()` call anywhere in the classification path (`isco_classifier.py`,
+`hierarchical_store.py`, `vector_store.py` — checked exhaustively) is inside the separate
+`_keyword_major_hint()` helper, which only picks a major-group hint for stage-1 anchoring; it
+never touches the text passed to the embedding model. The line-372 citation above conflated
+that helper's internal lowering with the main classify() text path.
+
+**Practical impact: none on the already-completed evaluation.** `eval/run_eval.py` and
+`eval/build_wisco_isco_benchmark*.py` never applied `.lower()` to `input_text` either — checked
+directly. So the real Task 36-43 official WISCO Tier-1 evaluation happens to already match true
+production behaviour (neither lowercases), even though this brief's instruction, if it had been
+followed, would have introduced exactly the mismatch it warned against — in the opposite
+direction from what was assumed. **Do not "fix" `eval/run_eval.py` to add `.lower()`** based on
+the original (wrong) version of this section — that would be the actual bug this correction is
+preventing.
 
 ## 3. Week 2 inputs checklist (updated)
 

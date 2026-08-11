@@ -132,3 +132,90 @@ supplied plan.
    framing — this is a real, negative, already-disclosed result (see
    `MANUSCRIPT_SAFE_WISCO_WORDING.md` for pre-drafted safe language), not something to omit or
    soften.
+
+---
+
+## 8. Module-by-module implementation review (2026-08-11)
+
+A deeper pass through Modules A-H against the actual code, not just the plan's claims. Full test
+suite green throughout (2,347 passed at time of writing); every number below was read directly
+from the running code, not assumed from documentation.
+
+### Module A — one more correction, plus confirmation the real evaluation was unaffected
+
+`Week_2/week2_brief.md` §2.3 claimed production's `ISCOClassifier.classify()` lowercases query
+text before embedding, citing a specific line number. **Checked directly and found wrong**: the
+real `classify()` entry point only strips whitespace; the only `.lower()` call anywhere in the
+retrieval path (`isco_classifier.py`, `hierarchical_store.py`, `vector_store.py` — checked
+exhaustively) is inside a separate keyword-hint helper that never touches the embedded text.
+**No harm done to the real evaluation**: `eval/run_eval.py` and the WISCO benchmark builders
+never applied `.lower()` either, so the actual Task 36-43 evaluation already matches true
+production behaviour by coincidence. Corrected `week2_brief.md` in place with a dated note — do
+not "fix" `run_eval.py` to add lowercasing based on the old version of that section.
+
+### Modules B & C — infrastructure is real and well-tested; the gap is data + deployment, not code
+
+The plan treats ISIC/ISCED-F hierarchical retrieval as unbuilt, unscoped future work. **It
+already exists**: `backend/rag/hierarchy_nodes.py` + `standard_hierarchical_store.py` +
+`build_standard_hierarchical_collections.py` reuse ISCO-08's own generic beam-search engine for
+both standards, fully tested (92 tests passing across `test_isic_classifier.py`,
+`test_isced_classifier.py`, `test_hierarchy_nodes.py`, `test_standard_hierarchical_store.py`,
+`test_build_standard_hierarchical_collections.py`), with an explicit, tested,
+never-silently-fabricated fallback contract to the legacy keyword/LLM pipeline. See
+`ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md` for the full design — that document
+itself is careful not to overclaim ("These counts are NOT an official-catalogue coverage claim").
+
+**What's actually missing, and it's not a code bug:**
+1. Data coverage: 134/419 ISIC classes, 63/~80 ISCED-F detailed fields — the same gap the plan
+   already correctly identifies, just via a different (keyword-table) mechanism than the plan
+   assumed.
+2. **Deployment**: the live Qdrant collections (`isic_rev4_*`, `iscedf2013_*_fields`) have never
+   been populated — the `--execute` step is explicitly "NOT run as part of this repository's own
+   work." Until it is, `method="isic_hierarchical_retrieval"` will always fall back to the legacy
+   keyword/LLM path in practice, regardless of how much data-coverage work happens.
+
+Neither of these was fixed in this pass — (1) needs real official ISIC Rev.4 / ISCED-F 2013
+source text authored by someone with access to and time to work through the primary documents,
+not a guess; (2) is a real infrastructure decision (a live Qdrant write) that needs the same
+explicit go-ahead every other live-infrastructure action in this project has required.
+
+### Module D — the LOW-severity gap the plan describes is already fixed
+
+The plan's Module D section (and an earlier project planning document) describes
+`SemanticViolation.severity` as only ever emitting `HIGH`/`MODERATE` despite `LOW` being a
+documented valid value. **Checked directly: this is already fixed** — a genuine third severity
+band exists (`semantic_relation.py` line 528), with `rule_id`s (`SR-ISCO-ISCED-01/02/03`) and
+15 passing tests. What the plan correctly identifies as still needed: the `_ISCO_MAJOR_TO_ISIC` /
+`_ISCO_SUBMAJOR_TO_ISIC` / `_ISCO_MAJOR_TO_ISCED` / `_ISCO_SUBMAJOR_TO_ISCED_MIN` tables are
+confirmed **still hand-built**, not yet rebuilt from the official ILO ISCO-08 Volume I
+correspondence tables or UNESCO ISCED 2011 Operational Manual Table 7. Not attempted in this
+pass — rebuilding a crosswalk by guessing at official correspondences would be exactly the kind
+of fabrication this project has consistently avoided; it needs the real source documents.
+
+### Module G — solid, 102 passing tests, no new findings beyond the plan's own (WISCO Arabic
+has no dialectal content, already documented in `Week_1/module_a_week1_report.md` §6).
+
+### Module H — the plan's own framing doesn't match this system's actual architecture
+
+The plan's "Delegation Correctness" metric assumes a CrewAI hierarchical process (a manager
+agent delegating to worker agents). **Checked exhaustively: this system never uses one.** Zero
+occurrences of `Process.hierarchical` or `manager_agent` anywhere in `backend/`. All 12 agents
+that construct a `crewai.Agent` (`audit_logger`, `context_memory`, `conversation_manager`,
+`emotional_intelligence`, `hitl_quality_manager`, `isco_classifier`, `isic_classifier`,
+`language_processor`, `rag_expert`, `report_generator`, `semantic_relation`, `validation_agent`)
+consistently set `allow_delegation=False` — confirming this by design, not omission. The
+original archived `CLAUDE.md` plan (superseded, per its own header) *did* describe a hierarchical
+manager-delegation pattern; the actual implemented system abandoned it in favour of direct,
+independent invocation from application code. **Module H's evaluation target needs rescoping**:
+"orchestration correctness" (does the calling code invoke the right agent at the right time) is
+the real, evaluable equivalent in this architecture — "delegation correctness" as literally
+described in the plan has nothing to measure here.
+
+### Modules E & F — not code-review targets
+
+Module E (pilot) requires real human participants and ethics approval — not something any code
+review or implementation pass can substitute for; status unchanged from the last check (no
+application submitted). Module F (synthetic data) is explicitly scoped as supplementary-only and
+lower priority by the plan itself; no synthetic-data generation code exists yet in this repo, and
+building it wasn't attempted in this pass pending an explicit decision on priority and exact
+Person Register schema fields to target.
