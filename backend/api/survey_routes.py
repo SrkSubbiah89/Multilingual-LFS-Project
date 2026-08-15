@@ -739,6 +739,12 @@ def _send_message_impl(
     # Snapshot fields before processing so we can detect which field was just set
     _fields_before = set(ctx.collected_data.keys())
 
+    # Tracks every HITLQueue row created during this single turn (regardless
+    # of reason) so a later escalation reason (e.g. SRE incoherence) can
+    # append to an existing pending entry for this turn instead of creating a
+    # second, redundant queue row -- see Stage 4e below.
+    _hitl_entries_this_turn: list["HITLQueue"] = []
+
     # ── Stages 1 + 3: NER then conversation (sequential) ────────────────────
     # Both agents target the same local Ollama instance which handles one
     # request at a time.  Running them in parallel saturates Ollama and causes
@@ -789,7 +795,7 @@ def _send_message_impl(
             db.add(isco_resp)
             if clf.hitl_required:
                 db.flush()  # get isco_resp.id before creating HITL entry
-                db.add(HITLQueue(
+                _hq = HITLQueue(
                     session_id=session_id,
                     response_id=isco_resp.id,
                     raw_text=entity.text,
@@ -800,7 +806,9 @@ def _send_message_impl(
                     priority="HIGH" if clf.primary.confidence < 0.50 else "MEDIUM",
                     status="pending",
                     created_at=datetime.utcnow(),
-                ))
+                )
+                db.add(_hq)
+                _hitl_entries_this_turn.append(_hq)
             try:
                 from backend.agents.audit_logger import AgentDecisionType
                 _get_audit_logger().log_agent_decision(
@@ -863,7 +871,7 @@ def _send_message_impl(
                 db.add(_fb_resp)
                 if clf.hitl_required:
                     db.flush()
-                    db.add(HITLQueue(
+                    _hq = HITLQueue(
                         session_id=session_id,
                         response_id=_fb_resp.id,
                         raw_text=_stored_title,
@@ -874,7 +882,9 @@ def _send_message_impl(
                         priority="HIGH" if clf.primary.confidence < 0.50 else "MEDIUM",
                         status="pending",
                         created_at=datetime.utcnow(),
-                    ))
+                    )
+                    db.add(_hq)
+                    _hitl_entries_this_turn.append(_hq)
                 isco_results.append(ISCOResult(
                     job_title=_stored_title,
                     primary_code=clf.primary.code,
@@ -1064,13 +1074,62 @@ def _send_message_impl(
                 language     = lp_result.detected_language,
             )
             import dataclasses
-            semantic_coherence_out = {
-                k: (
-                    [dataclasses.asdict(v) for v in val]
-                    if isinstance(val, list) else val
-                )
-                for k, val in dataclasses.asdict(sc).items()
-            }
+            # dataclasses.asdict() already recursively converts nested
+            # dataclasses (e.g. each SemanticViolation in sc.violations)
+            # into plain dicts -- a prior version of this code re-applied
+            # asdict() to those already-converted dicts, which raises
+            # TypeError("asdict() should be called on dataclass instances")
+            # whenever sc.violations was non-empty. Since that raise was
+            # caught by the surrounding try/except, semantic_coherence was
+            # silently None in the API response for every case that had
+            # any violation at all -- exactly the cases where it mattered.
+            semantic_coherence_out = dataclasses.asdict(sc)
+
+            # ── Mandatory HITL escalation for HIGH-severity SRE violations ──
+            # Added 2026-08-16 (Conference I Reviewer #2 response, Module D
+            # Step 5.5) to close the gap Step 5 found: semantic_coherence was
+            # computed but never enforced anywhere. This IS the real
+            # enforcement point: it's the only live code path that computes
+            # semantic_coherence at all -- backend/agents/survey_orchestrator.py
+            # also computes it, but that module is never imported by the live
+            # API (confirmed by grep across all of backend/), so it has no
+            # effect on production traffic regardless of what it does with it.
+            _high_violations = [v for v in sc.violations if v.severity == "HIGH"]
+            if _high_violations:
+                try:
+                    _sre_summary = "; ".join(f"[{v.rule_id}] {v.message_en}" for v in _high_violations)
+                    _sre_context = (
+                        f"SRE HIGH-severity incoherence (score={sc.score}): {_sre_summary} "
+                        f"[ISCO={sc.isco_code} ISIC={sc.isic_section} ISCED={sc.isced_level}]"
+                    )
+                    if _hitl_entries_this_turn:
+                        # Fold into the existing pending entry for this turn
+                        # rather than creating a second, redundant row for the
+                        # same underlying response -- avoids duplicate/
+                        # conflicting HITLQueue entries.
+                        _existing = _hitl_entries_this_turn[-1]
+                        _existing.ai_reasoning = f"{_existing.ai_reasoning or ''}\n{_sre_context}".strip()
+                        _existing.priority = "HIGH"
+                    else:
+                        _hq = HITLQueue(
+                            session_id=session_id,
+                            response_id=None,
+                            raw_text=str(ctx.collected_data.get("job_title", "")),
+                            ai_code=sc.isco_code,
+                            ai_confidence=sc.score,
+                            ai_reasoning=_sre_context,
+                            hierarchy_path=None,
+                            priority="HIGH",
+                            status="pending",
+                            created_at=datetime.utcnow(),
+                        )
+                        db.add(_hq)
+                        _hitl_entries_this_turn.append(_hq)
+                except Exception as _sre_hitl_exc:
+                    _logger.error(
+                        "SRE HIGH-severity escalation failed to queue for session=%d: %s",
+                        session_id, _sre_hitl_exc,
+                    )
         except Exception:
             pass
 
