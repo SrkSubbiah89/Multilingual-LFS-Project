@@ -40,11 +40,35 @@ This engine provides three capabilities:
 
 Architecture
 ------------
-The crosswalk is encoded as two authoritative mapping tables built from:
+The crosswalk is encoded as two mapping tables. CORRECTED 2026-08-16
+(Conference I Reviewer #2 response, Section G expansion / Module D):
+this docstring previously cited "ILO 'ISCO-08 Correspondence Table with
+ISIC Rev.4' (Geneva, 2012)" and "UNESCO 'ISCED 2011 Operational Manual'
+Table 7 (2015)" as the source of these tables. Verified directly against
+primary sources and found false: the real, complete ISCO-08 Volume I PDF
+(433 pages, fetched directly from ilo.org) mentions "ISIC" exactly once,
+in a bibliography entry citing ISIC Rev.4 as a related standard -- not a
+correspondence table. No ILO document mapping ISCO-08 to ISIC appears to
+exist at all (occupation and industry are independent classification
+dimensions, unlike e.g. the real ISCO-08-to-ISCO-88 correspondence
+table, which does exist). The ISCED 2011 Operational Manual is a real
+document, but its own described structure (chapters per ISCED level
+0-8, plus a summary table of ISCED codes/criteria in its Annex) concerns
+classifying education PROGRAMMES into ISCED levels -- not occupations;
+nothing in its documented contents maps ISCO codes to expected education
+levels. Neither citation could be verified.
 
-  * ILO "ISCO-08 Correspondence Table with ISIC Rev.4" (Geneva, 2012)
-  * UNESCO "ISCED 2011 Operational Manual" Table 7 (2015)
-  * UAE MOHRE LFS Questionnaire sectoral breakdown (2023)
+**What the tables below actually are**: hand-built domain-reasoning
+heuristics (each entry already carried an inline comment explaining its
+reasoning, e.g. "Health Professionals -> Health only" -- that reasoning
+was always real; only the claimed document source was not). They encode
+a genuine, useful plausibility check -- flagging occupation/industry/
+education combinations an ILO labour-statistics analyst would find
+surprising -- but are not a transcription of any single official
+correspondence table, because no such official document exists for
+ISCO<->ISIC or ISCO<->ISCED specifically. This should be corrected in
+any thesis text that currently cites Geneva 2012 / UNESCO Table 7 as
+the source.
 
 These are stored as in-memory dicts for O(1) lookup — no LLM call needed
 for the core crosswalk, making it deterministic, fast, and auditable.
@@ -89,7 +113,11 @@ _logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # ISCO → ISIC  mapping  (major group → expected ISIC sections)
-# Source: ILO ISCO-ISIC correspondence (Geneva 2012) + UAE MOHRE 2023
+# Hand-built plausibility heuristic, NOT a transcription of an official ILO
+# correspondence table -- verified 2026-08-16 that no such document exists
+# (see module docstring's "Architecture" section for the full verification).
+# Each entry's domain reasoning is genuine even though the original claimed
+# source was not.
 # ---------------------------------------------------------------------------
 
 # Each major group lists the ISIC sections that are semantically consistent.
@@ -135,7 +163,11 @@ _ISCO_SUBMAJOR_TO_ISIC: dict[str, list[str]] = {
 
 # ---------------------------------------------------------------------------
 # ISCO → ISCED  mapping  (major group → expected ISCED levels, min/max)
-# Source: UNESCO ISCED 2011 Operational Manual Table 7
+# Hand-built plausibility heuristic, NOT a transcription of UNESCO's ISCED
+# 2011 Operational Manual -- verified 2026-08-16 that manual's own described
+# structure concerns classifying education programmes into ISCED levels,
+# not mapping occupations to expected education levels (see module
+# docstring's "Architecture" section for the full verification).
 # ---------------------------------------------------------------------------
 
 # (min_level, max_level, typical_level)

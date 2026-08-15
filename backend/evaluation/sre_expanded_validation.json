@@ -1,0 +1,1193 @@
+{
+  "n_cases": 61,
+  "n_mismatches": 0,
+  "all_predictions_matched": true,
+  "severity_distribution": {
+    "COHERENT": 20,
+    "LOW": 12,
+    "MODERATE": 14,
+    "HIGH": 15
+  },
+  "aggregate_by_severity": {
+    "COHERENT": {
+      "n": 20,
+      "mean_score": 1.0
+    },
+    "LOW": {
+      "n": 12,
+      "mean_score": 0.55
+    },
+    "MODERATE": {
+      "n": 14,
+      "mean_score": 0.7541
+    },
+    "HIGH": {
+      "n": 15,
+      "mean_score": 0.51
+    }
+  },
+  "mismatches": [],
+  "cases": [
+    {
+      "description": "22 Health Professional, ISIC Q, ISCED 7 (Master's, within submajor min)",
+      "isco_code": "2211",
+      "job_title": "Generalist Medical Practitioners",
+      "isic_section": "Q",
+      "isced_level": 7,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "25 ICT Professional, ISIC J, ISCED 6 (Bachelor's, meets submajor min)",
+      "isco_code": "2511",
+      "job_title": "Systems Analysts",
+      "isic_section": "J",
+      "isced_level": 6,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "23 Teaching Professional, ISIC P, ISCED 6",
+      "isco_code": "2310",
+      "job_title": "University and Higher Education Teachers",
+      "isic_section": "P",
+      "isced_level": 6,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "26 Legal Professional, ISIC M, ISCED 7",
+      "isco_code": "2611",
+      "job_title": "Lawyers",
+      "isic_section": "M",
+      "isced_level": 7,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "11 Manager (major-level ANY ISIC), ISIC C, ISCED 6 (within major 1-8)",
+      "isco_code": "1111",
+      "job_title": "Legislators",
+      "isic_section": "C",
+      "isced_level": 6,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "61 Market Gardener, ISIC A, ISCED 1 (within major-6 range 0-3)",
+      "isco_code": "6111",
+      "job_title": "Crop Growers",
+      "isic_section": "A",
+      "isced_level": 1,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "82 Assembler, ISIC C, ISCED 3 (within major-8 range 2-4)",
+      "isco_code": "8211",
+      "job_title": "Mechanical Machinery Assemblers",
+      "isic_section": "C",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "32 Health Technician, ISIC Q, ISCED 5 (within major-3 range 4-6)",
+      "isco_code": "3211",
+      "job_title": "Medical Imaging and Therapeutic Equipment Technicians",
+      "isic_section": "Q",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "71 Building Trades, ISIC F, ISCED 3 (within major-7 range 2-5)",
+      "isco_code": "7111",
+      "job_title": "House Builders",
+      "isic_section": "F",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "83 Drivers, ISIC H, ISCED 3 (within major-8 range 2-4)",
+      "isco_code": "8311",
+      "job_title": "Locomotive Engine Drivers and Related Workers",
+      "isic_section": "H",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "21 Science/Engineering Professional, ISIC J, ISCED 7 (within major-2 6-8)",
+      "isco_code": "2111",
+      "job_title": "Physicists and Astronomers",
+      "isic_section": "J",
+      "isced_level": 7,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "31 Science/Engineering Technician, ISIC F, ISCED 5 (within major-3 4-6)",
+      "isco_code": "3111",
+      "job_title": "Chemical and Physical Science Technicians",
+      "isic_section": "F",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "33 Business Technician, ISIC K, ISCED 4 (within major-3 4-6)",
+      "isco_code": "3311",
+      "job_title": "Securities and Finance Dealers and Brokers",
+      "isic_section": "K",
+      "isced_level": 4,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "62 Subsistence Farmer, ISIC A, ISCED 0 (within major-6 0-3)",
+      "isco_code": "6210",
+      "job_title": "Forestry and Related Workers",
+      "isic_section": "A",
+      "isced_level": 0,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "22 Health Professional (submajor min ISCED>=7), ISIC Q, ISCED 6 (gap=1 below)",
+      "isco_code": "2211",
+      "job_title": "Generalist Medical Practitioners",
+      "isic_section": "Q",
+      "isced_level": 6,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "23 Teaching Professional (submajor min ISCED>=6), ISIC P, ISCED 5 (gap=1 below)",
+      "isco_code": "2310",
+      "job_title": "University and Higher Education Teachers",
+      "isic_section": "P",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "25 ICT Professional (submajor min ISCED>=6), ISIC J, ISCED 5 (gap=1 below)",
+      "isco_code": "2511",
+      "job_title": "Systems Analysts",
+      "isic_section": "J",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "26 Legal Professional (submajor min ISCED>=7), ISIC M, ISCED 6 (gap=1 below)",
+      "isco_code": "2611",
+      "job_title": "Lawyers",
+      "isic_section": "M",
+      "isced_level": 6,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "11 Manager (major range 5-8), ISIC C, ISCED 4 (gap=1 below)",
+      "isco_code": "1111",
+      "job_title": "Legislators",
+      "isic_section": "C",
+      "isced_level": 4,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "61 Market Gardener (major range 0-3), ISIC A, ISCED 4 (gap=1 above)",
+      "isco_code": "6111",
+      "job_title": "Crop Growers",
+      "isic_section": "A",
+      "isced_level": 4,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "82 Assembler (major range 2-4), ISIC C, ISCED 5 (gap=1 above)",
+      "isco_code": "8211",
+      "job_title": "Mechanical Machinery Assemblers",
+      "isic_section": "C",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "32 Health Technician (major range 4-6), ISIC Q, ISCED 3 (gap=1 below)",
+      "isco_code": "3211",
+      "job_title": "Medical Imaging and Therapeutic Equipment Technicians",
+      "isic_section": "Q",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "71 Building Trades (major range 2-5), ISIC F, ISCED 6 (gap=1 above)",
+      "isco_code": "7111",
+      "job_title": "House Builders",
+      "isic_section": "F",
+      "isced_level": 6,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "83 Drivers (major range 2-4), ISIC H, ISCED 5 (gap=1 above)",
+      "isco_code": "8311",
+      "job_title": "Locomotive Engine Drivers and Related Workers",
+      "isic_section": "H",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "21 Science/Eng Professional (major range 6-8), ISIC J, ISCED 5 (gap=1 below)",
+      "isco_code": "2111",
+      "job_title": "Physicists and Astronomers",
+      "isic_section": "J",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "62 Subsistence Farmer (major range 0-3), ISIC A, ISCED 4 (gap=1 above)",
+      "isco_code": "6210",
+      "job_title": "Forestry and Related Workers",
+      "isic_section": "A",
+      "isced_level": 4,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "LOW",
+      "predicted_overall_severity": "LOW",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "LOW",
+          "rule_id": "SR-ISCO-ISCED-01",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "LOW",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "22 Health Professional, ISIC J (major-2 allows J, submajor-22 only Q) MODERATE-ISIC",
+      "isco_code": "2211",
+      "job_title": "Generalist Medical Practitioners",
+      "isic_section": "J",
+      "isced_level": 7,
+      "predicted_isic_severity": "MODERATE",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISIC-01",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "25 ICT Professional, ISIC M (major-2 allows M, submajor-25 only J) MODERATE-ISIC",
+      "isco_code": "2511",
+      "job_title": "Systems Analysts",
+      "isic_section": "M",
+      "isced_level": 6,
+      "predicted_isic_severity": "MODERATE",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISIC-01",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "23 Teaching Professional, ISIC J (major-2 allows J, submajor-23 only P) MODERATE-ISIC",
+      "isco_code": "2310",
+      "job_title": "University and Higher Education Teachers",
+      "isic_section": "J",
+      "isced_level": 6,
+      "predicted_isic_severity": "MODERATE",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISIC-01",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "26 Legal Professional, ISIC Q (major-2 allows Q, submajor-26 only M/R/J) MODERATE-ISIC",
+      "isco_code": "2611",
+      "job_title": "Lawyers",
+      "isic_section": "Q",
+      "isced_level": 7,
+      "predicted_isic_severity": "MODERATE",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISIC-01",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "32 Health Technician, ISIC C (major-3 allows C, submajor-32 only Q) MODERATE-ISIC",
+      "isco_code": "3211",
+      "job_title": "Medical Imaging and Therapeutic Equipment Technicians",
+      "isic_section": "C",
+      "isced_level": 5,
+      "predicted_isic_severity": "MODERATE",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISIC-01",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "22 Health Professional (submajor min>=7), ISIC Q, ISCED 5 (gap=2 below)",
+      "isco_code": "2211",
+      "job_title": "Generalist Medical Practitioners",
+      "isic_section": "Q",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "MODERATE",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 0.6175,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISCED-02",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "25 ICT Professional (submajor min>=6), ISIC J, ISCED 4 (gap=2 below)",
+      "isco_code": "2511",
+      "job_title": "Systems Analysts",
+      "isic_section": "J",
+      "isced_level": 4,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "MODERATE",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 0.6175,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISCED-02",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "11 Manager (major range 5-8), ISIC C, ISCED 3 (gap=2 below)",
+      "isco_code": "1111",
+      "job_title": "Legislators",
+      "isic_section": "C",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "MODERATE",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 0.6175,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISCED-02",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "61 Market Gardener (major range 0-3), ISIC A, ISCED 5 (gap=2 above)",
+      "isco_code": "6111",
+      "job_title": "Crop Growers",
+      "isic_section": "A",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "MODERATE",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 0.6175,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISCED-02",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "82 Assembler (major range 2-4), ISIC C, ISCED 6 (gap=2 above)",
+      "isco_code": "8211",
+      "job_title": "Mechanical Machinery Assemblers",
+      "isic_section": "C",
+      "isced_level": 6,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "MODERATE",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 0.6175,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISCED-02",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "71 Building Trades (major range 2-5), ISIC F, ISCED 7 (gap=2 above)",
+      "isco_code": "7111",
+      "job_title": "House Builders",
+      "isic_section": "F",
+      "isced_level": 7,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "MODERATE",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 0.6175,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISCED-02",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "32 Health Technician (major range 4-6), ISIC Q, ISCED 2 (gap=2 below)",
+      "isco_code": "3211",
+      "job_title": "Medical Imaging and Therapeutic Equipment Technicians",
+      "isic_section": "Q",
+      "isced_level": 2,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "MODERATE",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 0.6175,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISCED-02",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "83 Drivers (major range 2-4), ISIC H, ISCED 6 (gap=2 above)",
+      "isco_code": "8311",
+      "job_title": "Locomotive Engine Drivers and Related Workers",
+      "isic_section": "H",
+      "isced_level": 6,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "MODERATE",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 0.6175,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISCED-02",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "22 Health Professional, ISIC A (not in major-2 list at all) HIGH-ISIC",
+      "isco_code": "2211",
+      "job_title": "Generalist Medical Practitioners",
+      "isic_section": "A",
+      "isced_level": 7,
+      "predicted_isic_severity": "HIGH",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.45,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISIC-02",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "6 Agriculture worker equivalent -- 61 Market Gardener, ISIC J (major-6 only A) HIGH-ISIC",
+      "isco_code": "6111",
+      "job_title": "Crop Growers",
+      "isic_section": "J",
+      "isced_level": 1,
+      "predicted_isic_severity": "HIGH",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.45,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISIC-02",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "25 ICT Professional, ISIC A (not in major-2 list) HIGH-ISIC",
+      "isco_code": "2511",
+      "job_title": "Systems Analysts",
+      "isic_section": "A",
+      "isced_level": 6,
+      "predicted_isic_severity": "HIGH",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.45,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISIC-02",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "82 Assembler, ISIC Q (major-8 does not include Q) HIGH-ISIC",
+      "isco_code": "8211",
+      "job_title": "Mechanical Machinery Assemblers",
+      "isic_section": "Q",
+      "isced_level": 3,
+      "predicted_isic_severity": "HIGH",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.45,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISIC-02",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "71 Building Trades, ISIC Q (major-7 does not include Q) HIGH-ISIC",
+      "isco_code": "7111",
+      "job_title": "House Builders",
+      "isic_section": "Q",
+      "isced_level": 3,
+      "predicted_isic_severity": "HIGH",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.45,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISIC-02",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "83 Drivers, ISIC A (major-8 does not include A) HIGH-ISIC",
+      "isco_code": "8311",
+      "job_title": "Locomotive Engine Drivers and Related Workers",
+      "isic_section": "A",
+      "isced_level": 3,
+      "predicted_isic_severity": "HIGH",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.45,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISIC-02",
+          "violation_type": "isco_isic"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "22 Health Professional (submajor min>=7), ISIC Q, ISCED 3 (gap=4 below)",
+      "isco_code": "2211",
+      "job_title": "Generalist Medical Practitioners",
+      "isic_section": "Q",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "HIGH",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISCED-03",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "25 ICT Professional (submajor min>=6), ISIC J, ISCED 2 (gap=4 below)",
+      "isco_code": "2511",
+      "job_title": "Systems Analysts",
+      "isic_section": "J",
+      "isced_level": 2,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "HIGH",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISCED-03",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "11 Manager (major range 5-8), ISIC C, ISCED 1 (gap=4 below)",
+      "isco_code": "1111",
+      "job_title": "Legislators",
+      "isic_section": "C",
+      "isced_level": 1,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "HIGH",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISCED-03",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "61 Market Gardener (major range 0-3), ISIC A, ISCED 7 (gap=4 above)",
+      "isco_code": "6111",
+      "job_title": "Crop Growers",
+      "isic_section": "A",
+      "isced_level": 7,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "HIGH",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISCED-03",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "82 Assembler (major range 2-4), ISIC C, ISCED 8 (gap=4 above)",
+      "isco_code": "8211",
+      "job_title": "Mechanical Machinery Assemblers",
+      "isic_section": "C",
+      "isced_level": 8,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "HIGH",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISCED-03",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "71 Building Trades (major range 2-5), ISIC F, ISCED 0 (gap=2 below)",
+      "isco_code": "7111",
+      "job_title": "House Builders",
+      "isic_section": "F",
+      "isced_level": 0,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "MODERATE",
+      "predicted_overall_severity": "MODERATE",
+      "actual_score": 0.6175,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "MODERATE",
+          "rule_id": "SR-ISCO-ISCED-02",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "MODERATE",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "32 Health Technician (major range 4-6), ISIC Q, ISCED 0 (gap=4 below)",
+      "isco_code": "3211",
+      "job_title": "Medical Imaging and Therapeutic Equipment Technicians",
+      "isic_section": "Q",
+      "isced_level": 0,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "HIGH",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISCED-03",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "83 Drivers (major range 2-4), ISIC H, ISCED 8 (gap=4 above)",
+      "isco_code": "8311",
+      "job_title": "Locomotive Engine Drivers and Related Workers",
+      "isic_section": "H",
+      "isced_level": 8,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "HIGH",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISCED-03",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "23 Teaching Professional (submajor min>=6), ISIC P, ISCED 2 (gap=4 below)",
+      "isco_code": "2310",
+      "job_title": "University and Higher Education Teachers",
+      "isic_section": "P",
+      "isced_level": 2,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "HIGH",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISCED-03",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "26 Legal Professional (submajor min>=7), ISIC M, ISCED 3 (gap=4 below)",
+      "isco_code": "2611",
+      "job_title": "Lawyers",
+      "isic_section": "M",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "HIGH",
+      "predicted_overall_severity": "HIGH",
+      "actual_score": 0.55,
+      "actual_is_coherent": false,
+      "actual_violations": [
+        {
+          "severity": "HIGH",
+          "rule_id": "SR-ISCO-ISCED-03",
+          "violation_type": "isco_isced"
+        }
+      ],
+      "actual_overall_severity": "HIGH",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "24 Business/Admin Professional, ISIC K, ISCED 6 (within major-2 6-8)",
+      "isco_code": "2411",
+      "job_title": "Accountants",
+      "isic_section": "K",
+      "isced_level": 6,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "34 Legal/Social Technician, ISIC P, ISCED 5 (within major-3 4-6)",
+      "isco_code": "3411",
+      "job_title": "Legal and Related Associate Professionals",
+      "isic_section": "P",
+      "isced_level": 5,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "72 Metal/Machinery Trades, ISIC C, ISCED 3 (within major-7 2-5)",
+      "isco_code": "7211",
+      "job_title": "Metal Moulders and Core Makers",
+      "isic_section": "C",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "81 Stationary Plant Operators, ISIC C, ISCED 3 (within major-8 2-4)",
+      "isco_code": "8111",
+      "job_title": "Miners and Quarriers",
+      "isic_section": "C",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "73 Precision/Handicraft, ISIC C, ISCED 3 (within major-7 2-5)",
+      "isco_code": "7311",
+      "job_title": "Precision Instrument Makers and Repairers",
+      "isic_section": "C",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    },
+    {
+      "description": "74 Electrical Trades, ISIC C, ISCED 3 (within major-7 2-5)",
+      "isco_code": "7411",
+      "job_title": "Building and Related Electricians",
+      "isic_section": "C",
+      "isced_level": 3,
+      "predicted_isic_severity": "COHERENT",
+      "predicted_isced_severity": "COHERENT",
+      "predicted_overall_severity": "COHERENT",
+      "actual_score": 1.0,
+      "actual_is_coherent": true,
+      "actual_violations": [],
+      "actual_overall_severity": "COHERENT",
+      "prediction_matches_actual": true
+    }
+  ]
+}
