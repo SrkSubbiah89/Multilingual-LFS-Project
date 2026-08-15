@@ -1031,14 +1031,15 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │   ├── rag/
 │   │   ├── vector_store.py     # Qdrant flat search + multilingual-e5-large
 │   │   ├── hierarchical_store.py  # 4-stage hierarchical ISCO RAG (singleton)
-│   │   └── load_full_isco.py   # Populate ISCO-08 unit groups into Qdrant — currently loads 441;
-│   │   │                       # the true ISCO-08 standard has 436 (confirmed against WISCO,
-│   │   │                       # see Documentation/Phase_2/Week_1/). One verified 4-code cluster
-│   │   │                       # (subsistence-farming, was 6161-6164 under the wrong sub-major
-│   │   │                       # group) is fixed (Documentation/Phase_2/Week_1/module_a_week1_report.md
-│   │   │                       # Sec.5.3); 15 non-standard codes and 14 real official unit groups
-│   │   │                       # still missing remain — known defect, needs a full official
-│   │   │                       # ISCO-08 cross-check, not fixed
+│   │   └── load_full_isco.py   # Populate ISCO-08 unit groups into Qdrant — loads 436,
+│   │   │                       # matching the official ISCO-08 standard exactly (fixed
+│   │   │                       # 2026-08-12 via a direct primary-source ILO cross-check,
+│   │   │                       # see Documentation/Phase_2/Week_1/module_a_week1_report.md
+│   │   │                       # and backend/tests/test_load_full_isco_catalogue_consistency.py).
+│   │   │                       # One disclosed exception remains: Armed Forces codes keep a
+│   │   │                       # 4-digit format ("0110" etc.) instead of ISCO-08's own bare
+│   │   │                       # 3-digit convention — a coordinated project-wide decision,
+│   │   │                       # not fixed unilaterally.
 │   ├── evaluation/
 │   │   ├── evaluate.py         # BM25 / Flat / Hierarchical 3-system comparison (100 synthetic cases)
 │   │   ├── run_comparison.py   # Batch runner for all three systems
@@ -1144,7 +1145,7 @@ All thesis requirements fully implemented as of June 2026:
 | UAE LFS Questionnaire (A–K) | Done | All sections implemented; dynamic skip logic per ILO ICLS-19 |
 | ILO ICLS-19 E1 wage gate | Done | monthly_wage_range skipped for employer/self-employed |
 | ILO ICLS-19 F3 re-routing | Done | F1=no + F3=no → auto-reclassify to not_in_labour_force |
-| ISCO-08 Knowledge Base | Done | 441 unit groups across 4 Qdrant collections |
+| ISCO-08 Knowledge Base | Done | 436 unit groups across 4 Qdrant collections, matching official ISCO-08 exactly (fixed 2026-08-12) |
 | Hierarchical RAG (4-stage) | Done | Major→Sub-major→Minor→Unit with parent_code filtering |
 | Per-stage Confidence Scoring | Done | Weighted: 0.10×s1 + 0.20×s2 + 0.20×s3 + 0.50×s4 |
 | LLM Re-ranking | Done | Claude 3.5 Sonnet; skipped when top-1 similarity ≥ 0.92 |

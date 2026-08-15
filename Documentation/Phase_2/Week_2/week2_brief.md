@@ -124,6 +124,7 @@ API budget and a full week of wall-clock to the complete run, and directly infor
 - Week 9's Arabic-dialect data source (§2.2) — needs a decision before Week 9, not during it.
 - ~~The `load_full_isco.py` subsistence-farming code-shift bug~~ — **fixed 2026-08-11**
   (`module_a_week1_report.md` §5.3; source fix + live Qdrant collection reload verified
-  end-to-end via the running `/debug/isco/` endpoint). The remaining 15 project-only / 10
-  official-only code discrepancies from that same finding are still open and still need the
-  full official ISCO-08 cross-check before Chapter 3 cites a final unit-group count.
+  end-to-end via the running `/debug/isco/` endpoint). ~~The remaining 15 project-only / 10
+  official-only code discrepancies~~ — **fully resolved 2026-08-12** via a direct
+  primary-source ILO cross-check (`module_a_week1_report.md` §5.3a). Chapter 3 can now cite
+  436 unit groups, with one disclosed exception (Armed Forces code format, see CLAUDE.md).

@@ -251,7 +251,13 @@ _MINOR: list[tuple[str, str, str]] = [
     ("835","Ships' Deck Crews and Related Workers","طواقم سطح السفن"),
     ("911","Domestic, Hotel and Office Cleaners and Helpers","عمال التنظيف المنزلي والفندقي"),
     ("912","Vehicle, Window, Laundry and Other Hand Cleaning Workers","عمال تنظيف المركبات"),
-    ("913","Building and Related Caretakers","حراس المباني"),
+    # "913" removed 2026-08-12: a leftover ISCO-88-era minor group (91's
+    # official ISCO-08 minor groups are only 911/912) that became fully
+    # orphaned once the unit-level fix moved 9131/9141's content out --
+    # not investigated further as part of a full minor/submajor-level
+    # audit (out of Task 0's scope, which was the 436-unit-group level
+    # specifically; a full 130-minor/43-submajor cross-check is a
+    # separate, not-yet-done follow-up).
     ("921","Agricultural, Forestry and Fishery Labourers","عمال الزراعة والغابات"),
     ("931","Mining and Construction Labourers","عمال التعدين والبناء"),
     ("932","Manufacturing Labourers","عمال التصنيع"),
@@ -297,7 +303,12 @@ _UNIT: list[tuple[str, str]] = [
     ("1344","Social Welfare Managers"),
     ("1345","Education Managers"),
     ("1346","Financial and Insurance Services Branch Managers"),
-    ("1347","Professional Services Managers, NEC"),
+    # "1347" removed 2026-08-12: confirmed non-standard against the primary
+    # ILO ISCO-08 structure source (isco.ilo.org/en/isco-08, official CSV
+    # export) -- official minor group 134's NEC catch-all is 1349, which
+    # already exists in this table (next line). See
+    # Documentation/Phase_2/Week_1/module_a_week1_report.md Sec.5.1 for the
+    # original WISCO-cross-referenced finding.
     ("1349","Other Services Managers, NEC"),
     # 14
     ("1411","Hotel Managers"),
@@ -574,16 +585,36 @@ _UNIT: list[tuple[str, str]] = [
     ("6112","Vegetable and Related Crop Growers"),
     ("6113","Gardeners and Horticultural Producers"),
     ("6114","Mixed Crop Growers"),
-    ("6121","Livestock Producers"),
-    ("6122","Dairy and Livestock Producers"),
-    ("6123","Poultry Producers"),
-    ("6124","Apiarists and Sericulturists"),
+    # 2026-08-12: minor group 612 ("Animal Producers") was structurally
+    # off-by-one against the primary ILO ISCO-08 source (isco.ilo.org,
+    # official CSV export) -- this table had split official unit 6121
+    # ("Livestock and Dairy Producers") into two separate codes (6121
+    # "Livestock Producers" + 6122 "Dairy and Livestock Producers"), which
+    # pushed "Poultry Producers" to 6123 (official: 6122) and "Apiarists
+    # and Sericulturists" to 6124 (official: 6123, and 6124 does not exist
+    # in ISCO-08 at all). Fixed by merging the split pair back into one
+    # code and shifting the two pushed codes back into their official
+    # positions -- same "content is right, code is wrong" pattern as the
+    # subsistence-farming fix above, just not caught by Module A Week 1's
+    # WISCO-only comparison (WISCO's own gold coding uses the correct
+    # official codes throughout, so this never surfaced as a WISCO-vs-us
+    # code-set mismatch -- it only surfaces on a direct primary-source
+    # cross-check, done here for the first time).
+    ("6121","Livestock and Dairy Producers"),
+    ("6122","Poultry Producers"),
+    ("6123","Apiarists and Sericulturists"),
     ("6129","Animal Producers, NEC"),
     ("6130","Mixed Crop and Animal Producers"),
     # 62
-    ("6141","Forestry Workers"),
-    ("6142","Charcoal Burners and Related Workers"),
-    ("6150","Aquaculture Workers"),
+    # 2026-08-12: "6141"/"6142" removed (non-standard -- ISCO-08 merged
+    # ISCO-88's separate "forestry workers" and "charcoal burners" codes
+    # into one unit group, 6210) and "6150" renumbered to its real code,
+    # 6221 -- all three confirmed against the primary ILO ISCO-08 source.
+    ("6210","Forestry and Related Workers"),
+    ("6221","Aquaculture Workers"),
+    ("6222","Inland and Coastal Waters Fishery Workers"),
+    ("6223","Deep-sea Fishery Workers"),
+    ("6224","Hunters and Trappers"),
     # Task: Phase II Module A Week 1 found these 4 unit codes filed under
     # the wrong sub-major group -- minor groups 613/621/622 and submajor
     # 61/62 have no matching "616x" parent anywhere in this file's own
@@ -593,10 +624,20 @@ _UNIT: list[tuple[str, str]] = [
     # exist correctly and were simply missing their unit-group children.
     # Same occupational content, same labels -- only the code numbers
     # were wrong. See Documentation/Phase_2/Week_1/module_a_week1_report.md
-    # Sec.5.3. (The remaining 15 project-only / 10 official-only code
-    # discrepancies that report also found are NOT fixed here -- they
-    # need a full cross-check against the official ISCO-08 structure
-    # document, not a guess; see that report's own scope boundary.)
+    # Sec.5.3. 2026-08-12: the remaining 15 project-only / 10 official-only
+    # discrepancies that report flagged (plus 6 further ones the report's
+    # own WISCO-only comparison did not catch -- see the 612x/91xx/94xx/95xx
+    # /96xx comments throughout this file) have now been cross-checked
+    # directly against the primary ILO ISCO-08 source (isco.ilo.org,
+    # official CSV export) and fixed. The single remaining, disclosed
+    # exception is major group 0 (Armed Forces): this file represents its
+    # 3 unit groups as 4-digit "0110"/"0210"/"0310", but ISCO-08's own
+    # convention for major group 0 is a bare 3-digit code ("110"/"210"/
+    # "310", since submajor->minor->unit collapse to one level there).
+    # NOT changed in this pass -- every other 4-digit-code assumption in
+    # this codebase (CSV comparisons, WISCO gold-code joins, _digits())
+    # would need a coordinated decision first, not a unilateral rename
+    # here. See Task 0's final report for the full disclosure.
     ("6310","Subsistence Crop Farmers"),
     ("6320","Subsistence Livestock Farmers"),
     ("6330","Subsistence Mixed Crop and Livestock Farmers"),
@@ -607,7 +648,10 @@ _UNIT: list[tuple[str, str]] = [
     ("7113","Stone Cutters and Carvers"),
     ("7114","Concrete Placers, Concrete Finishers and Related Workers"),
     ("7115","Carpenters and Joiners"),
-    ("7116","Other Building Frame and Related Trades Workers"),
+    # "7116" -> 7119 2026-08-12: renumbered to the real official NEC
+    # catch-all code for minor group 711, confirmed against the primary
+    # ILO ISCO-08 source.
+    ("7119","Building Frame and Related Trades Workers Not Elsewhere Classified"),
     ("7121","Roofers"),
     ("7122","Floor Layers and Tile Setters"),
     ("7123","Plasterers"),
@@ -722,15 +766,17 @@ _UNIT: list[tuple[str, str]] = [
     ("9122","Vehicle Cleaners"),
     ("9123","Window Cleaners"),
     ("9129","Cleaning Workers, NEC"),
-    ("9131","Domestic Housekeepers"),
-    ("9132","Restaurant Services Workers"),
-    ("9141","Building Caretakers"),
-    ("9151","Messengers, Package Deliverers and Luggage Porters"),
-    ("9152","Doorkeepers and Related Workers"),
-    ("9153","Vending Machine Operators and Related Workers"),
-    # 92
-    ("9161","Refuse Workers"),
-    ("9162","Sweepers and Related Labourers"),
+    # 2026-08-12: "9131"/"9141" removed (non-standard -- ISCO-08 folded
+    # "domestic housekeepers" into 9111 and "building caretakers" into
+    # 9112, both of which already exist above). "9132" and "9152" removed
+    # (non-standard, no corresponding official ISCO-08 unit group found in
+    # the primary ILO source at all -- disclosed as genuinely unresolved,
+    # not silently dropped: "Restaurant Services Workers" and
+    # "Doorkeepers and Related Workers" have no official ISCO-08 code).
+    # "9151"/"9153"/"9161"/"9162" -- their content was correct but filed
+    # under non-standard codes; moved to their real official codes below
+    # (9621, 9623, 9611, 9613 respectively), same pattern as the
+    # subsistence-farming fix.
     ("9211","Crop Farm Labourers"),
     ("9212","Livestock Farm Labourers"),
     ("9213","Mixed Crop and Livestock Farm Labourers"),
@@ -750,15 +796,29 @@ _UNIT: list[tuple[str, str]] = [
     # 94
     ("9411","Fast Food Preparers"),
     ("9412","Kitchen Helpers"),
-    # 95
-    ("9420","Street and Related Service Workers"),
-    ("9510","Refuse Sorters"),
-    ("9520","Odd Job Workers"),
-    # 96
-    ("9611","Water and Firewood Collectors"),
-    ("9612","Odd Job Workers"),
-    ("9613","Scrap Collectors and Recyclers"),
-    ("9621","Subsistence Agricultural, Forestry, Fishing and Hunting Labourers"),
+    # 95/96 -- fully reconstructed 2026-08-12 against the primary ILO
+    # ISCO-08 source. This block had a deeper problem than a simple
+    # code-swap: "9420" was non-standard content that belonged at 9510;
+    # meanwhile 9510/9520/9611/9612/9613/9621 were all VALID official
+    # codes but each one carried the WRONG occupation's label (e.g. "9611"
+    # was labelled "Water and Firewood Collectors", which is actually
+    # official code 9624 -- a real, previously-undetected content-mismatch
+    # bug, not just a wording difference). Untangled by matching each
+    # stray label to its correct official code and correcting every
+    # code's label to the ILO source text; "Subsistence Agricultural,
+    # Forestry, Fishing and Hunting Labourers" (old "9621") had no official
+    # home at all -- it duplicated content already correctly covered by
+    # 9211-9216 above and was dropped, not relocated.
+    ("9510","Street and Related Services Workers"),
+    ("9520","Street Vendors (excluding Food)"),
+    ("9611","Garbage and Recycling Collectors"),
+    ("9612","Refuse Sorters"),
+    ("9613","Sweepers and Related Labourers"),
+    ("9621","Messengers, Package Deliverers and Luggage Porters"),
+    ("9622","Odd-job Persons"),
+    ("9623","Meter Readers and Vending-machine Collectors"),
+    ("9624","Water and Firewood Collectors"),
+    ("9629","Elementary Workers Not Elsewhere Classified"),
 ]
 
 # Build label_ar for unit groups from parent minor group

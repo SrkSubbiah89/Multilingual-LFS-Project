@@ -320,7 +320,10 @@ def test_load_full130_manifest_against_real_manifest():
 
 def test_load_isco_unit_group_catalogue_against_real_source():
     codes = vds.load_isco_unit_group_catalogue()
-    assert len(codes) == 441  # documented, known count -- see module-level comment
+    # 436, matching the official ISCO-08 standard exactly since the
+    # 2026-08-12 primary-source fix (was 441, a known-wrong count, before
+    # that fix) -- see eval/validate_dev_set.py's module-level comment.
+    assert len(codes) == 436
     assert "2512" in codes  # Software Developers
     assert "7512" in codes  # Bakers, Pastry Cooks and Confectionery Makers
     assert "0000" not in codes

@@ -97,13 +97,19 @@ _DEFAULT_FULL130_MANIFEST = _DEFAULT_DIR / "configs" / "full130_leakage_manifest
 # in qdrant_client/sentence_transformers or risks executing any Qdrant/
 # model-loading code path -- see load_isco_unit_group_catalogue().
 #
-# Known discrepancy (documented, not silently corrected): backend/rag/
-# load_full_isco.py's own docstring claims 436 unit groups (matching the
-# official ILO ISCO-08 count), but the literal list actually contains 441
-# unique 4-digit codes as of this writing. This catalogue reflects
-# "codes the classifier can actually return", which is the right standard
-# for THIS check (rejecting a gold code the system could never predict),
-# even though it is not a byte-for-byte transcription of the ILO standard.
+# 2026-08-12: the discrepancy this comment used to document (docstring
+# claimed 436, the literal list actually had 441) is resolved -- a direct
+# primary-source cross-check against isco.ilo.org's official ISCO-08
+# structure export fixed the literal list to genuinely contain 436 unique
+# 4-digit codes, matching the official standard exactly (see
+# backend/tests/test_load_full_isco_catalogue_consistency.py). This
+# catalogue still reflects "codes the classifier can actually return",
+# which remains the right standard for THIS check (rejecting a gold code
+# the system could never predict) -- it now also happens to be a
+# byte-for-byte-equivalent set to the official ISCO-08 unit-group codes,
+# with one disclosed exception (Armed Forces codes keep this codebase's
+# existing 4-digit format rather than ISCO-08's own bare 3-digit
+# convention).
 _DEFAULT_ISCO_CATALOGUE_SOURCE = (
     Path(__file__).resolve().parents[1] / "backend" / "rag" / "load_full_isco.py"
 )

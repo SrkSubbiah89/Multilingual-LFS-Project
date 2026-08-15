@@ -137,6 +137,28 @@ right) and in Chapter 6, not a follow-up ticket outside Phase II's scope.
 | 9624 | Water carrier |
 | 9629 | Amusement park attendant |
 
+### 5.3a 2026-08-12 addendum — the remaining 15/14 discrepancies from §5.1/5.2 are now resolved
+
+The full cross-check this section originally scoped out ("would need a full
+cross-check against the ILO's official ISCO-08 structure document to resolve
+individually — that full cross-check is out of Module A's scope") has since
+been done, directly against the primary ILO ISCO-08 source
+(isco.ilo.org/en/isco-08, official structure CSV export — not WISCO, not a
+guess). All 19 non-standard / 14 missing codes this section found are now
+resolved, plus 6 further codes this WISCO-only comparison could not have
+caught at all: several official, structurally valid codes (9510, 9520,
+9611, 9612, 9613, 9621, and the 6121/6122/6123 trio) were carrying an
+entirely different occupation's label — invisible to a code-existence
+check, only visible on a direct label-for-label primary-source diff.
+`backend/rag/load_full_isco.py` now has exactly 436 unit groups, matching
+the official standard, with one disclosed exception (Armed Forces codes
+kept in this system's existing 4-digit format rather than ISCO-08's own
+bare 3-digit convention — a coordinated cross-codebase decision, not
+fixed here). See `backend/tests/test_load_full_isco_catalogue_consistency.py`
+for the full verification and CLAUDE.md's "Knowledge base construction"
+section for the current summary. This section (§5.1-§5.3) is kept
+unchanged below as the original historical finding.
+
 ### 5.3 One specific, verified root cause: the subsistence-farming cluster is under the wrong sub-major group
 
 Comparing §5.1 and §5.2 by content, not just by code, surfaces a concrete bug rather than a

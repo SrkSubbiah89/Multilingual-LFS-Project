@@ -18,11 +18,15 @@ from the given case rows / this environment is ``None`` with a sibling
 ``<field>_unavailable_reason`` string explaining why -- never a placeholder
 number, and never silently omitted. In particular:
 
-  - ``peak_process_memory_mb`` is None (with a reason) for every run today,
-    because ``CaseResult.peak_memory_mb`` is a declared field that
-    run_eval.py never actually populates (grep-verified: no assignment
-    anywhere in that module) -- this is an honest, pre-existing gap, not
-    something this module papers over.
+  - ``peak_process_memory_mb`` is populated from ``CaseResult.peak_memory_mb``
+    (max across all case rows) whenever run_eval.py's main() loop sampled
+    process RSS via psutil -- see that module's ``_peak_rss_mb()``. It is
+    None (with a reason) only when psutil isn't installed, every sample
+    failed, or the run predates this instrumentation (e.g. a --dry-run,
+    which never samples at all, or case rows read back from an older
+    results CSV). Read this as "peak of per-case sampled points, at case
+    completion boundaries" -- not a continuously-monitored true peak; a
+    spike that fully subsides mid-case would not be captured.
   - ``retrieval_count`` (the number of underlying Qdrant query_points calls)
     is None (with a reason) because CaseResult does not log a per-case
     query count -- only candidate lists and per-stage latency, neither of

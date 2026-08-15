@@ -158,6 +158,12 @@ from backend.rag.hierarchical_store import MODEL_NAME as EMBEDDING_MODEL_NAME  #
 from backend.rag.hierarchical_store import LEGACY_PROFILE, OFFICIAL_PROFILE_ILO2021_V1  # noqa: E402
 from backend.evaluation.evaluate import BM25Baseline  # noqa: E402
 
+try:
+    import psutil
+    _HAVE_PSUTIL = True
+except ImportError:
+    _HAVE_PSUTIL = False
+
 _logger = logging.getLogger("eval.run_eval")
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
@@ -212,6 +218,26 @@ def _digits(code: str, n: int) -> str:
     """First n characters of an ISCO code, or '' if code is shorter/empty."""
     code = (code or "").strip()
     return code[:n] if len(code) >= n else ""
+
+
+def _peak_rss_mb() -> Optional[float]:
+    """Current process RSS in MB, or None if psutil isn't installed or the
+    probe itself fails -- same optional-dependency pattern as
+    eval/dev_sweep.py's own _peak_rss_mb(). Sampled once per case, at the
+    point run_one_case() returns; main()'s loop assigns this directly to
+    that case's CaseResult.peak_memory_mb, so eval.manifest.build_manifest()'s
+    existing max(mem_values) aggregation across all case rows in a run
+    yields the highest RSS observed at any case boundary. This is a
+    genuine, bounded measurement -- not a fabricated one -- but it is a
+    peak-of-sampled-points figure, not a continuously-monitored true peak:
+    an allocation spike that fully subsides before a case returns would not
+    be captured. See CaseResult.peak_memory_mb's own comment."""
+    if not _HAVE_PSUTIL:
+        return None
+    try:
+        return round(psutil.Process().memory_info().rss / (1024 * 1024), 2)
+    except Exception:  # noqa: BLE001 - best-effort sampling, must never crash a real run
+        return None
 
 
 def _max_severity(violations: list) -> str:
@@ -546,6 +572,11 @@ class CaseResult:
     # once a future B3-Reliability run wires backend.agents.isco_reranker_strict.StrictReranker through
     invalid_output_flag: bool = False  # LLM responded but JSON could not be parsed / code not recognised
     timed_out_flag: bool = False       # reranker_error signature matched a timeout (see run_one_case())
+    # Sampled process RSS (MB) at the point this case finished -- None here
+    # by default (run_one_case() never sets it; only main()'s loop does,
+    # right after each call, via _peak_rss_mb()) -- see that function's
+    # docstring for the sampling caveat and how eval.manifest aggregates it
+    # into a whole-run peak.
     peak_memory_mb: Optional[float] = None
 
     # Task 13: keyword-anchor recovery metadata (backend/rag/hierarchical_store.py
@@ -1388,6 +1419,7 @@ def main() -> None:
             use_llm_reranker=(args.use_llm_reranker == "on"),
             max_stage_latency_ms=effective_stage_budget_ms,
         )
+        r.peak_memory_mb = _peak_rss_mb()
 
         if args.require_genuine_hierarchical:
             violation = check_strict_hierarchical(r, args.max_stage_latency_ms)
