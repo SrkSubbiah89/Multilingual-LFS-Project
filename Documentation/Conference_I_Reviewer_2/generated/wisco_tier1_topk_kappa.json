@@ -1,0 +1,275 @@
+{
+  "source_note": "Offline analysis of Task 36's already-published raw CSVs (byte-identical inputs to OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md). top1 recomputed here for cross-check against the published 21.1927%/10.3537%.",
+  "flat": {
+    "aggregate": {
+      "n": 18747,
+      "top1_correct": 3973,
+      "top1_accuracy_pct": 21.1927,
+      "top1_wilson_95ci_pct": [
+        20.6136,
+        21.7836
+      ],
+      "top3_correct": 6198,
+      "top3_accuracy_pct": 33.0613,
+      "top3_wilson_95ci_pct": [
+        32.3914,
+        33.7381
+      ],
+      "cohen_kappa_major_group": 0.368,
+      "cohen_kappa_95ci_bootstrap": [
+        0.3599,
+        0.3765
+      ],
+      "kappa_bootstrap_n": 2000,
+      "kappa_bootstrap_seed": 42
+    },
+    "by_language": {
+      "ar": {
+        "n": 3762,
+        "top1_correct": 550,
+        "top1_accuracy_pct": 14.6199,
+        "top1_wilson_95ci_pct": [
+          13.527,
+          15.785
+        ],
+        "top3_correct": 967,
+        "top3_accuracy_pct": 25.7044,
+        "top3_wilson_95ci_pct": [
+          24.3332,
+          27.1252
+        ],
+        "cohen_kappa_major_group": 0.2965,
+        "cohen_kappa_95ci_bootstrap": [
+          0.2788,
+          0.3146
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      },
+      "en": {
+        "n": 3818,
+        "top1_correct": 1450,
+        "top1_accuracy_pct": 37.978,
+        "top1_wilson_95ci_pct": [
+          36.4513,
+          39.5288
+        ],
+        "top3_correct": 2068,
+        "top3_accuracy_pct": 54.1645,
+        "top3_wilson_95ci_pct": [
+          52.5806,
+          55.74
+        ],
+        "cohen_kappa_major_group": 0.5597,
+        "cohen_kappa_95ci_bootstrap": [
+          0.5423,
+          0.5768
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      },
+      "hi": {
+        "n": 3793,
+        "top1_correct": 875,
+        "top1_accuracy_pct": 23.0688,
+        "top1_wilson_95ci_pct": [
+          21.7558,
+          24.4363
+        ],
+        "top3_correct": 1352,
+        "top3_accuracy_pct": 35.6446,
+        "top3_wilson_95ci_pct": [
+          34.1356,
+          37.1827
+        ],
+        "cohen_kappa_major_group": 0.3928,
+        "cohen_kappa_95ci_bootstrap": [
+          0.3749,
+          0.4096
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      },
+      "tl": {
+        "n": 3766,
+        "top1_correct": 545,
+        "top1_accuracy_pct": 14.4716,
+        "top1_wilson_95ci_pct": [
+          13.3841,
+          15.6314
+        ],
+        "top3_correct": 894,
+        "top3_accuracy_pct": 23.7387,
+        "top3_wilson_95ci_pct": [
+          22.407,
+          25.124
+        ],
+        "cohen_kappa_major_group": 0.2887,
+        "cohen_kappa_95ci_bootstrap": [
+          0.2704,
+          0.3064
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      },
+      "ur": {
+        "n": 3608,
+        "top1_correct": 553,
+        "top1_accuracy_pct": 15.3271,
+        "top1_wilson_95ci_pct": [
+          14.1885,
+          16.5394
+        ],
+        "top3_correct": 917,
+        "top3_accuracy_pct": 25.4157,
+        "top3_wilson_95ci_pct": [
+          24.0217,
+          26.8621
+        ],
+        "cohen_kappa_major_group": 0.2986,
+        "cohen_kappa_95ci_bootstrap": [
+          0.2804,
+          0.3167
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      }
+    }
+  },
+  "hierarchical": {
+    "aggregate": {
+      "n": 18747,
+      "top1_correct": 1941,
+      "top1_accuracy_pct": 10.3537,
+      "top1_wilson_95ci_pct": [
+        9.9256,
+        10.7979
+      ],
+      "top3_correct": 2889,
+      "top3_accuracy_pct": 15.4105,
+      "top3_wilson_95ci_pct": [
+        14.9007,
+        15.9344
+      ],
+      "cohen_kappa_major_group": 0.282,
+      "cohen_kappa_95ci_bootstrap": [
+        0.2743,
+        0.2895
+      ],
+      "kappa_bootstrap_n": 2000,
+      "kappa_bootstrap_seed": 42
+    },
+    "by_language": {
+      "ar": {
+        "n": 3762,
+        "top1_correct": 368,
+        "top1_accuracy_pct": 9.782,
+        "top1_wilson_95ci_pct": [
+          8.8733,
+          10.7728
+        ],
+        "top3_correct": 599,
+        "top3_accuracy_pct": 15.9224,
+        "top3_wilson_95ci_pct": [
+          14.788,
+          17.1263
+        ],
+        "cohen_kappa_major_group": 0.3574,
+        "cohen_kappa_95ci_bootstrap": [
+          0.3406,
+          0.3741
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      },
+      "en": {
+        "n": 3818,
+        "top1_correct": 860,
+        "top1_accuracy_pct": 22.5249,
+        "top1_wilson_95ci_pct": [
+          21.2278,
+          23.8772
+        ],
+        "top3_correct": 1169,
+        "top3_accuracy_pct": 30.6181,
+        "top3_wilson_95ci_pct": [
+          29.1762,
+          32.099
+        ],
+        "cohen_kappa_major_group": 0.5019,
+        "cohen_kappa_95ci_bootstrap": [
+          0.4837,
+          0.5196
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      },
+      "hi": {
+        "n": 3793,
+        "top1_correct": 307,
+        "top1_accuracy_pct": 8.0939,
+        "top1_wilson_95ci_pct": [
+          7.2677,
+          9.0048
+        ],
+        "top3_correct": 456,
+        "top3_accuracy_pct": 12.0221,
+        "top3_wilson_95ci_pct": [
+          11.0254,
+          13.0958
+        ],
+        "cohen_kappa_major_group": 0.2067,
+        "cohen_kappa_95ci_bootstrap": [
+          0.1917,
+          0.2226
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      },
+      "tl": {
+        "n": 3766,
+        "top1_correct": 200,
+        "top1_accuracy_pct": 5.3107,
+        "top1_wilson_95ci_pct": [
+          4.6389,
+          6.0735
+        ],
+        "top3_correct": 327,
+        "top3_accuracy_pct": 8.683,
+        "top3_wilson_95ci_pct": [
+          7.8252,
+          9.6249
+        ],
+        "cohen_kappa_major_group": 0.1655,
+        "cohen_kappa_95ci_bootstrap": [
+          0.1512,
+          0.1799
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      },
+      "ur": {
+        "n": 3608,
+        "top1_correct": 206,
+        "top1_accuracy_pct": 5.7095,
+        "top1_wilson_95ci_pct": [
+          4.9985,
+          6.5148
+        ],
+        "top3_correct": 338,
+        "top3_accuracy_pct": 9.3681,
+        "top3_wilson_95ci_pct": [
+          8.46,
+          10.3626
+        ],
+        "cohen_kappa_major_group": 0.18,
+        "cohen_kappa_95ci_bootstrap": [
+          0.1644,
+          0.1968
+        ],
+        "kappa_bootstrap_n": 2000,
+        "kappa_bootstrap_seed": 42
+      }
+    }
+  }
+}
