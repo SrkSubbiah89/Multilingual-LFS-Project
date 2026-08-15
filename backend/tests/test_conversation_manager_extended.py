@@ -114,11 +114,17 @@ class TestUnemployedPathEndToEnd:
 
     def test_unemployed_skips_industry(self, manager, ctx):
         """Industry field is not required for unemployed path"""
-        questions_asked = []
         for _, response in self.UNEMPLOYED_SEQUENCE:
-            reply = manager.process_message(ctx, response)
-            questions_asked.append(reply)
-        # Should complete without asking industry
+            manager.process_message(ctx, response)
+        # None of UNEMPLOYED_SEQUENCE's 9 responses mention industry, so if
+        # the field is genuinely skipped (not silently required-but-unasked),
+        # it should never appear in collected_data -- same pattern as the
+        # sibling test_unemployed_path_no_hours_field above. The mocked
+        # Crew always returns a fixed "Next question?" string (see the
+        # `manager` fixture), so checking reply text can't distinguish
+        # "asked industry" from "asked anything else" -- collected_data is
+        # the only real signal available here.
+        assert ctx.collected_data.get("industry", "") in ("", None)
 
 
 # ─── Not In Labour Force (NILF) Path ────────────────────────────────────────
@@ -215,6 +221,7 @@ class TestClarificationFlow:
         ctx.state = ConversationState.COLLECTING_INFO
         manager.process_message(ctx, "yes")  # too vague for employment status
         # May stay in collecting or go to clarifying
+        assert ctx.state in ("collecting_info", "clarifying")
 
     def test_clarifying_returns_to_collecting(self, manager, ctx):
         from backend.agents.conversation_manager import ConversationState
@@ -227,6 +234,7 @@ class TestClarificationFlow:
         ctx.state = ConversationState.CLARIFYING
         manager.process_message(ctx, "ok")
         # Should not move to validating with no real data
+        assert ctx.state != "validating"
 
     def test_clarifying_state_has_follow_up_question(self, manager, ctx):
         from backend.agents.conversation_manager import ConversationState
@@ -259,7 +267,11 @@ class TestFieldExtractionEdgeCases:
         ctx.state = ConversationState.COLLECTING_INFO
         ctx.collected_data = {"employment_status": "employed"}
         manager.process_message(ctx, "I work between 35 and 45 hours")
-        # Should extract something reasonable
+        # "35 and 45 hours" doesn't match the "N to M hours" range regex (which
+        # requires "to"/"-" between the numbers, not "and"); it falls through
+        # to the single "N hours" pattern, which matches "45 hours" -- verified
+        # directly against the real regex, not guessed.
+        assert ctx.collected_data.get("hours_per_week") == "45"
 
     def test_job_title_with_seniority(self, manager, ctx):
         from backend.agents.conversation_manager import ConversationState
@@ -292,7 +304,13 @@ class TestFieldExtractionEdgeCases:
         ctx.state = ConversationState.COLLECTING_INFO
         ctx.collected_data = {"employment_status": "employed"}
         manager.process_message(ctx, "My salary is around 8000 to 10000 AED per month")
-        # Should extract wage range
+        # The extractor takes the first number found (8000) and buckets it --
+        # verified directly against the real regex/bucketing logic, not
+        # guessed. Note: these bucket labels ("5000_10000") don't match the
+        # "5000_to_10000"-style labels used elsewhere in this file's
+        # FIELD_LABELS metadata -- a real, pre-existing naming inconsistency
+        # in production code, out of scope for this test-only task.
+        assert ctx.collected_data.get("monthly_wage_range") == "5000_10000"
 
 
 # ─── State Machine Invariants ────────────────────────────────────────────────
@@ -383,12 +401,14 @@ class TestErrorRecovery:
                 pass  # acceptable if no fallback implemented for _build_task failure
 
     def test_none_input_handled(self, manager, ctx):
-        try:
-            reply = manager.process_message(ctx, None)
-        except (TypeError, AttributeError):
-            pass  # acceptable to raise TypeError
-        except Exception:
-            pass
+        # Verified directly: process_message(ctx, None) always raises
+        # AttributeError ('NoneType' object has no attribute 'lower') --
+        # deterministic, not a guess. Narrowed from a bare `except Exception:
+        # pass` (which passed regardless of what happened) to the single
+        # real failure mode, so an unrelated crash here would now fail the
+        # test instead of being silently swallowed.
+        with pytest.raises(AttributeError):
+            manager.process_message(ctx, None)
 
     def test_empty_string_handled(self, manager, ctx):
         reply = manager.process_message(ctx, "")
