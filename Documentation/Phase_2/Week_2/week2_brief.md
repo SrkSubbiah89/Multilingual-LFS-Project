@@ -94,10 +94,10 @@ of what Week 3 will measure.
 
 | Component | Assumption | Basis |
 |---|---|---|
-| Hierarchical RAG stage (all 21,160 queries) | ~150ms/query, local Qdrant + embedding | Typical local vector-search latency; not yet measured against this exact deployment |
-| LLM re-ranking trigger rate | 30%–70% of queries | Unmeasured — genuinely a range, not a point estimate. Short titles with clear standard phrasing (WISCO's style) plausibly skew toward the low end vs. real respondent free text, but this is a guess, not a measurement. |
-| Claude 3.5 Sonnet cost per re-ranking call | ~$0.006 (≈1,000 input + 200 output tokens) | Anthropic's published per-token pricing; actual prompt size depends on candidate-list length, not yet measured for this specific prompt template |
-| Claude 3.5 Sonnet latency per call | ~1.5–2.5s | Typical API latency; not yet measured for this workload |
+| Hierarchical RAG stage (all 21,160 queries) | ~150ms/query, local Qdrant + embedding | **Now measured** (2026-08-16, Module I / Prompt 6): 133.9ms mean / 137.4ms median, real end-to-end latency across the actual 18,747-case Task 36 heldout run — confirms this estimate's order of magnitude. Flat pipeline separately measured at 31.1ms mean. See `module_i_computational_efficiency_report.md`. |
+| LLM re-ranking trigger rate | 30%–70% of queries | **Still unmeasured.** Task 36 deliberately excluded the LLM tier (a separate stratified reranking subset exists for that purpose instead). A later attempt at a real measurement (Task 43) was found to be a silent-failure artifact (zero Anthropic account credit produced mislabeled results) and is explicitly not usable — see `module_i_computational_efficiency_report.md` Phase 0. |
+| Claude 3.5 Sonnet cost per re-ranking call | ~$0.006 (≈1,000 input + 200 output tokens) | **Still unmeasured.** No valid real Claude-reranked run exists anywhere in this repository (Task 43's attempt was invalidated — see above). Anthropic account credit remains at zero as of this update. |
+| Claude 3.5 Sonnet latency per call | ~1.5–2.5s | **Still unmeasured**, same reason as above. A real (but non-Claude) data point exists: a free local Ollama (`llama3.2:latest`) reranking run measured ~12–19 sec/call rising to ~24.6 sec/call under sustained load — real, but a different, far smaller model, not substitutable for a Claude figure. |
 
 | Scenario | LLM calls | Estimated cost | Sequential wall-clock (LLM calls only) |
 |---|---|---|---|

@@ -1,0 +1,15 @@
+{
+  "model": "intfloat/multilingual-e5-small",
+  "call_pattern": "matches backend/rag/hierarchical_store.py._embed_query exactly ('query: ' E5 prefix, normalize_embeddings=True, batch_size=1)",
+  "hardware_disclosure": "resource-constrained CPU-only local sandbox, NOT the target deployment host -- see report for full disclosure",
+  "import_time_s": 39.49,
+  "model_load_time_s": 6.38,
+  "n_calls": 120,
+  "vector_dim": 384,
+  "mean_ms": 19.08,
+  "median_ms": 18.34,
+  "p95_ms": 25.61,
+  "p99_ms": 31.24,
+  "min_ms": 13.39,
+  "max_ms": 31.86
+}

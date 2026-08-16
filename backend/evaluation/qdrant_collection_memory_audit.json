@@ -1,0 +1,121 @@
+{
+  "source": "real, direct Qdrant collection-info + /metrics API calls -- not estimated",
+  "collections": [
+    {
+      "collection": "isco08_major_groups",
+      "points_count": 10,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 15360,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    },
+    {
+      "collection": "isco08_major_groups_ilo2021_v1",
+      "points_count": 10,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 15360,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    },
+    {
+      "collection": "isco08_submajor_groups",
+      "points_count": 43,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 66048,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    },
+    {
+      "collection": "isco08_submajor_groups_ilo2021_v1",
+      "points_count": 43,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 66048,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    },
+    {
+      "collection": "isco08_minor_groups",
+      "points_count": 130,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 199680,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    },
+    {
+      "collection": "isco08_minor_groups_ilo2021_v1",
+      "points_count": 130,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 199680,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    },
+    {
+      "collection": "isco08_unit_groups",
+      "points_count": 436,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 669696,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    },
+    {
+      "collection": "isco08_unit_groups_flat_ilo2021_v1",
+      "points_count": 436,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 669696,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    },
+    {
+      "collection": "isco08_unit_groups_ilo2021_v1",
+      "points_count": 436,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 669696,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    },
+    {
+      "collection": "isco_occupations",
+      "points_count": 124,
+      "vector_dim": 384,
+      "indexed_vectors_count": 0,
+      "hnsw_built": false,
+      "below_indexing_threshold": true,
+      "indexing_threshold": 10000,
+      "analytical_estimate_bytes_raw_vectors_only": 190464,
+      "analytical_estimate_note": "point_count * vector_dim * 4 bytes (float32), RAW VECTOR DATA ONLY -- excludes payload, WAL, segment overhead. Not HNSW graph overhead since this collection is below Qdrant's indexing_threshold and uses flat (brute-force) search with no HNSW graph built at all (indexed_vectors_count=0)."
+    }
+  ],
+  "process_wide_memory_real_measured": {
+    "memory_active_bytes": 81051648,
+    "memory_allocated_bytes": 68321976,
+    "memory_resident_bytes": 94928896,
+    "note": "Whole-Qdrant-process RSS covering ALL collections combined (this dev instance hosts only ISCO-08 collections) -- Qdrant's HTTP API does not expose a real per-collection memory breakdown."
+  }
+}
