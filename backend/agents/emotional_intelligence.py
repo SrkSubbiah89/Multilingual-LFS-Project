@@ -8,8 +8,9 @@ Responsibilities
 1. Emotion detection   — Classifies respondent emotional state (stressed,
    confused, frustrated, neutral, engaged) using a two-stage pipeline:
      Stage 1  Fast rule-based keyword / punctuation matching — always runs.
-     Stage 2  GPT-4o-mini CrewAI agent — refines Stage 1 and generates all
-              bilingual text fields.
+     Stage 2  Llama 3.2 via Ollama CrewAI agent (TaskType.GENERAL, with
+              Claude 3.5 Sonnet fallback) — refines Stage 1 and generates
+              all bilingual text fields.
 
 2. Adaptive prompts    — Generates empathetic, language-appropriate follow-up
    suggestions for the survey interviewer in both English and Arabic.
@@ -39,8 +40,9 @@ end        — recommend stopping the session (high frustration / distress)
 
 LLM routing
 -----------
-GPT-4o-mini (TaskType.GENERAL) — fast and sufficient for tone analysis;
-all emotional intelligence decisions are soft guidance, not data classification.
+Llama 3.2 via Ollama (TaskType.GENERAL, Claude 3.5 Sonnet fallback if
+Ollama is unreachable) — fast and sufficient for tone analysis; all
+emotional intelligence decisions are soft guidance, not data classification.
 
 Usage
 -----
@@ -364,14 +366,14 @@ class EmotionalIntelligence:
     Two-stage emotional-state detector with bilingual empathetic response generation.
 
     Stage 1 — Rule-based keyword matching (always runs, deterministic).
-    Stage 2 — GPT-4o-mini CrewAI agent (refines Stage 1 and writes bilingual
-              adapted prompts / support messages).  If the LLM call fails or
+    Stage 2 — Llama 3.2 via Ollama CrewAI agent (refines Stage 1 and writes
+              bilingual adapted prompts / support messages).  If the LLM call fails or
               returns unparseable output, Stage 1 results + bilingual templates
               are used as the fallback.
     """
 
     def __init__(self) -> None:
-        self._llm = get_llm(TaskType.GENERAL)   # GPT-4o-mini, temp 0.3
+        self._llm = get_llm(TaskType.GENERAL)   # Llama 3.2 via Ollama, temp 0.3
 
         self._agent = Agent(
             role="Empathetic Survey Support Specialist",

@@ -3060,7 +3060,7 @@ class ConversationManager:
         """Parse any free-text correction and overwrite collected_data via direct LLM call.
 
         Uses the Ollama REST API directly (no CrewAI overhead) with format=json to
-        guarantee structured output and a hard 15-second timeout.  Falls back to
+        guarantee structured output and a hard 45-second timeout.  Falls back to
         Anthropic API if Ollama is unreachable.  Returns True if ≥1 field updated.
         Handles all 60+ fields, all 5 languages, implicit + multi-field corrections.
         """
