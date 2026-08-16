@@ -16,19 +16,27 @@ Every field below was hand-derived by reading the component's actual code
 ``Agent(role=...)`` strings, threshold constants) -- not inferred or
 assumed. In particular:
 
-  - ``affects_hitl_escalation`` reflects VERIFIED wiring, not intent. Grep
-    confirms ``SurveyOrchestrator`` triggers ``HITLQualityManager.
-    review_session()`` on session completion using ONLY
-    ``HITLQualityManager``'s own independent thresholds
-    (backend/agents/hitl_quality_manager.py) and ``ISCOClassifier``'s
-    per-response confidence (via HITL_THRESHOLD=0.70 and the
-    "low_confidence_isco" flag path). ``ValidationAgent.rule_violations``
-    and ``SemanticRelationEngine``'s ``SemanticCoherence`` are surfaced on
-    ``TurnResult`` but are NOT read anywhere near the escalation decision --
-    so both are marked ``affects_hitl_escalation=False`` here. If a future
-    change wires either of them into escalation, this registry (and
+  - ``affects_hitl_escalation`` reflects VERIFIED wiring in the LIVE
+    production code path -- ``backend/api/survey_routes.py``'s
+    ``_send_message_impl``, confirmed by grep to be the only module the
+    real FastAPI app imports for message handling. ``SurveyOrchestrator``
+    (``backend/agents/survey_orchestrator.py``) also computes a
+    ``TurnResult`` with its own HITL call, but is confirmed dead code --
+    never imported by the live API -- so its own internal wiring (or lack
+    of it) has zero effect on production traffic and is NOT what this
+    field describes.
+    In ``survey_routes.py``: ``ISCOClassifier``'s per-response confidence
+    (HITL_THRESHOLD=0.70) and ``HITLQualityManager``'s own independent
+    thresholds both create real ``HITLQueue`` rows. As of 2026-08-16
+    (Module D Step 5.5), ``SemanticRelationEngine``'s HIGH-severity
+    violations do too -- folded into an existing pending row for the same
+    turn if one exists, or a new row otherwise (see Stage 4e in
+    ``survey_routes.py``). ``ValidationAgent.rule_violations`` is still
+    surfaced but not read anywhere near the escalation decision in the
+    live path, so it remains ``affects_hitl_escalation=False``. If a
+    future change wires it in too, this registry (and
     ``test_method_registry.py``'s cross-check against
-    ``survey_orchestrator.py``) must be updated together.
+    ``survey_routes.py``) must be updated together.
   - ``evaluated`` / ``evaluated_ref`` are honest: only ISCO has any
     evaluation history at all today (the ``eval/`` B2 harness), and even
     that is ISCO-only accuracy -- so every ISIC/ISCED/SRE/HITL row is
@@ -273,9 +281,9 @@ REGISTRY: list[ClassifierMethodEntry] = [
         model_name=_GENERAL_MODEL, model_version=None, embedding_model=None,
         prompt_version=_NO_PROMPT_VERSIONING,
         decoding_config={"task_type": "GENERAL", "use_llm_default": True},
-        fallback_behaviour="Deterministic dict-lookup crosswalk (ILO ISCO-ISIC correspondence table, UNESCO ISCED 2011 Operational Manual Table 7) is the core, always-on logic -- no LLM required for scoring. Optional LLM re-inference (role 'ISCO-08 occupation coding specialist') only fires when NOT is_coherent AND isic_section+job_title are both present; LLM failure is caught and silently ignored (inferred_isco stays None). VERIFIED: SurveyOrchestrator stores this on TurnResult.semantic_coherence but does NOT read it near the HITL escalation decision -- purely informational in production today.",
+        fallback_behaviour="Deterministic dict-lookup crosswalk (hand-built domain-reasoning tables -- verified directly that no official ILO ISCO-to-ISIC correspondence table or UNESCO ISCED-to-occupation mapping exists for this purpose, see semantic_relation.py's own corrected module docstring) is the core, always-on logic -- no LLM required for scoring. Optional LLM re-inference (role 'ISCO-08 occupation coding specialist') only fires when NOT is_coherent AND isic_section+job_title are both present; LLM failure is caught and silently ignored (inferred_isco stays None). UPDATED 2026-08-16 (Module D Step 5.5): the LIVE production message-handling path (backend/api/survey_routes.py, NOT the dead-code survey_orchestrator.py -- confirmed never imported by the live API) now queues a real HITLQueue escalation whenever this engine returns a HIGH-severity violation. survey_orchestrator.py's own separate computation of this value is still not read anywhere near its own HITL call, but that module has zero effect on production traffic.",
         evaluated=False, evaluated_ref=None,
-        affects_hitl_escalation=False,
+        affects_hitl_escalation=True,
     ),
 
     # ── ValidationAgent ───────────────────────────────────────────────────

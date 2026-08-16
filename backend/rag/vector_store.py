@@ -8,14 +8,14 @@ Responsibilities
 1. Connects to Qdrant (host/port read from .env).
 2. Holds a curated ISCO-08 dataset (~110 entries: major groups, sub-major
    groups, and the most common unit groups, each with English + Arabic titles).
-3. On first run, embeds the dataset with intfloat/multilingual-e5-large and
+3. On first run, embeds the dataset with intfloat/multilingual-e5-small and
    upserts all vectors into a "isco_occupations" Qdrant collection.
 4. Exposes `search(query, top_k)` → list[OccupationMatch] sorted by cosine
    similarity, with confidence scores in [0, 1].
 
 Embedding notes
 ---------------
-- Model  : intfloat/multilingual-e5-large  (1024-dim, multilingual)
+- Model  : intfloat/multilingual-e5-small  (384-dim, multilingual)
 - Prefix : "passage: " when indexing, "query: " when searching  (E5 convention)
 - Vectors are L2-normalised so cosine similarity == dot product.
 
@@ -636,7 +636,7 @@ class VectorStore:
     Manages ISCO-08 occupation embeddings in Qdrant.
 
     First call to __init__ (or get_vector_store()) will:
-      1. Load the multilingual-e5-large model (~560 MB download on first use).
+      1. Load the multilingual-e5-small model (~470 MB download on first use).
       2. Connect to Qdrant.
       3. Create the collection if it does not exist.
       4. Embed and upsert all ISCO entries if the collection is empty.
@@ -728,7 +728,7 @@ class VectorStore:
 
     def _embed(self, texts: list[str], is_query: bool = False) -> list[list[float]]:
         """
-        Encode *texts* with multilingual-e5-large.
+        Encode *texts* with multilingual-e5-small.
 
         E5 models require task-specific prefixes:
           - "passage: "  when indexing documents

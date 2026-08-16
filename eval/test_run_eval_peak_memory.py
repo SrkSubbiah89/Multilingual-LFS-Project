@@ -65,8 +65,13 @@ def _patch_fake_classifiers(monkeypatch):
 # _peak_rss_mb() itself
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(
+    not run_eval._HAVE_PSUTIL,
+    reason="psutil is optional at runtime (pinned in requirements-dev.txt "
+           "only, not requirements.txt -- a clean production install "
+           "genuinely does not have it; found via Prompt 8's fresh-venv check)",
+)
 def test_peak_rss_mb_returns_a_real_positive_float_when_psutil_available():
-    assert run_eval._HAVE_PSUTIL is True  # psutil==7.0.0 is a pinned project dependency
     sample = run_eval._peak_rss_mb()
     assert isinstance(sample, float)
     assert sample > 0.0
@@ -77,6 +82,11 @@ def test_peak_rss_mb_returns_none_when_psutil_unavailable(monkeypatch):
     assert run_eval._peak_rss_mb() is None
 
 
+@pytest.mark.skipif(
+    not run_eval._HAVE_PSUTIL,
+    reason="requires monkeypatching the real `psutil` module attribute, which "
+           "run_eval.py never sets at all when the optional import fails",
+)
 def test_peak_rss_mb_returns_none_on_probe_failure(monkeypatch):
     monkeypatch.setattr(run_eval, "_HAVE_PSUTIL", True)
     broken_psutil = MagicMock()
@@ -100,6 +110,12 @@ def test_case_result_peak_memory_mb_still_defaults_to_none():
 # with a real number in the output CSV for every case row.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(
+    not run_eval._HAVE_PSUTIL,
+    reason="psutil is optional at runtime (requirements-dev.txt only) -- "
+           "not installed in this environment, so peak_memory_mb is "
+           "expected to stay blank; see test_main_leaves_peak_memory_mb_blank_without_psutil",
+)
 def test_main_populates_peak_memory_mb_on_a_real_run(tmp_path, monkeypatch):
     test_set = _write_test_set(tmp_path)
     out_dir = tmp_path / "out"
@@ -120,6 +136,32 @@ def test_main_populates_peak_memory_mb_on_a_real_run(tmp_path, monkeypatch):
         value = row["peak_memory_mb"]
         assert value not in ("", None), "peak_memory_mb must be populated on a real run with psutil available"
         assert float(value) > 0.0
+
+
+def test_main_leaves_peak_memory_mb_blank_without_psutil(tmp_path, monkeypatch):
+    """Mirrors test_main_populates_peak_memory_mb_on_a_real_run for the
+    genuinely-no-psutil case (a clean `pip install -r requirements.txt`,
+    with no requirements-dev.txt) -- runs regardless of this environment's
+    real psutil availability by forcing _HAVE_PSUTIL False, so this test
+    isn't itself skippable and always exercises the degrade path."""
+    monkeypatch.setattr(run_eval, "_HAVE_PSUTIL", False)
+    test_set = _write_test_set(tmp_path)
+    out_dir = tmp_path / "out"
+    _patch_fake_classifiers(monkeypatch)
+
+    monkeypatch.setattr(sys, "argv", [
+        "run_eval.py", "--test-set", str(test_set), "--system", "flat",
+        "--use-llm-reranker", "off", "--output-dir", str(out_dir),
+    ])
+    run_eval.main()
+
+    out_csv = next(out_dir.glob("*.csv"))
+    with out_csv.open(encoding="utf-8", newline="") as f:
+        rows = list(csv_module.DictReader(f))
+
+    assert len(rows) == 2
+    for row in rows:
+        assert row["peak_memory_mb"] in ("", None)
 
 
 def test_main_dry_run_leaves_peak_memory_mb_blank(tmp_path, monkeypatch):

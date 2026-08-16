@@ -6,7 +6,7 @@ RAG Expert agent for hierarchical ISCO-08 occupation retrieval.
 Pipeline
 --------
 Stage 1 – Broad semantic search (VectorStore)
-    Queries Qdrant with multilingual-e5-large embeddings and retrieves the top
+    Queries Qdrant with multilingual-e5-small embeddings and retrieves the top
     2×top_k candidates.  Handles English, Arabic, and code-switched input.
 
 Stage 2 – Hierarchical expansion
@@ -146,7 +146,7 @@ class RAGExpert:
     Hierarchical ISCO-08 occupation retrieval agent.
 
     Three-stage pipeline:
-      1. Broad semantic search via VectorStore (multilingual-e5-large / Qdrant).
+      1. Broad semantic search via VectorStore (multilingual-e5-small / Qdrant).
       2. Hierarchical expansion — parent major/sub-major groups are added for
          every unit-group hit that lacks an explicit parent in the result set.
       3. Bilingual explanation generation by Claude 3.5 Sonnet (CrewAI).

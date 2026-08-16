@@ -60,9 +60,10 @@ def test_isced_classifier_has_both_current_and_stub_rows():
 # Honesty checks: the ISIC/ISCED-F hierarchical-retrieval rows describe a
 # REAL, tested code path (Task 05) but must not overclaim -- no accuracy
 # measurement exists yet, and the registry must not silently start claiming
-# affects_hitl_escalation without survey_orchestrator.py actually being
-# rewired for it. These directly replace the old "stub is never marked
-# evaluated" tests now that the stub no longer exists.
+# affects_hitl_escalation without the live production path
+# (backend/api/survey_routes.py) actually being rewired for it. These
+# directly replace the old "stub is never marked evaluated" tests now that
+# the stub no longer exists.
 # ---------------------------------------------------------------------------
 
 def test_hierarchical_retrieval_rows_are_real_but_unevaluated():
@@ -101,18 +102,26 @@ def test_isced_hierarchical_retrieval_row_documents_independent_level():
 # Regression guard: affects_hitl_escalation must match verified wiring
 # ---------------------------------------------------------------------------
 #
-# survey_orchestrator.py's session-completion path (grep-verified) calls
-# ONLY self._hitl.review_session(session_id) -- it does not read
-# semantic_coherence or rule_violations anywhere near that call. If a future
-# change to survey_orchestrator.py wires either of them into escalation,
-# this test (and the registry entries it checks) must be updated together
-# -- that is the entire point of keeping this assertion here rather than
-# just trusting the docstring.
+# The LIVE production message-handling path is backend/api/survey_routes.py
+# (_send_message_impl) -- confirmed by grep to be the only module the real
+# FastAPI app imports for this. backend/agents/survey_orchestrator.py also
+# computes a TurnResult and calls self._hitl.review_session(session_id)
+# without reading semantic_coherence or rule_violations, but that module is
+# confirmed dead code (never imported by the live API) and has zero effect
+# on production traffic -- so its wiring is NOT what affects_hitl_escalation
+# describes. As of 2026-08-16 (Module D Step 5.5), survey_routes.py itself
+# queues a real HITLQueue row whenever SemanticRelationEngine returns a
+# HIGH-severity violation (Stage 4e); ValidationAgent's rule_violations are
+# still only audit-logged there, never read near the escalation decision.
+# If a future change to survey_routes.py rewires either of these, this test
+# (and the registry entries it checks) must be updated together -- that is
+# the entire point of keeping this assertion here rather than just trusting
+# the docstring.
 
-def test_semantic_relation_engine_does_not_affect_hitl_escalation():
+def test_semantic_relation_engine_does_affect_hitl_escalation():
     entries = [e for e in mr.REGISTRY if e.component == "SemanticRelationEngine"]
     assert entries
-    assert all(e.affects_hitl_escalation is False for e in entries)
+    assert all(e.affects_hitl_escalation is True for e in entries)
 
 
 def test_validation_agent_does_not_affect_hitl_escalation():

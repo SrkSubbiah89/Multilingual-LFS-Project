@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-08-07T21:27:49.397198+00:00",
+  "generated_at_utc": "2026-08-16T17:01:11.041080+00:00",
   "entry_count": 14,
   "entries": [
     {
@@ -272,10 +272,10 @@
         "task_type": "GENERAL",
         "use_llm_default": true
       },
-      "fallback_behaviour": "Deterministic dict-lookup crosswalk (ILO ISCO-ISIC correspondence table, UNESCO ISCED 2011 Operational Manual Table 7) is the core, always-on logic -- no LLM required for scoring. Optional LLM re-inference (role 'ISCO-08 occupation coding specialist') only fires when NOT is_coherent AND isic_section+job_title are both present; LLM failure is caught and silently ignored (inferred_isco stays None). VERIFIED: SurveyOrchestrator stores this on TurnResult.semantic_coherence but does NOT read it near the HITL escalation decision -- purely informational in production today.",
+      "fallback_behaviour": "Deterministic dict-lookup crosswalk (hand-built domain-reasoning tables -- verified directly that no official ILO ISCO-to-ISIC correspondence table or UNESCO ISCED-to-occupation mapping exists for this purpose, see semantic_relation.py's own corrected module docstring) is the core, always-on logic -- no LLM required for scoring. Optional LLM re-inference (role 'ISCO-08 occupation coding specialist') only fires when NOT is_coherent AND isic_section+job_title are both present; LLM failure is caught and silently ignored (inferred_isco stays None). UPDATED 2026-08-16 (Module D Step 5.5): the LIVE production message-handling path (backend/api/survey_routes.py, NOT the dead-code survey_orchestrator.py -- confirmed never imported by the live API) now queues a real HITLQueue escalation whenever this engine returns a HIGH-severity violation. survey_orchestrator.py's own separate computation of this value is still not read anywhere near its own HITL call, but that module has zero effect on production traffic.",
       "evaluated": false,
       "evaluated_ref": null,
-      "affects_hitl_escalation": false
+      "affects_hitl_escalation": true
     },
     {
       "component": "ValidationAgent",

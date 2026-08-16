@@ -1,10 +1,10 @@
 # Multilingual LFS Conversational AI
 
-> **Last Updated: 2026-08-11** · 2,347 tests passing (`pytest backend/tests eval/ -q`; 1,522 in `backend/tests`, 825 in `eval/`) · 11 DB tables · 88 test files (44 + 44)
+> **Last Updated: 2026-08-16** · 2,362 tests passing (`pytest backend/tests eval/ -q`; 1,531 in `backend/tests`, 831 in `eval/`) · 11 DB tables · 90 test files (45 + 45)
 
 An AI-powered **Labour Force Survey (LFS)** system that conducts employment interviews in **English, Arabic (MSA + Gulf dialect), Urdu, Hindi, and Tagalog**, classifies job titles to [ISCO-08](https://www.ilo.org/public/english/bureau/stat/isco/isco08/) codes (4-digit unit groups), classifies industries to [ISIC Rev.4](https://unstats.un.org/unsd/publication/seriesm/seriesm_4rev4e.pdf) (full 4-level hierarchy: Section → Division → Group → **4-digit Class**), classifies education field of specialisation to [ISCED-F 2013](https://uis.unesco.org/en/topic/international-standard-classification-education-isced) (Broad → Narrow → **4-digit Detailed field**) plus attainment level to [ISCED 2011](https://uis.unesco.org/en/topic/international-standard-classification-education-isced) (levels 0–8), and implements the complete **UAE Labour Force Survey questionnaire** (Sections A–K, 56 fields, ILO ICLS-19 standards) with dynamic skip logic across three employment paths.
 
-A key thesis contribution is the **Semantic Relation Engine** — a three-way crosswalk that cross-validates ISCO-08, ISIC Rev.4, and ISCED 2011 classifications against each other using ILO correspondence tables, producing a **SemanticCoherence score (0–1)** that adjusts ISCO confidence and triggers HITL escalation on HIGH-severity violations.
+A key thesis contribution is the **Semantic Relation Engine** — a three-way crosswalk that cross-validates ISCO-08, ISIC Rev.4, and ISCED 2011 classifications against each other using hand-built, domain-reasoning crosswalk tables (verified directly against the primary ILO/UNESCO sources: no official ISCO-to-ISIC correspondence table or ISCED-2011-to-occupation mapping was found to exist for this purpose — see `semantic_relation.py`'s module docstring), producing a **SemanticCoherence score (0–1)** that adjusts ISCO confidence and triggers real HITL escalation on HIGH-severity violations.
 
 ---
 
@@ -77,8 +77,9 @@ A key thesis contribution is the **Semantic Relation Engine** — a three-way cr
 │  ⑬ SemanticRelationEngine — ISCO↔ISIC↔ISCED three-way crosswalk          │
 │     • SemanticCoherence score 0–1 (ISIC 55% + ISCED 45% weight)          │
 │     • Adjusts ISCO confidence: +10% coherent / −20% strong mismatch      │
-│     • HIGH-severity violations trigger HITL escalation                    │
-│     • ILO ISCO-ISIC table (Geneva 2012) + UNESCO ISCED 2011 Table 7       │
+│     • HIGH-severity violations trigger a real HITL escalation             │
+│     • Hand-built crosswalk tables (no official ILO/UNESCO correspon-      │
+│       dence table for ISCO↔ISIC or ISCO↔ISCED was found to exist)         │
 │  ⑭ SurveyOrchestrator — top-level agent coordinator                      │
 └──────┬──────────────────────────────┬──────────────────────────────────────┘
        │                              │
@@ -87,10 +88,10 @@ A key thesis contribution is the **Semantic Relation Engine** — a three-way cr
 │  Users      │           │  4 hierarchical ISCO-08 collections:            │
 │  Sessions   │           │    • isco08_major_groups      (10 groups)       │
 │  Responses  │           │    • isco08_submajor_groups   (43 groups)       │
-│  HITLQueue  │           │    • isco08_minor_groups     (131 groups)       │
-│  QualityRev │           │    • isco08_unit_groups      (441 groups)       │
-│  PersonReg  │           │  multilingual-e5-large embeddings               │
-│  AuditLogs  │           │  (1024-dim, handles en/ar/ur/hi/tl)             │
+│  HITLQueue  │           │    • isco08_minor_groups     (130 groups)       │
+│  QualityRev │           │    • isco08_unit_groups      (436 groups)       │
+│  PersonReg  │           │  multilingual-e5-small embeddings               │
+│  AuditLogs  │           │  (384-dim, handles en/ar/ur/hi/tl)              │
 │  SurveyRpts │           └─────────────────────────────────────────────────┘
 │  (11 tables)│
 └──────┬──────┘
@@ -115,8 +116,8 @@ A key thesis contribution is the **Semantic Relation Engine** — a three-way cr
 | Backend | FastAPI, SQLAlchemy, Alembic |
 | AI Agents | CrewAI, Ollama / llama3.2 (general tasks), Claude 3.5 Sonnet (critical tasks) |
 | Semantic Crosswalk | Deterministic ILO/UNESCO lookup tables; no LLM for core logic (speed + auditability) |
-| Embeddings | `intfloat/multilingual-e5-large` (sentence-transformers, 1024-dim) |
-| Vector DB | Qdrant (4 hierarchical collections, 441 ISCO-08 unit groups) |
+| Embeddings | `intfloat/multilingual-e5-small` (sentence-transformers, 384-dim) |
+| Vector DB | Qdrant (4 hierarchical collections, 436 ISCO-08 unit groups) |
 | Auth | Email OTP (Gmail SMTP / SendGrid fallback) → JWT (HS256) + sliding-window rate limiting |
 | Database | PostgreSQL 15 (11 tables, soft-delete on users/sessions/responses) |
 | Cache | Redis 7 (conversation context, TTL 24 h) |
@@ -151,11 +152,14 @@ Given one respondent's classifications:
   ISIC section  Q   →  "Human Health & Social Work"
   ISCED level   7   →  "Master's or equivalent"
 
-Step 1 — ISCO↔ISIC check (ILO Geneva 2012 table)
+Step 1 — ISCO↔ISIC check (hand-built crosswalk table; no official ILO
+correspondence table between ISCO-08 and ISIC Rev.4 was found to exist)
   Major group 2 is compatible with sections: J, M, Q, P, K, L, R, N
   Section Q is in that list → COMPATIBLE ✓
 
-Step 2 — ISCO↔ISCED check (UNESCO ISCED 2011 Op. Manual Table 7)
+Step 2 — ISCO↔ISCED check (hand-built crosswalk table; the real UNESCO
+ISCED 2011 Operational Manual is an education-programme classification
+document and does not contain an occupation-mapping table)
   Major group 2 expected ISCED range: min=6 typical=7 max=8
   Level 7 is within [6, 8] → COMPATIBLE ✓
 
@@ -674,7 +678,7 @@ cp .env.example .env
 docker compose -f docker/docker-compose.yml up --build
 ```
 
-> **First boot note:** The `multilingual-e5-large` model (~2 GB) is downloaded on
+> **First boot note:** The `multilingual-e5-small` model (~470 MB) is downloaded on
 > the first backend start. Subsequent starts use the `model_cache` Docker volume.
 
 ---
@@ -1029,7 +1033,7 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │   ├── llm/
 │   │   └── llm_client.py       # LLM factory: Ollama (GENERAL) / Claude (CRITICAL)
 │   ├── rag/
-│   │   ├── vector_store.py     # Qdrant flat search + multilingual-e5-large
+│   │   ├── vector_store.py     # Qdrant flat search + multilingual-e5-small
 │   │   ├── hierarchical_store.py  # 4-stage hierarchical ISCO RAG (singleton)
 │   │   └── load_full_isco.py   # Populate ISCO-08 unit groups into Qdrant — loads 436,
 │   │   │                       # matching the official ISCO-08 standard exactly (fixed

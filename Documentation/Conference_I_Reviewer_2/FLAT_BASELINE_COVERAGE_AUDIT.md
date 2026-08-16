@@ -242,8 +242,11 @@ identical string literal in both files.
 ### 2.6 Is a direct, unfiltered query over only the 4-digit nodes technically feasible?
 
 **Yes, trivially.** `isco08_unit_groups` is already a dedicated,
-separate Qdrant collection containing only the 441 unit-group entries
-(no major/sub-major/minor entries are ever upserted into it — confirmed
+separate Qdrant collection containing only the unit-group entries (441
+at the time this audit was written; the primary-source ILO cross-check
+fixed this to 436 on 2026-08-12 — see `PHASE_II_PLAN_CORRECTIONS.md` —
+the collection-separation conclusion below is unaffected by that count
+change) (no major/sub-major/minor entries are ever upserted into it — confirmed
 by `main()`'s per-collection loop, each `(collection, entries)` pair
 strictly separated). A direct `client.query_points(collection_name=
 "isco08_unit_groups", query=query_vec, limit=top_k, with_payload=True)`
