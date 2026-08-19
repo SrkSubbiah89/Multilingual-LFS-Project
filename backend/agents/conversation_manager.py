@@ -3060,7 +3060,9 @@ class ConversationManager:
         """Parse any free-text correction and overwrite collected_data via direct LLM call.
 
         Uses the Ollama REST API directly (no CrewAI overhead) with format=json to
-        guarantee structured output and a hard 45-second timeout.  Falls back to
+        guarantee structured output and a hard 100-second timeout (covers a
+        real measured cold-start worst case of ~78s against the actual
+        default model -- see _CORRECTION_TIMEOUT's own comment).  Falls back to
         Anthropic API if Ollama is unreachable.  Returns True if ≥1 field updated.
         Handles all 60+ fields, all 5 languages, implicit + multi-field corrections.
         """
@@ -3138,13 +3140,31 @@ class ConversationManager:
     # ── Low-level LLM helpers (bypass CrewAI for speed-critical calls) ─────────
 
     # The correction prompt embeds the full ~60-field schema (~5,200 chars).
-    # Measured directly against the configured OLLAMA_MODEL (llama3.2:1b):
-    # this takes ~35s end-to-end, so a 15s budget always timed out here,
-    # silently forcing every correction onto the Anthropic fallback (or, if
-    # that also fails, onto no correction at all — see _llm_extract_correction
-    # and the correction_applied fix at its call site). 45s gives headroom
-    # above the measured worst case without being unbounded.
-    _CORRECTION_TIMEOUT = 45  # seconds
+    # CORRECTED 2026-08-19: this constant's comment previously claimed it was
+    # measured against "llama3.2:1b", but the actual shipped default -- both
+    # llm_client.py's code fallback and .env.example -- is bare "llama3.2",
+    # which resolves to the 3B :latest model (2.0GB), not the 1B model
+    # (1.3GB) the old 45s figure was tuned against. No documentation anywhere
+    # in this repo (README, .env.example, Documentation/) states 1B was ever
+    # the intended production default -- the :1b references that do exist
+    # are all scoped to a separate, unrelated WISCO evaluation harness's own
+    # --reranker-model flag, not this component.
+    #
+    # Re-measured directly against the real default (bare "llama3.2", 3B),
+    # 5 real sequential calls with this exact prompt: cold start (model not
+    # yet resident in Ollama) took 78.0s; once warm, calls took 4.7-6.1s.
+    # The 45s figure was failing consistently because it only ever budgeted
+    # for a warm call, not a cold start -- confirmed directly: both the
+    # default model and an alternative (qwen2.5:3b) failed 3/3 real
+    # end-to-end correction calls at the old 45s timeout, each apparently
+    # hitting a cold start. 100s applies the same ~29% headroom margin over
+    # the measured 78s cold-start worst case that the original 45s-over-35s
+    # figure used. This does not fix the underlying cold-start cost itself --
+    # setting Ollama's keep_alive on this call to keep the model resident
+    # between requests would reduce how often the cold-start path is hit at
+    # all, but that is a separate, unimplemented improvement, not part of
+    # this fix.
+    _CORRECTION_TIMEOUT = 100  # seconds
 
     def _call_ollama_json(self, prompt: str) -> str | None:
         """POST to Ollama /api/chat with format=json. Returns raw response string or None."""
