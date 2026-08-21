@@ -1,6 +1,6 @@
 # Multilingual LFS Conversational AI
 
-> **Last Updated: 2026-08-16** · 2,362 tests passing (`pytest backend/tests eval/ -q`; 1,531 in `backend/tests`, 831 in `eval/`) · 11 DB tables · 90 test files (45 + 45)
+> **Last Updated: 2026-08-21** · 2,282 tests passing (`pytest backend/tests eval/ -q`; 1,450 in `backend/tests`, 832 in `eval/`) · 11 DB tables · 89 test files (44 + 45)
 
 An AI-powered **Labour Force Survey (LFS)** system that conducts employment interviews in **English, Arabic (MSA + Gulf dialect), Urdu, Hindi, and Tagalog**, classifies job titles to [ISCO-08](https://www.ilo.org/public/english/bureau/stat/isco/isco08/) codes (4-digit unit groups), classifies industries to [ISIC Rev.4](https://unstats.un.org/unsd/publication/seriesm/seriesm_4rev4e.pdf) (full 4-level hierarchy: Section → Division → Group → **4-digit Class**), classifies education field of specialisation to [ISCED-F 2013](https://uis.unesco.org/en/topic/international-standard-classification-education-isced) (Broad → Narrow → **4-digit Detailed field**) plus attainment level to [ISCED 2011](https://uis.unesco.org/en/topic/international-standard-classification-education-isced) (levels 0–8), and implements the complete **UAE Labour Force Survey questionnaire** (Sections A–K, 56 fields, ILO ICLS-19 standards) with dynamic skip logic across three employment paths.
 
@@ -940,7 +940,7 @@ pip install -r requirements.txt tf-keras
 pytest backend/tests/ -v
 ```
 
-- **2,347 tests** (`backend/tests` + `eval/`) across **88 test files** — all passing as of 2026-08-11 (`pytest backend/tests eval/ -q`; 1 deselected slow test, 1 warning). `pytest backend/tests/ -v` alone: **1,522 tests**, 44 files.
+- **2,282 tests** (`backend/tests` + `eval/`) across **89 test files** — all passing as of 2026-08-21 (`pytest backend/tests eval/ -q`; 1 deselected slow test, 1 warning). `pytest backend/tests/ -v` alone: **1,450 tests**, 44 files.
 - Zero live infrastructure required — all external calls (DB, Redis, Qdrant, LLM APIs) are mocked or use in-memory fakes (SQLite, FakeRedis)
 - Load/stress tests are marked `@pytest.mark.slow` and excluded by default via `pytest.ini`; run them explicitly with `pytest -m slow`
 
@@ -1055,7 +1055,7 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │   │       ├── inspect_wisco.py / analyze_wisco.py / parse_wisco.py
 │   │       ├── requirements.lock.txt
 │   │       └── data/raw|interim|processed/
-│   └── tests/                  # 44 test files (+ conftest + slow-marked load_test), 1,522 tests here (2,347 combined with eval/'s 44 files/825 tests), zero live infra required
+│   └── tests/                  # 44 test files (+ conftest + slow-marked load_test), 1,450 tests here (2,282 combined with eval/'s 45 files/832 tests), zero live infra required
 │       ├── conftest.py              # Shared fixtures: in-memory DB, auth client, rate limiter reset
 │       ├── test_auth_routes.py
 │       ├── test_auth_and_api_extended.py
@@ -1188,6 +1188,6 @@ All thesis requirements fully implemented as of June 2026:
 | **ValidationAgent Wiring** | **Done** | Runs when FSM enters VALIDATING; populates `validation_issues` + `is_data_valid` in response |
 | **HITL Auto-enqueue** | **Done** | `db.flush()` + `HITLQueue` insert when `clf.hitl_required=True`; AuditLogger records decision |
 | **Load Test Suite** | **Done** | `@pytest.mark.slow` test in `load_test.py`; 5 users, 2 workers, ≥80% success rate assertion |
-| **Test Suite** | **Done** | 2,347 tests (`backend/tests` + `eval/`), 88 files, zero live infrastructure; `pytest.ini` excludes slow tests by default |
+| **Test Suite** | **Done** | 2,282 tests (`backend/tests` + `eval/`), 89 files, zero live infrastructure; `pytest.ini` excludes slow tests by default |
 | **Nationality Quick-Options** | **Done** | Pills updated to top 8 UAE nationalities (Emirati/Indian/Pakistani/Filipino/Bangladeshi/Egyptian/British/Other) |
 | **Correction Acknowledgment** | **Done** | `_dev_stub_response` now shows "Got it, I've updated that" when correction applied in VALIDATING state |

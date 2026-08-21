@@ -11,6 +11,15 @@ earlier report): `pytest backend/tests eval/ -q` → **2,363 passed, 0
 failed, 1 deselected** (297.8s). Matches the last-known count from Step
 8's own fresh verification exactly — no drift found.
 
+> **Update, 2026-08-21**: this 2,363 figure is a historical, point-in-time
+> record and is left unedited above. It has since changed to **2,282
+> passed, 0 failed** after a post-Module-J cleanup pass removed
+> `backend/agents/survey_orchestrator.py` (confirmed dead code, never
+> imported by the live API) along with its dedicated 65-test file and the
+> orchestrator-dependent tests in `test_hitl_and_e2e_extended.py` — a
+> real, intentional test-count drop, not drift. Current, live counts are
+> maintained in `README.md`'s own header banner.
+
 ---
 
 ## Table 6.1b — WISCO External Validation (Step 3)

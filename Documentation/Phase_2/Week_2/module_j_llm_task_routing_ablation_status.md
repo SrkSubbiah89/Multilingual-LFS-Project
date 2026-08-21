@@ -156,3 +156,10 @@ evaluated against qwen2.5:3b.
 2,363 passed, 0 failed, confirmed after the `_CORRECTION_TIMEOUT` fix
 (separate commit `d78ed50`); no production code was changed by this
 module's own measurement work.
+
+> **Update, 2026-08-21**: the 2,363 figure above is a historical record
+> from when this module completed and is left unedited. A later,
+> unrelated cleanup pass removed the confirmed-dead-code
+> `survey_orchestrator.py` and its 65+16 dependent tests, bringing the
+> current live count to **2,282 passed, 0 failed**. See `README.md`'s
+> header for the current, maintained count.

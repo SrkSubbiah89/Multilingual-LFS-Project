@@ -20,7 +20,7 @@ _HIERARCHICAL_RETRIEVAL_METHODS = {ISIC_HIERARCHICAL_RETRIEVAL, ISCEDF_HIERARCHI
 _NAMED_COMPONENTS = {
     "LanguageProcessor", "ConversationManager", "ISCOClassifier",
     "ISICClassifier", "ISCEDClassifier", "SemanticRelationEngine",
-    "ValidationAgent", "HITLQualityManager", "SurveyOrchestrator",
+    "ValidationAgent", "HITLQualityManager",
 }
 
 
@@ -104,12 +104,14 @@ def test_isced_hierarchical_retrieval_row_documents_independent_level():
 #
 # The LIVE production message-handling path is backend/api/survey_routes.py
 # (_send_message_impl) -- confirmed by grep to be the only module the real
-# FastAPI app imports for this. backend/agents/survey_orchestrator.py also
-# computes a TurnResult and calls self._hitl.review_session(session_id)
-# without reading semantic_coherence or rule_violations, but that module is
-# confirmed dead code (never imported by the live API) and has zero effect
-# on production traffic -- so its wiring is NOT what affects_hitl_escalation
-# describes. As of 2026-08-16 (Module D Step 5.5), survey_routes.py itself
+# FastAPI app imports for this. An earlier module,
+# backend/agents/survey_orchestrator.py, also computed a TurnResult and
+# called self._hitl.review_session(session_id) without reading
+# semantic_coherence or rule_violations, but that module was confirmed dead
+# code (never imported by the live API) with zero effect on production
+# traffic -- so its wiring was never what affects_hitl_escalation
+# describes -- and it was removed from this codebase after that finding was
+# documented. As of 2026-08-16 (Module D Step 5.5), survey_routes.py itself
 # queues a real HITLQueue row whenever SemanticRelationEngine returns a
 # HIGH-severity violation (Stage 4e); ValidationAgent's rule_violations are
 # still only audit-logged there, never read near the escalation decision.

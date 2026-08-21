@@ -167,7 +167,6 @@ Not all of these construct a `crewai.Agent` — confirmed which do:
 | `isced_classifier.py` | No — keyword/rule-based, no LLM |
 | `nationality_classifier.py` | No |
 | `person_register.py` | No — deterministic |
-| `survey_orchestrator.py` | No — coordinates the others directly, not via CrewAI delegation |
 | `isco_reranker_strict.py` | No |
 | `classifier_methods.py` | Not an agent — shared constants |
 | `method_registry.py` | Not an agent — registry/introspection utility |
@@ -272,8 +271,14 @@ the 2,013-case dev split) but must never be cited as a Claude result.
 ```bash
 pytest backend/tests eval/ -q
 ```
-→ **2,347 passed, 0 failed** (2026-08-12; 1,522 in `backend/tests` + 825
-in `eval/`, 88 files total). No standing known failures.
+→ **2,282 passed, 0 failed** (2026-08-21, count only — not a full
+document re-verification; 1,450 in `backend/tests` + 832 in `eval/`, 89
+files total). The count dropped from a prior 2,363 because
+`backend/agents/survey_orchestrator.py` — confirmed dead code, never
+imported by the live API, see the API-surface note below — was removed
+from the codebase along with its dedicated 65-test file and the
+orchestrator-dependent tests in `test_hitl_and_e2e_extended.py`. No
+standing known failures.
 
 ## Citation policy — unchanged, still correct
 

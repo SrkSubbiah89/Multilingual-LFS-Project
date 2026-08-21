@@ -4,9 +4,10 @@ SemanticCoherence results.
 
 Confirms the real enforcement wiring in backend/api/survey_routes.py's
 _send_message_impl (the only live code path that computes
-semantic_coherence -- backend/agents/survey_orchestrator.py also computes
-it but is never imported by the live API, confirmed by grep; wiring
-enforcement there would have had zero production effect).
+semantic_coherence -- an earlier module, backend/agents/survey_orchestrator.py,
+also computed it but was never imported by the live API, confirmed by grep;
+wiring enforcement there would have had zero production effect, and that
+module was removed from this codebase after that finding was documented).
 
 Uses the REAL SemanticRelationEngine (use_llm=False, fully deterministic,
 no network/DB dependency) rather than mocking it, with isco/isic/isced

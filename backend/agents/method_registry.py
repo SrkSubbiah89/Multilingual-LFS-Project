@@ -8,8 +8,7 @@ each model must be documented and measurable").
 Produces one ``ClassifierMethodEntry`` row per (component, method) pair for
 every classifier/agent named in the reviewer response: LanguageProcessor,
 ConversationManager, ISCOClassifier, ISICClassifier, ISCEDClassifier,
-SemanticRelationEngine, ValidationAgent, HITLQualityManager,
-SurveyOrchestrator.
+SemanticRelationEngine, ValidationAgent, HITLQualityManager.
 
 Every field below was hand-derived by reading the component's actual code
 (dataclass/Pydantic model fields, ``get_llm(TaskType.*)`` calls, CrewAI
@@ -19,12 +18,14 @@ assumed. In particular:
   - ``affects_hitl_escalation`` reflects VERIFIED wiring in the LIVE
     production code path -- ``backend/api/survey_routes.py``'s
     ``_send_message_impl``, confirmed by grep to be the only module the
-    real FastAPI app imports for message handling. ``SurveyOrchestrator``
-    (``backend/agents/survey_orchestrator.py``) also computes a
-    ``TurnResult`` with its own HITL call, but is confirmed dead code --
-    never imported by the live API -- so its own internal wiring (or lack
-    of it) has zero effect on production traffic and is NOT what this
-    field describes.
+    real FastAPI app imports for message handling. An earlier module,
+    ``backend/agents/survey_orchestrator.py``, also computed a
+    ``TurnResult`` with its own separate HITL call, but was confirmed dead
+    code -- never imported by the live API, zero effect on production
+    traffic -- and was removed entirely from this codebase after that
+    finding was documented (see git history and
+    ``Documentation/Phase_2/Week_2/module_j_llm_task_routing_ablation_status.md``
+    for the analysis; it is no longer a registry row here).
     In ``survey_routes.py``: ``ISCOClassifier``'s per-response confidence
     (HITL_THRESHOLD=0.70) and ``HITLQualityManager``'s own independent
     thresholds both create real ``HITLQueue`` rows. As of 2026-08-16
@@ -162,7 +163,7 @@ REGISTRY: list[ClassifierMethodEntry] = [
         model_name=_GENERAL_MODEL, model_version=None, embedding_model=None,
         prompt_version=_NO_PROMPT_VERSIONING,
         decoding_config={"task_type": "GENERAL"},
-        fallback_behaviour="Role 'Conversation Manager' (CrewAI Agent, get_llm(TaskType.GENERAL)). Falls back to a deterministic _dev_stub_response() when the LLM is unavailable or LFS_FAST_MODE=true. Does NOT call any classifier directly -- only collects raw text; classification happens downstream in SurveyOrchestrator.",
+        fallback_behaviour="Role 'Conversation Manager' (CrewAI Agent, get_llm(TaskType.GENERAL)). Falls back to a deterministic _dev_stub_response() when the LLM is unavailable or LFS_FAST_MODE=true. Does NOT call any classifier directly -- only collects raw text; classification happens downstream in backend/api/survey_routes.py's _send_message_impl, the live message-handling path.",
         evaluated=False, evaluated_ref=None,
         affects_hitl_escalation=False,
     ),
@@ -281,7 +282,7 @@ REGISTRY: list[ClassifierMethodEntry] = [
         model_name=_GENERAL_MODEL, model_version=None, embedding_model=None,
         prompt_version=_NO_PROMPT_VERSIONING,
         decoding_config={"task_type": "GENERAL", "use_llm_default": True},
-        fallback_behaviour="Deterministic dict-lookup crosswalk (hand-built domain-reasoning tables -- verified directly that no official ILO ISCO-to-ISIC correspondence table or UNESCO ISCED-to-occupation mapping exists for this purpose, see semantic_relation.py's own corrected module docstring) is the core, always-on logic -- no LLM required for scoring. Optional LLM re-inference (role 'ISCO-08 occupation coding specialist') only fires when NOT is_coherent AND isic_section+job_title are both present; LLM failure is caught and silently ignored (inferred_isco stays None). UPDATED 2026-08-16 (Module D Step 5.5): the LIVE production message-handling path (backend/api/survey_routes.py, NOT the dead-code survey_orchestrator.py -- confirmed never imported by the live API) now queues a real HITLQueue escalation whenever this engine returns a HIGH-severity violation. survey_orchestrator.py's own separate computation of this value is still not read anywhere near its own HITL call, but that module has zero effect on production traffic.",
+        fallback_behaviour="Deterministic dict-lookup crosswalk (hand-built domain-reasoning tables -- verified directly that no official ILO ISCO-to-ISIC correspondence table or UNESCO ISCED-to-occupation mapping exists for this purpose, see semantic_relation.py's own corrected module docstring) is the core, always-on logic -- no LLM required for scoring. Optional LLM re-inference (role 'ISCO-08 occupation coding specialist') only fires when NOT is_coherent AND isic_section+job_title are both present; LLM failure is caught and silently ignored (inferred_isco stays None). UPDATED 2026-08-16 (Module D Step 5.5): the LIVE production message-handling path (backend/api/survey_routes.py) now queues a real HITLQueue escalation whenever this engine returns a HIGH-severity violation. An earlier module, survey_orchestrator.py, also computed this value but was never imported by the live API and was removed from this codebase after that finding was documented.",
         evaluated=False, evaluated_ref=None,
         affects_hitl_escalation=True,
     ),
@@ -341,20 +342,6 @@ REGISTRY: list[ClassifierMethodEntry] = [
         fallback_behaviour="Role 'LFS Survey Quality Assurance Manager' (CrewAI Agent, get_llm(TaskType.CRITICAL)). Generates prose report text only -- scoring/flagging/escalation (quality_scoring_deterministic above) is unaffected by this step's success or failure.",
         evaluated=False, evaluated_ref=None,
         affects_hitl_escalation=False,
-    ),
-
-    # ── SurveyOrchestrator ────────────────────────────────────────────────
-    ClassifierMethodEntry(
-        component="SurveyOrchestrator",
-        method_id="turn_orchestration",
-        category="deterministic",
-        input_fields=["session_id", "turn responses"],
-        output_schema={"TurnResult": "wraps classification/validation/semantic_coherence results for one survey turn"},
-        model_name=None, model_version=None, embedding_model=None,
-        prompt_version=None, decoding_config=None,
-        fallback_behaviour="Pure Python wiring: calls ISCOClassifier/ISICClassifier/ISCEDClassifier, ValidationAgent, SemanticRelationEngine(use_llm=False), and triggers HITLQualityManager.review_session() on FSM completion. Does not itself call any LLM. VERIFIED: only ISCOClassifier's per-response confidence and HITLQualityManager's own scoring feed the escalation decision -- ValidationAgent and SemanticRelationEngine outputs are attached to TurnResult but not read by the escalation path.",
-        evaluated=False, evaluated_ref=None,
-        affects_hitl_escalation=True,
     ),
 ]
 

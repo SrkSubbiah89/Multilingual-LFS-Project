@@ -1090,10 +1090,10 @@ def _send_message_impl(
             # Step 5.5) to close the gap Step 5 found: semantic_coherence was
             # computed but never enforced anywhere. This IS the real
             # enforcement point: it's the only live code path that computes
-            # semantic_coherence at all -- backend/agents/survey_orchestrator.py
-            # also computes it, but that module is never imported by the live
-            # API (confirmed by grep across all of backend/), so it has no
-            # effect on production traffic regardless of what it does with it.
+            # semantic_coherence at all -- an earlier module,
+            # backend/agents/survey_orchestrator.py, also computed it, but was
+            # confirmed never imported by the live API and was removed from
+            # this codebase after that finding was documented.
             _high_violations = [v for v in sc.violations if v.severity == "HIGH"]
             if _high_violations:
                 try:

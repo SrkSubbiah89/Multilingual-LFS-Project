@@ -30,8 +30,8 @@ full UAE Labour Force Survey questionnaire (Sections A–K) with dynamic skip
 logic. It is an M.Tech thesis project (IIIT Kottayam, supervisor Dr.
 Goutam Mali) also being prepared as a Conference I paper submission.
 
-**Read `README.md` at the repo root first** — updated 2026-08-11, its
-banner line and test counts are now accurate (2,347 tests, 88 files).
+**Read `README.md` at the repo root first** — updated 2026-08-21, its
+banner line and test counts are now accurate (2,282 tests, 89 files).
 Everything else in it about architecture/endpoints/DB schema/directory
 structure was last spot-verified accurate as of that date.
 
@@ -106,6 +106,13 @@ formerly documented here, a mock-signature mismatch in
 `test_isco_classifier_extended.py`, was checked directly in this pass and
 now passes — it was fixed at some point without this doc being updated,
 exactly the staleness failure mode this document exists to prevent).
+
+> **Update, 2026-08-21**: the `2,347`/`88 test files` figures above are a
+> historical record from when this section was last written and are left
+> unedited. A later cleanup pass removed the confirmed-dead-code
+> `backend/agents/survey_orchestrator.py` and its dependent tests. See
+> `README.md`'s header for the current, maintained count (`2,282 passed,
+> 89 test files`).
 
 ## 5. What's been built — chronological, real state only
 
