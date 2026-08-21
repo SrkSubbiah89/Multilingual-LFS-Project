@@ -1,0 +1,1049 @@
+{
+  "model_label": "qwen2.5:3b",
+  "ollama_model_env": "qwen2.5:3b",
+  "cases": [
+    {
+      "id": "en1",
+      "language": "en",
+      "latency_ms": 34595.0,
+      "gold": [
+        {
+          "text": "software engineer",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "Aramco",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "Riyadh",
+          "label": "LOCATION"
+        },
+        {
+          "text": "3 years",
+          "label": "DURATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "software engineer",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "Aramco",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "Riyadh",
+          "label": "LOCATION"
+        },
+        {
+          "text": "3 years",
+          "label": "DURATION"
+        }
+      ],
+      "tp": 4,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "id": "en2",
+      "language": "en",
+      "latency_ms": 25288.0,
+      "gold": [
+        {
+          "text": "Fatima",
+          "label": "PERSON"
+        },
+        {
+          "text": "unemployed",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "healthcare",
+          "label": "INDUSTRY"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "Fatima",
+          "label": "PERSON"
+        },
+        {
+          "text": "unemployed",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "healthcare",
+          "label": "INDUSTRY"
+        }
+      ],
+      "tp": 3,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "id": "en3",
+      "language": "en",
+      "latency_ms": 26203.8,
+      "gold": [
+        {
+          "text": "primary school teacher",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "40 hours a week",
+          "label": "HOURS"
+        },
+        {
+          "text": "Dubai",
+          "label": "LOCATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "primary school teacher",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "public school",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "Dubai",
+          "label": "LOCATION"
+        },
+        {
+          "text": "40 hours",
+          "label": "HOURS"
+        }
+      ],
+      "tp": 2,
+      "fp": 2,
+      "fn": 1
+    },
+    {
+      "id": "en4",
+      "language": "en",
+      "latency_ms": 26692.5,
+      "gold": [
+        {
+          "text": "Ahmed",
+          "label": "PERSON"
+        },
+        {
+          "text": "construction supervisor",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "Al Futtaim Group",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "real estate",
+          "label": "INDUSTRY"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "construction supervisor",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "Al Futtaim Group",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "real estate",
+          "label": "INDUSTRY"
+        }
+      ],
+      "tp": 3,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "id": "en5",
+      "language": "en",
+      "latency_ms": 26869.4,
+      "gold": [
+        {
+          "text": "5 years",
+          "label": "DURATION"
+        },
+        {
+          "text": "accountant",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "banking",
+          "label": "INDUSTRY"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "accountant",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "banking",
+          "label": "INDUSTRY"
+        },
+        {
+          "text": "5 years",
+          "label": "DURATION"
+        }
+      ],
+      "tp": 3,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "id": "en6",
+      "language": "en",
+      "latency_ms": 33404.4,
+      "gold": [
+        {
+          "text": "registered nurse",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "48 hours a week",
+          "label": "HOURS"
+        },
+        {
+          "text": "King Fahd Hospital",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "Jeddah",
+          "label": "LOCATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "registered nurse",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "King Fahd Hospital",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "Jeddah",
+          "label": "LOCATION"
+        },
+        {
+          "text": "48 hours",
+          "label": "HOURS"
+        }
+      ],
+      "tp": 3,
+      "fp": 1,
+      "fn": 1
+    },
+    {
+      "id": "en7",
+      "language": "en",
+      "latency_ms": 34295.4,
+      "gold": [
+        {
+          "text": "Khalid",
+          "label": "PERSON"
+        },
+        {
+          "text": "taxi driver",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "unemployed",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "2 months",
+          "label": "DURATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "taxi driver",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "unemployed",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "2 months",
+          "label": "DURATION"
+        }
+      ],
+      "tp": 3,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "id": "en8",
+      "language": "en",
+      "latency_ms": 47133.6,
+      "gold": [
+        {
+          "text": "20 hours a week",
+          "label": "HOURS"
+        },
+        {
+          "text": "cashier",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "Abu Dhabi",
+          "label": "LOCATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "part-time",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "20 hours",
+          "label": "HOURS"
+        },
+        {
+          "text": "cashier",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "supermarket",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "Abu Dhabi",
+          "label": "LOCATION"
+        }
+      ],
+      "tp": 2,
+      "fp": 3,
+      "fn": 1
+    },
+    {
+      "id": "ar1",
+      "language": "ar",
+      "latency_ms": 75770.1,
+      "gold": [
+        {
+          "text": "مهندس برمجيات",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "أرامكو",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "الرياض",
+          "label": "LOCATION"
+        },
+        {
+          "text": "ثلاث سنوات",
+          "label": "DURATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "مهندس برمجيات",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "أرامكو",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "الرياض",
+          "label": "LOCATION"
+        },
+        {
+          "text": "ثلاث سنوات",
+          "label": "DURATION"
+        }
+      ],
+      "tp": 4,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "id": "ar2",
+      "language": "ar",
+      "latency_ms": 94559.0,
+      "gold": [
+        {
+          "text": "فاطمة",
+          "label": "PERSON"
+        },
+        {
+          "text": "عاطلة عن العمل",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "قطاع الصحة",
+          "label": "INDUSTRY"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "فاطمة",
+          "label": "PERSON"
+        },
+        {
+          "text": "عاطلة عن العمل",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "قطاع الصحة",
+          "label": "INDUSTRY"
+        }
+      ],
+      "tp": 3,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "id": "ar3",
+      "language": "ar",
+      "latency_ms": 99492.8,
+      "gold": [
+        {
+          "text": "معلمة",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "أربعين ساعة أسبوعيًا",
+          "label": "HOURS"
+        },
+        {
+          "text": "دبي",
+          "label": "LOCATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "معلمة",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "مدرسة ابتدائية",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "دبي",
+          "label": "LOCATION"
+        },
+        {
+          "text": "أربعين ساعة",
+          "label": "HOURS"
+        }
+      ],
+      "tp": 2,
+      "fp": 2,
+      "fn": 1
+    },
+    {
+      "id": "ar4",
+      "language": "ar",
+      "latency_ms": 121618.0,
+      "gold": [
+        {
+          "text": "أحمد",
+          "label": "PERSON"
+        },
+        {
+          "text": "مشرف بناء",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "مجموعة الفطيم",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "قطاع العقارات",
+          "label": "INDUSTRY"
+        }
+      ],
+      "predicted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 4
+    },
+    {
+      "id": "ar5",
+      "language": "ar",
+      "latency_ms": 112032.5,
+      "gold": [
+        {
+          "text": "خمس سنوات",
+          "label": "DURATION"
+        },
+        {
+          "text": "محاسبًا",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "القطاع المصرفي",
+          "label": "INDUSTRY"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "تقاعدت",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "خمس سنوات",
+          "label": "DURATION"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 2
+    },
+    {
+      "id": "ar-gulf1",
+      "language": "ar-gulf",
+      "latency_ms": 121590.7,
+      "gold": [
+        {
+          "text": "خالد",
+          "label": "PERSON"
+        },
+        {
+          "text": "سواق تاكسي",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "عاطل",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "شهرين",
+          "label": "DURATION"
+        }
+      ],
+      "predicted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 4
+    },
+    {
+      "id": "ar-gulf2",
+      "language": "ar-gulf",
+      "latency_ms": 125560.7,
+      "gold": [
+        {
+          "text": "ممرضة",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "مستشفى الملك فهد",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "جدة",
+          "label": "LOCATION"
+        },
+        {
+          "text": "اثنين وخمسين ساعة بالأسبوع",
+          "label": "HOURS"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "أنا",
+          "label": "PERSON"
+        },
+        {
+          "text": "مرضة",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "في مستشفى الملك فهد",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "بجدة",
+          "label": "LOCATION"
+        },
+        {
+          "text": "اثنين وخمسين ساعة",
+          "label": "HOURS"
+        }
+      ],
+      "tp": 0,
+      "fp": 5,
+      "fn": 4
+    },
+    {
+      "id": "ur1",
+      "language": "ur",
+      "latency_ms": 121780.1,
+      "gold": [
+        {
+          "text": "سافٹ ویئر انجینئر",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "ارامکو",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "ریاض",
+          "label": "LOCATION"
+        },
+        {
+          "text": "تین سال",
+          "label": "DURATION"
+        }
+      ],
+      "predicted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 4
+    },
+    {
+      "id": "ur2",
+      "language": "ur",
+      "latency_ms": 118025.8,
+      "gold": [
+        {
+          "text": "فاطمہ",
+          "label": "PERSON"
+        },
+        {
+          "text": "بے روزگار",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "صحت کے شعبے",
+          "label": "INDUSTRY"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "میری والدہ فاطمہ",
+          "label": "PERSON"
+        },
+        {
+          "text": "صحت کے شعبے میں",
+          "label": "ORGANIZATION"
+        }
+      ],
+      "tp": 0,
+      "fp": 2,
+      "fn": 3
+    },
+    {
+      "id": "ur3",
+      "language": "ur",
+      "latency_ms": 123949.7,
+      "gold": [
+        {
+          "text": "استاد",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "دبئی",
+          "label": "LOCATION"
+        },
+        {
+          "text": "چالیس گھنٹے",
+          "label": "HOURS"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "میں",
+          "label": "PERSON"
+        },
+        {
+          "text": "اسکول میں",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "استاد ہوں",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "دبئی میں",
+          "label": "LOCATION"
+        },
+        {
+          "text": "چالیس گھنٹے",
+          "label": "DURATION"
+        }
+      ],
+      "tp": 0,
+      "fp": 5,
+      "fn": 3
+    },
+    {
+      "id": "ur4",
+      "language": "ur",
+      "latency_ms": 108696.0,
+      "gold": [
+        {
+          "text": "احمد",
+          "label": "PERSON"
+        },
+        {
+          "text": "تعمیراتی سپروائزر",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "الفطیم گروپ",
+          "label": "ORGANIZATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "احمد الفطیم گروپ",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "تعمیراتی سپروائزر",
+          "label": "JOB_TITLE"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 2
+    },
+    {
+      "id": "ur5",
+      "language": "ur",
+      "latency_ms": 124322.4,
+      "gold": [
+        {
+          "text": "خالد",
+          "label": "PERSON"
+        },
+        {
+          "text": "ٹیکسی ڈرائیور",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "دو مہینے",
+          "label": "DURATION"
+        },
+        {
+          "text": "بے روزگار",
+          "label": "EMPLOYMENT_STATUS"
+        }
+      ],
+      "predicted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 4
+    },
+    {
+      "id": "hi1",
+      "language": "hi",
+      "latency_ms": 120722.0,
+      "gold": [
+        {
+          "text": "सॉफ्टवेयर इंजीनियर",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "रियाद",
+          "label": "LOCATION"
+        },
+        {
+          "text": "अरामको",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "तीन साल",
+          "label": "DURATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "सॉफ्टवेयर इंजीनियर",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "रियाद में अरामको में",
+          "label": "LOCATION"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 3
+    },
+    {
+      "id": "hi2",
+      "language": "hi",
+      "latency_ms": 124487.9,
+      "gold": [
+        {
+          "text": "फातिमा",
+          "label": "PERSON"
+        },
+        {
+          "text": "बेरोजगार",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "स्वास्थ्य क्षेत्र",
+          "label": "INDUSTRY"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "फातिमा",
+          "label": "PERSON"
+        },
+        {
+          "text": "स्वास्थ्य क्षेत्र में",
+          "label": "LOCATION"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 2
+    },
+    {
+      "id": "hi3",
+      "language": "hi",
+      "latency_ms": 122698.6,
+      "gold": [
+        {
+          "text": "शिक्षिका",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "दुबई",
+          "label": "LOCATION"
+        },
+        {
+          "text": "चालीस घंटे",
+          "label": "HOURS"
+        }
+      ],
+      "predicted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 3
+    },
+    {
+      "id": "hi4",
+      "language": "hi",
+      "latency_ms": 120702.4,
+      "gold": [
+        {
+          "text": "अहमद",
+          "label": "PERSON"
+        },
+        {
+          "text": "निर्माण पर्यवेक्षक",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "अल फुत्तैम ग्रुप",
+          "label": "ORGANIZATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "अहमद अल फुत्तैम ग्रुप",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "निर्माण पर्यवेक्षक",
+          "label": "JOB_TITLE"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 2
+    },
+    {
+      "id": "hi5",
+      "language": "hi",
+      "latency_ms": 122167.8,
+      "gold": [
+        {
+          "text": "खालिद",
+          "label": "PERSON"
+        },
+        {
+          "text": "टैक्सी ड्राइवर",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "दो महीने",
+          "label": "DURATION"
+        },
+        {
+          "text": "बेरोजगार",
+          "label": "EMPLOYMENT_STATUS"
+        }
+      ],
+      "predicted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 4
+    },
+    {
+      "id": "tl1",
+      "language": "tl",
+      "latency_ms": 119836.7,
+      "gold": [
+        {
+          "text": "software engineer",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "Aramco",
+          "label": "ORGANIZATION"
+        },
+        {
+          "text": "Riyadh",
+          "label": "LOCATION"
+        },
+        {
+          "text": "tatlong taon",
+          "label": "DURATION"
+        }
+      ],
+      "predicted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 4
+    },
+    {
+      "id": "tl2",
+      "language": "tl",
+      "latency_ms": 106573.4,
+      "gold": [
+        {
+          "text": "Fatima",
+          "label": "PERSON"
+        },
+        {
+          "text": "walang trabaho",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "sektor ng kalusugan",
+          "label": "INDUSTRY"
+        }
+      ],
+      "predicted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 3
+    },
+    {
+      "id": "tl3",
+      "language": "tl",
+      "latency_ms": 116578.8,
+      "gold": [
+        {
+          "text": "guro",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "apatnapung oras kada linggo",
+          "label": "HOURS"
+        },
+        {
+          "text": "Dubai",
+          "label": "LOCATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "Ako ay isang teacher sa elementarya",
+          "label": "PERSON"
+        },
+        {
+          "text": "Dubai",
+          "label": "LOCATION"
+        },
+        {
+          "text": "napatrabaho ng apatnapung oras kada linggo",
+          "label": "DURATION"
+        }
+      ],
+      "tp": 1,
+      "fp": 2,
+      "fn": 2
+    },
+    {
+      "id": "tl4",
+      "language": "tl",
+      "latency_ms": 133263.4,
+      "gold": [
+        {
+          "text": "Ahmed",
+          "label": "PERSON"
+        },
+        {
+          "text": "construction supervisor",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "Al Futtaim Group",
+          "label": "ORGANIZATION"
+        }
+      ],
+      "predicted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 3
+    },
+    {
+      "id": "tl5",
+      "language": "tl",
+      "latency_ms": 123027.3,
+      "gold": [
+        {
+          "text": "Khalid",
+          "label": "PERSON"
+        },
+        {
+          "text": "taxi driver",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "walang trabaho",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "dalawang buwan",
+          "label": "DURATION"
+        }
+      ],
+      "predicted": [
+        {
+          "text": "KHALID",
+          "label": "PERSON"
+        },
+        {
+          "text": "taxi driver",
+          "label": "JOB_TITLE"
+        },
+        {
+          "text": "unemployed",
+          "label": "EMPLOYMENT_STATUS"
+        },
+        {
+          "text": "DALAWANG BUWAN",
+          "label": "DURATION"
+        }
+      ],
+      "tp": 3,
+      "fp": 1,
+      "fn": 1
+    }
+  ]
+}

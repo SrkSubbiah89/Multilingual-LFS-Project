@@ -1,0 +1,462 @@
+{
+  "llama3.2": {
+    "cold_start_s": 103.14,
+    "fsm_check": [
+      {
+        "id": "cm1",
+        "ok": true,
+        "correct": true,
+        "latency_s": 60.37
+      },
+      {
+        "id": "cm2",
+        "ok": true,
+        "correct": true,
+        "latency_s": 74.58
+      },
+      {
+        "id": "cm3",
+        "ok": true,
+        "correct": true,
+        "latency_s": 61.3
+      }
+    ],
+    "fsm_pass": true,
+    "runs": [
+      {
+        "run": 1,
+        "n_correct": 10,
+        "n_total": 10,
+        "mean_latency_s": 54.87,
+        "cases": [
+          {
+            "id": "cm1",
+            "ok": true,
+            "correct": true,
+            "latency_s": 10.42
+          },
+          {
+            "id": "cm2",
+            "ok": true,
+            "correct": true,
+            "latency_s": 13.53
+          },
+          {
+            "id": "cm3",
+            "ok": true,
+            "correct": true,
+            "latency_s": 5.94
+          },
+          {
+            "id": "cm4",
+            "ok": true,
+            "correct": true,
+            "latency_s": 68.32
+          },
+          {
+            "id": "cm5",
+            "ok": true,
+            "correct": true,
+            "latency_s": 78.65
+          },
+          {
+            "id": "cm6",
+            "ok": true,
+            "correct": true,
+            "latency_s": 71.59
+          },
+          {
+            "id": "cm7",
+            "ok": true,
+            "correct": true,
+            "latency_s": 75.2
+          },
+          {
+            "id": "cm8",
+            "ok": true,
+            "correct": true,
+            "latency_s": 69.04
+          },
+          {
+            "id": "cm9",
+            "ok": true,
+            "correct": true,
+            "latency_s": 74.54
+          },
+          {
+            "id": "cm10",
+            "ok": true,
+            "correct": true,
+            "latency_s": 81.43
+          }
+        ]
+      },
+      {
+        "run": 2,
+        "n_correct": 10,
+        "n_total": 10,
+        "mean_latency_s": 13.0,
+        "cases": [
+          {
+            "id": "cm1",
+            "ok": true,
+            "correct": true,
+            "latency_s": 20.39
+          },
+          {
+            "id": "cm2",
+            "ok": true,
+            "correct": true,
+            "latency_s": 9.49
+          },
+          {
+            "id": "cm3",
+            "ok": true,
+            "correct": true,
+            "latency_s": 8.1
+          },
+          {
+            "id": "cm4",
+            "ok": true,
+            "correct": true,
+            "latency_s": 8.32
+          },
+          {
+            "id": "cm5",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.63
+          },
+          {
+            "id": "cm6",
+            "ok": true,
+            "correct": true,
+            "latency_s": 9.81
+          },
+          {
+            "id": "cm7",
+            "ok": true,
+            "correct": true,
+            "latency_s": 9.27
+          },
+          {
+            "id": "cm8",
+            "ok": true,
+            "correct": true,
+            "latency_s": 26.56
+          },
+          {
+            "id": "cm9",
+            "ok": true,
+            "correct": true,
+            "latency_s": 22.58
+          },
+          {
+            "id": "cm10",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.89
+          }
+        ]
+      },
+      {
+        "run": 3,
+        "n_correct": 10,
+        "n_total": 10,
+        "mean_latency_s": 10.23,
+        "cases": [
+          {
+            "id": "cm1",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.0
+          },
+          {
+            "id": "cm2",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.66
+          },
+          {
+            "id": "cm3",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.93
+          },
+          {
+            "id": "cm4",
+            "ok": true,
+            "correct": true,
+            "latency_s": 8.33
+          },
+          {
+            "id": "cm5",
+            "ok": true,
+            "correct": true,
+            "latency_s": 8.22
+          },
+          {
+            "id": "cm6",
+            "ok": true,
+            "correct": true,
+            "latency_s": 10.56
+          },
+          {
+            "id": "cm7",
+            "ok": true,
+            "correct": true,
+            "latency_s": 11.38
+          },
+          {
+            "id": "cm8",
+            "ok": true,
+            "correct": true,
+            "latency_s": 8.12
+          },
+          {
+            "id": "cm9",
+            "ok": true,
+            "correct": true,
+            "latency_s": 12.59
+          },
+          {
+            "id": "cm10",
+            "ok": true,
+            "correct": true,
+            "latency_s": 20.48
+          }
+        ]
+      }
+    ]
+  },
+  "qwen2.5:3b": {
+    "cold_start_s": 72.58,
+    "fsm_check": [
+      {
+        "id": "cm1",
+        "ok": true,
+        "correct": true,
+        "latency_s": 65.48
+      },
+      {
+        "id": "cm2",
+        "ok": true,
+        "correct": true,
+        "latency_s": 66.84
+      },
+      {
+        "id": "cm3",
+        "ok": true,
+        "correct": true,
+        "latency_s": 70.11
+      }
+    ],
+    "fsm_pass": true,
+    "runs": [
+      {
+        "run": 1,
+        "n_correct": 10,
+        "n_total": 10,
+        "mean_latency_s": 49.01,
+        "cases": [
+          {
+            "id": "cm1",
+            "ok": true,
+            "correct": true,
+            "latency_s": 10.89
+          },
+          {
+            "id": "cm2",
+            "ok": true,
+            "correct": true,
+            "latency_s": 9.63
+          },
+          {
+            "id": "cm3",
+            "ok": true,
+            "correct": true,
+            "latency_s": 5.3
+          },
+          {
+            "id": "cm4",
+            "ok": true,
+            "correct": true,
+            "latency_s": 68.45
+          },
+          {
+            "id": "cm5",
+            "ok": true,
+            "correct": true,
+            "latency_s": 62.93
+          },
+          {
+            "id": "cm6",
+            "ok": true,
+            "correct": true,
+            "latency_s": 66.71
+          },
+          {
+            "id": "cm7",
+            "ok": true,
+            "correct": true,
+            "latency_s": 62.32
+          },
+          {
+            "id": "cm8",
+            "ok": true,
+            "correct": true,
+            "latency_s": 73.76
+          },
+          {
+            "id": "cm9",
+            "ok": true,
+            "correct": true,
+            "latency_s": 66.68
+          },
+          {
+            "id": "cm10",
+            "ok": true,
+            "correct": true,
+            "latency_s": 63.4
+          }
+        ]
+      },
+      {
+        "run": 2,
+        "n_correct": 10,
+        "n_total": 10,
+        "mean_latency_s": 6.49,
+        "cases": [
+          {
+            "id": "cm1",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.89
+          },
+          {
+            "id": "cm2",
+            "ok": true,
+            "correct": true,
+            "latency_s": 5.96
+          },
+          {
+            "id": "cm3",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.23
+          },
+          {
+            "id": "cm4",
+            "ok": true,
+            "correct": true,
+            "latency_s": 5.89
+          },
+          {
+            "id": "cm5",
+            "ok": true,
+            "correct": true,
+            "latency_s": 5.88
+          },
+          {
+            "id": "cm6",
+            "ok": true,
+            "correct": true,
+            "latency_s": 5.92
+          },
+          {
+            "id": "cm7",
+            "ok": true,
+            "correct": true,
+            "latency_s": 6.44
+          },
+          {
+            "id": "cm8",
+            "ok": true,
+            "correct": true,
+            "latency_s": 6.6
+          },
+          {
+            "id": "cm9",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.75
+          },
+          {
+            "id": "cm10",
+            "ok": true,
+            "correct": true,
+            "latency_s": 5.32
+          }
+        ]
+      },
+      {
+        "run": 3,
+        "n_correct": 10,
+        "n_total": 10,
+        "mean_latency_s": 9.61,
+        "cases": [
+          {
+            "id": "cm1",
+            "ok": true,
+            "correct": true,
+            "latency_s": 6.52
+          },
+          {
+            "id": "cm2",
+            "ok": true,
+            "correct": true,
+            "latency_s": 12.92
+          },
+          {
+            "id": "cm3",
+            "ok": true,
+            "correct": true,
+            "latency_s": 20.17
+          },
+          {
+            "id": "cm4",
+            "ok": true,
+            "correct": true,
+            "latency_s": 10.09
+          },
+          {
+            "id": "cm5",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.19
+          },
+          {
+            "id": "cm6",
+            "ok": true,
+            "correct": true,
+            "latency_s": 9.28
+          },
+          {
+            "id": "cm7",
+            "ok": true,
+            "correct": true,
+            "latency_s": 10.18
+          },
+          {
+            "id": "cm8",
+            "ok": true,
+            "correct": true,
+            "latency_s": 6.98
+          },
+          {
+            "id": "cm9",
+            "ok": true,
+            "correct": true,
+            "latency_s": 5.76
+          },
+          {
+            "id": "cm10",
+            "ok": true,
+            "correct": true,
+            "latency_s": 7.03
+          }
+        ]
+      }
+    ]
+  }
+}

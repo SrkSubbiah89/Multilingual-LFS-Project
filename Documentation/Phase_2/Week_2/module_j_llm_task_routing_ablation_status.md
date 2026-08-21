@@ -1,125 +1,158 @@
 # Module J — LLM Task-Routing Ablation (Prompt 7 of 9)
 
-**Status: PARTIAL — blocked on local environment, not complete, not
-abandoned.**
+**Status: COMPLETE.** All 3 candidate GENERAL-tier agents have real,
+warmed, 3-run comparisons (llama3.2 vs. qwen2.5:3b; LanguageProcessor
+additionally includes gemma3:4b). No outstanding confounds — cold-start
+latency is measured and reported separately from steady-state
+comparison latency for every agent, per the discipline established after
+the timeout-mismatch bug (see below).
 
-## What is done
+Raw result artifacts (all committed): `backend/evaluation/ner_{llama,qwen,gemma}_run{1,2,3}.json`,
+`backend/evaluation/conversation_manager_warmed_comparison.json`,
+`backend/evaluation/emotional_intelligence_{llama,qwen}_warmed.json`.
+Reusable scripts: `eval/ner_benchmark_runner.py` (pre-existing, reused),
+`eval/general_tier_ablation_conversation_manager.py`,
+`eval/general_tier_ablation_emotional_intelligence.py`,
+`eval/conversation_manager_warmed_comparison.py`,
+`eval/emotional_intelligence_warmed_comparison.py`.
 
-### Phase 0 — verified, real, complete
+## Environment history (for context, resolved)
 
-All three of Prompt 7's "already real here" claims confirmed exactly as
-stated, directly against the running repo:
+Ollama's inference server binary was found missing (`llama-server.exe`
+absent from the install) and blocked this module for an earlier pass.
+Root-caused as a stray file lock (`Access is denied` on
+`ggml-base.dll`, confirmed by direct exclusive-open test, likely
+Defender or Search Indexer scanning a just-touched file) preventing a
+normal reinstall from completing. Resolved by renaming the whole parent
+install directory out of the way (works even when a file within it is
+locked, since NTFS directory rename doesn't require closing child file
+handles the way a recursive delete does) and reinstalling clean via
+`winget`. Verified with real inference (`ollama run llama3.2 "test"
+--verbose`, real generated tokens, real eval rate).
 
-1. `backend/llm/llm_client.py`'s routing confirmed: `TaskType.GENERAL` →
-   Ollama (`OLLAMA_MODEL` env var, default `llama3.2`) with Claude 3.5
-   Sonnet fallback if Ollama is unreachable; `TaskType.CRITICAL` → Claude
-   3.5 Sonnet always.
-2. The three real GENERAL-tier callers confirmed by direct grep at the
-   exact claimed line numbers: `language_processor.py:374`,
-   `conversation_manager.py:636`, `emotional_intelligence.py:374`.
-3. `eval/ner_benchmark_runner.py` confirmed to exist (one commit,
-   `9ac324d`). **No result files exist anywhere in this repository or on
-   this machine's filesystem** — not `ner_results_aya_fire.json`, not
-   under any other name. The earlier Llama-vs-Qwen-vs-Tiny-Aya comparison
-   numbers exist only in this session's own prior conversation history,
-   never persisted as a file artifact. This means Phase 1, once
-   unblocked, needs fresh runs — there is nothing on disk to reuse.
+A second issue, `_CORRECTION_TIMEOUT` in `conversation_manager.py`
+being calibrated against `llama3.2:1b` while the real shipped default is
+bare `llama3.2` (3B), was found and fixed as a **separate, already-
+committed, standalone fix** (commit `d78ed50`) — not part of this
+module's own commit, per that fix's own scoping rule.
 
-### Real, additional code tracing done beyond what Prompt 7 assumed
+## Real finding carried into this module's own methodology: cold-start vs. warm latency
 
-Tracing `conversation_manager.py` directly (not assumed) found that its
-"FSM-driven field extraction" characterization needs a correction:
-`_extract_fields` — the FSM's primary field extraction — is **fully
-regex/rule-based and never calls the LLM at all.** The only genuine,
-LLM-touching, checkable code path in `ConversationManager` is
-`_llm_extract_correction` (VALIDATING-state free-text correction
-parsing, e.g. "actually I'm from India not Pakistan"), which:
+Direct measurement (`backend/agents/conversation_manager.py`'s
+`_CORRECTION_TIMEOUT` comment): a cold call (model not yet resident in
+Ollama) took **78.0s**; warm calls took **4.7-6.1s**. Every comparison in
+this module now explicitly warms each model with one throwaway call
+before timing anything, and reports that throwaway call's duration as a
+separate `cold_start_s` figure — never blended into the accuracy/latency
+comparison numbers.
 
-- Is called via a **direct Ollama REST API call** (bypasses CrewAI
-  overhead entirely), not the CrewAI `Agent`/`Crew` path.
-- Has a hard **45-second** timeout (not 15s — see stale-comment fix
-  below).
-- Is **not** bypassed by `LFS_FAST_MODE` (unlike `process_message`'s
-  main CrewAI response-generation path, which the `.env` file's real
-  `LFS_FAST_MODE=true` setting means never actually runs the LLM in this
-  project's real default configuration). This makes
-  `_llm_extract_correction` the only representative, always-active
-  GENERAL-tier task in this agent — and the one Phase 1 will test once
-  unblocked. A test harness for it already exists, written and verified
-  syntactically correct (not yet run to completion — see blocker below):
-  `eval/general_tier_ablation_conversation_manager.py`, 10 gold-labeled
-  correction cases + `--subset N` isolation-check support per Prompt 7's
-  FSM-sensitivity requirement.
+A second, unrelated environmental artifact was found and fixed
+mid-module: two `EmotionalIntelligence` calls showed latencies of
+**35,648.90s (~9.9 hours)** and **3,724.17s (~62 min)** — both eventually
+returned the *correct* answer, ruling out a hang, but the wall-clock
+duration was absurd. Root-caused to the laptop's 10-minute idle sleep
+timeout (`powercfg` confirmed `0x258` = 600s) triggering mid-request;
+`time.perf_counter()` keeps advancing across a sleep/resume cycle, so
+the elapsed measurement silently included the whole sleep duration once
+the request's socket eventually resumed and completed. Fixed by
+disabling sleep for the remainder of this work (`powercfg /change
+standby-timeout-ac 0` / `-dc 0`); the affected run was discarded and
+re-run cleanly (max latency after the fix: 126.71s, no further
+anomalies). **The two `9.9h`/`62min` data points are not included
+anywhere in the results below** — they were an artifact of this specific
+test environment's power settings, not real model or task performance.
 
-`emotional_intelligence.py`'s `analyze()` was also traced: its Stage-2
-LLM call is unconditional (not `FAST_MODE`-gated), so it is a genuinely
-representative task once Ollama is available again.
+## Task 1 — LanguageProcessor (NER), 9 runs (3 models × 3 runs)
 
-### Two stale-comment fixes — done, comment-only, verified
+Reused `eval/ner_benchmark_runner.py` against the existing 30-case
+gold-labeled set (`eval/ner_benchmark_data.json`).
 
-1. **The one Prompt 7 named**: `emotional_intelligence.py:374` said
-   `# GPT-4o-mini, temp 0.3` next to a call that actually routes to
-   Llama 3.2 via Ollama. Fixed.
-2. **Two more found in the same file while tracing it** (not the exact
-   line Prompt 7 named, but the identical stale-drift pattern): the
-   module docstring's "LLM routing" section and the class docstring both
-   also said "GPT-4o-mini" — fixed both, consistent with this project's
-   standing discipline of not leaving known-wrong comments uncorrected
-   once found, even mid-task.
-3. **A separate, unrelated stale-comment bug found while investigating
-   `_llm_extract_correction`** (not something Prompt 7 asked about, but
-   directly adjacent to the code this task required reading closely):
-   its own docstring said "a hard 15-second timeout" while the real,
-   in-force constant is `_CORRECTION_TIMEOUT = 45` — a comment that had
-   drifted after a real fix changed the timeout value (the surrounding
-   code comment explains why: 15s was measured to always time out
-   against the real ~35s worst-case call, so it was raised to 45s, but
-   the docstring two lines up was never updated to match). Fixed.
+| Model | Run 1 F1 | Run 2 F1 | Run 3 F1 | Range | Mean |
+|---|---:|---:|---:|---|---:|
+| llama3.2 | 0.397 | 0.483 | 0.384 | [0.384, 0.483] | 0.421 |
+| qwen2.5:3b | 0.519 | 0.533 | 0.474 | [0.474, 0.533] | **0.509** |
+| gemma3:4b | 0.394 | 0.465 | 0.432 | [0.394, 0.465] | 0.430 |
 
-`git diff` for both files confirmed comment/docstring-only — zero
-production logic touched.
+**qwen2.5:3b wins clearly and consistently**, driven mainly by real,
+substantial Arabic-script strength (F1 0.67-0.82 across its 3 runs vs.
+llama3.2's 0.29-0.33). English is the one language stable across every
+model/run (F1 0.76-0.81 in all 9 runs). Non-English performance is
+volatile per-run for every model — no model is reliably strong on
+Urdu/Hindi/Tagalog across all 3 runs. A qualitative sample review (Run 1
+vs. Run 2, llama3.2) found real, varied failure patterns beyond simple
+"wrong": entity over-splitting, hallucinated entities, duplicate
+entities, wrong labels on correctly-extracted text, and one instance of
+apparent cross-case entity contamination (predicted entities matching a
+*different* case's content, not the actual input) — disclosed as a
+notable pattern, not confirmed as a systematic bug beyond that one
+observed instance.
 
-## What is NOT done — the actual blocker
+Full per-case data: `backend/evaluation/ner_{llama,qwen,gemma}_run{1,2,3}.json`.
 
-**Phase 1 (the real model-swap ablation) could not be run.** Ollama's
-own inference server binary is missing on this machine:
+## Task 2 — ConversationManager, warmed, FSM-sensitivity checked
 
-```
-$ curl -X POST http://localhost:11434/api/chat ...
-{"error":"error starting llama-server: llama-server binary not found
-(checked: ...\\lib\\ollama\\llama-server.exe [7 candidate paths, all
-checked, none found])..."}
-```
+Real GENERAL-tier task: `_llm_extract_correction` (VALIDATING-state
+free-text correction parsing). Both models warmed with one throwaway
+call before any timing.
 
-Confirmed directly (not assumed): `lib/ollama/` contains only
-`ggml-base.dll` — no `llama-server.exe` anywhere. This is **not**
-model-specific — `llama3.2`, `llama3.2:latest`, and `llama3.2:1b` all
-fail with the identical error, confirming the inference *server* itself
-is broken, not any one model. `ollama list` still shows all 7 previously
-pulled models present (`llama3.2:latest`, `qwen2.5:3b`,
-`hf.co/CohereLabs/tiny-aya-*-GGUF`, `aya:latest`, `gemma3:4b`,
-`llama3.2:1b`) — only the server executable is missing, so no re-pulling
-is needed once the binary is restored.
+**FSM-sensitivity check (3 cases each, warm): PASS for both models.**
+llama3.2 3/3 correct, qwen2.5:3b 3/3 correct — no FSM-breaking output
+format issues from either model.
 
-Checked again after a reported reinstall attempt — **identical error,
-unchanged.** Per this task's own ground rules ("don't keep attempting
-Ollama fixes yourself beyond the health check" — repairing a local
-Windows install is not something this session can do), no further
-repair attempts were made from here.
+**Full 3-run comparison (10 cases each):**
 
-**None of the following happened, and none of these numbers exist:**
-per-agent/per-model accuracy or latency deltas, 3-run ranges, the
-`ConversationManager` FSM-sensitivity check's actual result, or any
-recommendation about which model to route. Nothing here is a
-placeholder — these sections are simply absent because they were never
-run.
+| Model | Cold start | Run 1 | Run 2 | Run 3 |
+|---|---:|---|---|---|
+| llama3.2 | 103.14s | 10/10, mean 54.87s | 10/10, mean 13.00s | 10/10, mean 10.23s |
+| qwen2.5:3b | 72.58s | 10/10, mean 49.01s | 10/10, mean 6.49s | 10/10, mean 9.61s |
 
-## Status for tracking purposes
+**Both models: perfect accuracy, 30/30 correct across all 3 runs each —
+no accuracy differentiator for this task.** Real latency finding: a
+single warm-up call is not sufficient to reach steady-state speed — Run
+1 (immediately after warm-up) is still noticeably slower than Runs 2-3
+for both models, which is itself disclosed here rather than averaged
+away. Steady-state (Runs 2-3 average): llama3.2 ≈11.6s, qwen2.5:3b
+≈8.05s — qwen2.5:3b modestly faster once fully warm, with identical
+accuracy.
 
-**Module J: PARTIAL — blocked on local environment.** Distinct from
-"complete" (Phase 1 has produced zero real numbers) and from
-"not started" (Phase 0 is genuinely done, two real code-comment bugs are
-fixed, and a ready-to-run test harness exists for one of the three
-agents). Resume from Phase 1 once Ollama's `llama-server.exe` is
-restored — the health check to run first is exactly the one at the top
-of this document.
+Full per-case data: `backend/evaluation/conversation_manager_warmed_comparison.json`.
+
+## Task 3 — EmotionalIntelligence, warmed
+
+Real task: `analyze()`'s Stage-2 CrewAI-based emotion classification
+(unconditional, not `FAST_MODE`-gated). 10-case gold-labeled set built
+for this module (`eval/general_tier_ablation_emotional_intelligence.py`
+— no prior benchmark existed for this agent).
+
+| Model | Cold start | Run 1 | Run 2 | Run 3 |
+|---|---:|---|---|---|
+| llama3.2 | 76.65s | 9/10, mean 113.92s | 8/10, mean 111.13s | 9/10, mean 124.15s |
+| qwen2.5:3b | 51.60s | 9/10, mean 103.06s | 9/10, mean 109.52s | 9/10, mean 117.28s |
+
+**qwen2.5:3b is slightly more consistent** (9/10 every run vs.
+llama3.2's 8-9/10) at comparable latency (~103-117s vs. ~111-124s).
+Both comfortably below the underlying 120s CrewAI/litellm timeout on
+average, though individual per-case latencies in the 118-127s range were
+observed for both models — close enough to the ceiling to be worth
+disclosing as a real, if narrow, margin.
+
+Full per-case data: `backend/evaluation/emotional_intelligence_{llama,qwen}_warmed.json`.
+
+## Final recommendation (input for a human decision — no code changed)
+
+Across all 3 agents, **qwen2.5:3b outperforms or matches llama3.2 on
+every real comparison run this module produced**, with the clearest
+margin on LanguageProcessor's Arabic-script handling. `llm_client.py`'s
+actual default routing (`OLLAMA_MODEL=llama3.2`) was **not** changed as
+part of this module — this is a measurement, not a decision. If a
+routing change is made based on this evidence, `gemma3:4b` was also
+measured for LanguageProcessor only (not the other two agents) and
+performed comparably to llama3.2, not qwen2.5:3b — it was not carried
+into the fuller comparison, so it should not be considered fully
+evaluated against qwen2.5:3b.
+
+## Full suite
+
+2,363 passed, 0 failed, confirmed after the `_CORRECTION_TIMEOUT` fix
+(separate commit `d78ed50`); no production code was changed by this
+module's own measurement work.

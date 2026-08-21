@@ -1,0 +1,241 @@
+{
+  "model_label": "llama3.2",
+  "ollama_model_env": "llama3.2",
+  "cold_start_s": 76.65,
+  "runs": [
+    {
+      "run": 1,
+      "n_correct": 9,
+      "n_total": 10,
+      "mean_latency_s": 113.92,
+      "cases": [
+        {
+          "id": "ei1",
+          "gold": "confused",
+          "predicted": "confused",
+          "correct": true,
+          "latency_s": 80.27
+        },
+        {
+          "id": "ei2",
+          "gold": "frustrated",
+          "predicted": "frustrated",
+          "correct": true,
+          "latency_s": 91.53
+        },
+        {
+          "id": "ei3",
+          "gold": "stressed",
+          "predicted": "stressed",
+          "correct": true,
+          "latency_s": 120.89
+        },
+        {
+          "id": "ei4",
+          "gold": "engaged",
+          "predicted": "engaged",
+          "correct": true,
+          "latency_s": 115.87
+        },
+        {
+          "id": "ei5",
+          "gold": "neutral",
+          "predicted": "neutral",
+          "correct": true,
+          "latency_s": 122.49
+        },
+        {
+          "id": "ei6",
+          "gold": "stressed",
+          "predicted": "stressed",
+          "correct": true,
+          "latency_s": 126.75
+        },
+        {
+          "id": "ei7",
+          "gold": "frustrated",
+          "predicted": "frustrated",
+          "correct": true,
+          "latency_s": 126.42
+        },
+        {
+          "id": "ei8",
+          "gold": "confused",
+          "predicted": "confused",
+          "correct": true,
+          "latency_s": 125.92
+        },
+        {
+          "id": "ei9",
+          "gold": "neutral",
+          "predicted": "neutral",
+          "correct": true,
+          "latency_s": 118.27
+        },
+        {
+          "id": "ei10",
+          "gold": "engaged",
+          "predicted": "neutral",
+          "correct": false,
+          "latency_s": 110.79
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "n_correct": 8,
+      "n_total": 10,
+      "mean_latency_s": 111.13,
+      "cases": [
+        {
+          "id": "ei1",
+          "gold": "confused",
+          "predicted": "confused",
+          "correct": true,
+          "latency_s": 123.25
+        },
+        {
+          "id": "ei2",
+          "gold": "frustrated",
+          "predicted": "frustrated",
+          "correct": true,
+          "latency_s": 127.18
+        },
+        {
+          "id": "ei3",
+          "gold": "stressed",
+          "predicted": "stressed",
+          "correct": true,
+          "latency_s": 125.35
+        },
+        {
+          "id": "ei4",
+          "gold": "engaged",
+          "predicted": "engaged",
+          "correct": true,
+          "latency_s": 115.24
+        },
+        {
+          "id": "ei5",
+          "gold": "neutral",
+          "predicted": "neutral",
+          "correct": true,
+          "latency_s": 121.04
+        },
+        {
+          "id": "ei6",
+          "gold": "stressed",
+          "predicted": "stressed",
+          "correct": true,
+          "latency_s": 125.39
+        },
+        {
+          "id": "ei7",
+          "gold": "frustrated",
+          "predicted": "frustrated",
+          "correct": true,
+          "latency_s": 125.08
+        },
+        {
+          "id": "ei8",
+          "gold": "confused",
+          "predicted": "neutral",
+          "correct": false,
+          "latency_s": 37.82
+        },
+        {
+          "id": "ei9",
+          "gold": "neutral",
+          "predicted": "neutral",
+          "correct": true,
+          "latency_s": 105.25
+        },
+        {
+          "id": "ei10",
+          "gold": "engaged",
+          "predicted": "neutral",
+          "correct": false,
+          "latency_s": 105.67
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "n_correct": 9,
+      "n_total": 10,
+      "mean_latency_s": 124.15,
+      "cases": [
+        {
+          "id": "ei1",
+          "gold": "confused",
+          "predicted": "confused",
+          "correct": true,
+          "latency_s": 121.16
+        },
+        {
+          "id": "ei2",
+          "gold": "frustrated",
+          "predicted": "frustrated",
+          "correct": true,
+          "latency_s": 121.62
+        },
+        {
+          "id": "ei3",
+          "gold": "stressed",
+          "predicted": "stressed",
+          "correct": true,
+          "latency_s": 121.2
+        },
+        {
+          "id": "ei4",
+          "gold": "engaged",
+          "predicted": "engaged",
+          "correct": true,
+          "latency_s": 128.32
+        },
+        {
+          "id": "ei5",
+          "gold": "neutral",
+          "predicted": "neutral",
+          "correct": true,
+          "latency_s": 125.97
+        },
+        {
+          "id": "ei6",
+          "gold": "stressed",
+          "predicted": "stressed",
+          "correct": true,
+          "latency_s": 125.69
+        },
+        {
+          "id": "ei7",
+          "gold": "frustrated",
+          "predicted": "frustrated",
+          "correct": true,
+          "latency_s": 126.49
+        },
+        {
+          "id": "ei8",
+          "gold": "confused",
+          "predicted": "confused",
+          "correct": true,
+          "latency_s": 127.01
+        },
+        {
+          "id": "ei9",
+          "gold": "neutral",
+          "predicted": "neutral",
+          "correct": true,
+          "latency_s": 125.73
+        },
+        {
+          "id": "ei10",
+          "gold": "engaged",
+          "predicted": "neutral",
+          "correct": false,
+          "latency_s": 118.3
+        }
+      ]
+    }
+  ]
+}

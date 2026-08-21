@@ -149,6 +149,71 @@ carried over from any earlier report):
 
 ---
 
+## Module J — LLM Task-Routing Ablation (Step 7)
+
+**Source**: `Documentation/Phase_2/Week_2/module_j_llm_task_routing_ablation_status.md`
+and its cited raw artifacts (all committed):
+`backend/evaluation/ner_{llama,qwen,gemma}_run{1,2,3}.json`,
+`backend/evaluation/conversation_manager_warmed_comparison.json`,
+`backend/evaluation/emotional_intelligence_{llama,qwen}_warmed.json`.
+
+**Methodology note**: every comparison below explicitly warms each model
+with one throwaway call before timing anything, reported separately as
+`cold_start_s` — real measured cold start was 78.0s vs. 4.7-6.1s warm
+(`conversation_manager.py`'s `_CORRECTION_TIMEOUT` comment). Two
+environmental artifacts were found and excluded from these results: a
+laptop idle-sleep timeout that inflated two `EmotionalIntelligence` calls
+to 9.9h/62min wall-clock (root-caused, sleep disabled, run discarded and
+redone) — those two data points appear nowhere below.
+
+### LanguageProcessor (NER), 9 runs — llama3.2 vs. qwen2.5:3b vs. gemma3:4b
+
+| Model | Run 1 F1 | Run 2 F1 | Run 3 F1 | Range | Mean |
+|---|---:|---:|---:|---|---:|
+| llama3.2 | 0.397 | 0.483 | 0.384 | [0.384, 0.483] | 0.421 |
+| qwen2.5:3b | 0.519 | 0.533 | 0.474 | [0.474, 0.533] | **0.509** |
+| gemma3:4b | 0.394 | 0.465 | 0.432 | [0.394, 0.465] | 0.430 |
+
+qwen2.5:3b wins clearly, driven by real Arabic-script strength (F1
+0.67-0.82 vs. llama3.2's 0.29-0.33). English is stable across every
+model/run (F1 0.76-0.81, all 9 runs).
+
+### ConversationManager, warmed, FSM-sensitivity checked
+
+FSM-sensitivity check (3 cases, warm): **PASS for both models** (3/3
+each).
+
+| Model | Cold start | Run 1 | Run 2 | Run 3 |
+|---|---:|---|---|---|
+| llama3.2 | 103.14s | 10/10, mean 54.87s | 10/10, mean 13.00s | 10/10, mean 10.23s |
+| qwen2.5:3b | 72.58s | 10/10, mean 49.01s | 10/10, mean 6.49s | 10/10, mean 9.61s |
+
+Perfect accuracy for both models (30/30 each) — no accuracy
+differentiator. Steady-state latency (Runs 2-3 average): llama3.2
+≈11.6s, qwen2.5:3b ≈8.05s.
+
+### EmotionalIntelligence, warmed
+
+| Model | Cold start | Run 1 | Run 2 | Run 3 |
+|---|---:|---|---|---|
+| llama3.2 | 76.65s | 9/10, mean 113.92s | 8/10, mean 111.13s | 9/10, mean 124.15s |
+| qwen2.5:3b | 51.60s | 9/10, mean 103.06s | 9/10, mean 109.52s | 9/10, mean 117.28s |
+
+qwen2.5:3b slightly more consistent (9/10 every run) at comparable or
+lower latency.
+
+### Recommendation (input for a human decision — `llm_client.py`'s default routing was not changed)
+
+qwen2.5:3b matched or outperformed llama3.2 on every real comparison in
+this module, most clearly on LanguageProcessor's Arabic handling.
+gemma3:4b was only measured for LanguageProcessor, not the other two
+agents, so it is not fully evaluated against qwen2.5:3b.
+
+**Module J status: COMPLETE** — all 3 agents have real, warmed, 3-run
+comparisons with no outstanding confounds.
+
+---
+
 ## Gaps and Discrepancies Found
 
 - No gaps: every artifact referenced by this task's instructions exists
