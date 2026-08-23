@@ -235,3 +235,26 @@ comparisons with no outstanding confounds.
   by side above rather than reconciled.
 - Test suite: current fresh run (2,363 passed, 0 failed) matches Step
   8's most recent number exactly — no drift found in this pass.
+
+---
+
+## Update, 2026-08-24 — this package is a 2026-08-16 snapshot; newer real results exist
+
+Everything above is left unedited as a historical record. The current,
+maintained status document is `Documentation/PROJECT_FLOW_AND_STATUS.md`
+— read that for anything current. In brief, since this package was
+compiled: ISIC/ISCED-F hierarchical retrieval went live (2026-08-23);
+both classifiers gained LLM-reranker parity with ISCO-08 and had a real
+dead-code confidence-scoring bug fixed; a larger embedding model
+(`multilingual-e5-large`) was built, evaluated, and found to give a real
++8.6pp accuracy gain (20.60%→29.20%, 500-case sample, McNemar
+p≈1.77×10⁻⁶); LLM reranking was confirmed a third time to add nothing to
+accuracy, including on the improved retrieval; a full 18,747-case
+heldout confirmation of the e5-large finding was started 2026-08-24 (see
+the status document for its result once complete); and
+`get_llm(TaskType.GENERAL)` gained a real, tested, local-first automatic
+fallback chain (Ollama → Claude → Gemini → Groq → OpenRouter). Test
+suite: 2,352 passed, 0 failed as of 2026-08-24 (up from this package's
+2,363 — the difference is the intentional `survey_orchestrator.py`
+dead-code removal on 2026-08-21, documented in
+`Documentation/PROJECT_FLOW_AND_STATUS.md`'s change log, not drift).

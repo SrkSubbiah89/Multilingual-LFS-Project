@@ -187,3 +187,61 @@ result. The reranking tier (Phase D.2 above) has still not been run.
   are an engineering judgement call, not sourced from an external
   publication — review before citing the specific thresholds in the
   manuscript. See `EVALUATION_PROTOCOL.md`.
+
+## 2026-08-24 update — real findings since this matrix's last pass (2026-08-10)
+
+This matrix predates the work below; rows above are left unedited (per
+this document's own discipline of not rewriting history), but the
+following materially affects rows 2, 4, and 5's evidence base. Full
+detail: `Documentation/PROJECT_FLOW_AND_STATUS.md` (the maintained,
+current status document — read that first for anything not covered
+here).
+
+**Row 2 (novelty)** — a much stronger, now-repeated empirical finding
+exists beyond the flat-vs-hierarchical result this row already cites:
+across every reranker/retrieval-quality experiment run (reranker model
+swap, corrective retry, and reranking on a stronger retrieval base),
+**LLM reranking never changed the accuracy outcome — proven three
+independent times, on two different retrieval bases and two different
+cloud providers** (case-for-case identical predictions each time). The
+one intervention that *did* move the number: a larger embedding model
+(`intfloat/multilingual-e5-large`, 1024-dim vs. the default `-small`,
+384-dim) — **+8.6pp (20.60%→29.20%), McNemar p≈1.77×10⁻⁶**, on a
+500-case independent sample from the WISCO dev split; a full 18,747-case
+heldout confirmation run (same split/config Tasks 23-37.1 used) was
+started 2026-08-24 and its result should be folded in here once
+complete. This is a materially stronger novelty grounding than what
+existed at this matrix's last pass: not just "flat beats hierarchical"
+but "we identified and confirmed *why* accuracy plateaus, and what
+actually moves it."
+
+**Row 4 (computational analysis)** — e5-large's real latency cost is now
+measured: ~145ms/case vs. e5-small's ~28ms/case (both local, no
+network), a real ~5.2x cost for the +8.6pp accuracy gain. Still missing,
+unchanged from this matrix's original assessment: memory
+(`peak_process_memory_mb`), throughput/scalability under concurrency for
+the reranked configuration, and any real-LFS-data measurement.
+
+**Row 5 (ISIC coverage)** — infrastructure progress only, coverage
+numbers unchanged: ISIC/ISCED-F hierarchical retrieval Qdrant
+collections were built and live-verified 2026-08-23 (previously
+implemented but never populated); both classifiers gained the same
+LLM-reranker parity ISCO-08 already had, plus a real, previously-
+undiscovered bug was found and fixed in both (a keyword-confidence score
+that was mathematically always 1.0, silently making the LLM-rerank path
+unreachable since these classifiers were first written). **None of this
+changes `official_count_verified=null` or the 134/419 and 63/~80
+coverage figures** — no official ISIC/ISCED catalogue has been imported,
+unchanged from this row's original "Awaiting" status. Accuracy against a
+labelled ISIC/ISCED test set still does not exist — WISCO has no
+independent gold labels for either standard (confirmed in
+`CONTROLLED_BENCHMARK_AUDIT.md`), so closing this gap needs either an
+external labelled source or a disclosed, small, hand-curated set — not
+yet decided.
+
+**New since this matrix's last pass, not covered by any existing row**:
+`get_llm(TaskType.GENERAL)` now has a real, tested, local-first
+automatic fallback chain (Ollama → Claude → Gemini → Groq → OpenRouter),
+addressing operational resilience to any single provider's
+unavailability — relevant context for row 6's LLM-role documentation if
+cited.

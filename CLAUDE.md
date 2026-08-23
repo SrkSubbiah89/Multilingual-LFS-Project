@@ -116,6 +116,25 @@ that retrieval quality, not reranking/reasoning quality, is the real
 accuracy ceiling (see "Semantic Relation Engine" section's earlier
 Gemini-vs-local-model finding) — now shown on a stronger retrieval base
 and a different provider, which rules out a one-off coincidence.
+**Full-scale confirmation, same day**: the 500-case e5-large-vs-e5-small
+result was a preliminary sample — re-ran flat retrieval, no reranking,
+on the complete 18,747-case heldout split (the identical cases and
+config as the canonical 21.19% result). **Result: 29.70% (5,567/18,747)
+vs. e5-small's 21.19% (3,973/18,747) — +8.50pp, McNemar exact
+p ≈ 7.34×10⁻¹⁶⁷, Wilson 95% CIs [29.05%,30.35%] vs. [20.61%,21.78%],
+non-overlapping.** This is now the headline, full-scale, statistically
+decisive result — not an estimate. Real per-language breakdown (paired,
+computed directly from both runs' per-case CSVs, not carried over from
+the 500-case sample): Arabic 14.62%→28.84% (+14.22pp), Hindi
+23.07%→30.95% (+7.88pp), Tagalog 14.47%→24.19% (+9.72pp), Urdu
+15.33%→26.66% (+11.34pp), **English 37.98%→37.59% (−0.39pp, flat, not
+meaningful)**. The gain is concentrated almost entirely in the four
+non-English languages — English alone does not benefit. Real cost:
+202ms/case full-scale mean (vs. e5-small's ~28ms/case under the same
+measurement method) — ~7x slower, still fast in absolute terms. Real
+artifact: `eval/local_runs/e5large_full_heldout_20260824/results.csv`.
+Still not switched to production default — same open decision as above,
+now backed by full-scale rather than sampled evidence.
 
 Real, currently-pinned dependency versions (from `requirements-dev.txt`,
 the file that actually pins exact versions — `requirements.txt` itself
@@ -324,6 +343,27 @@ dedicated passing tests.
   flagged for a future pass. See
   `Documentation/Conference_I_Reviewer_2/` and the RAG Implementation
   Dossier artifact for the full writeup.
+- **`get_llm(TaskType.GENERAL)` local-first automatic fallback chain,
+  2026-08-24**: previously fell back only Ollama → Claude; now Ollama →
+  Claude → Gemini → Groq → OpenRouter, stopping at the first provider
+  that's actually configured (`backend/llm/llm_client.py`,
+  `_get_general_llm_with_fallback()`). This is a real behavioural
+  widening of an already-documented "may fall back" contract —
+  `get_llm_strict()` is unchanged and still never substitutes; that's
+  the guarantee the eval harness depends on. An optional `trace=` dict
+  param records `resolved_provider`/`attempted_providers`/
+  `failure_reasons` so a substitution is always inspectable, never
+  silent. **Real limitation, disclosed not hidden**: the check is
+  construction-time only (is the key present), not a live liveness
+  probe — probing every hop on every call would burn real quota
+  (Gemini's free tier is ~20 requests/day). A key can be present with
+  zero usable credit, which this can't detect without an actual call.
+  This project's own `ANTHROPIC_API_KEY` is exactly that case (present,
+  zero credit, confirmed repeatedly) — excluded via
+  `LLM_FALLBACK_EXCLUDE=anthropic` in `.env` so the chain goes straight
+  to Gemini instead of reaching Claude and failing later, silently, at
+  actual inference time. 10 new tests; full suite passes with zero
+  regressions.
 
 ## The actual published WISCO evaluation result — read this before citing any accuracy number
 
