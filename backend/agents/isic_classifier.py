@@ -840,7 +840,11 @@ class ISICClassifier:
     _MIN_CANDIDATE_GAP  = 0.15   # skip LLM when top1-top2 score gap ≥ this (provisional -- see _classify_legacy)
     _TOP_K              = 3
 
-    def __init__(self, reranker_model: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        reranker_model: Optional[str] = None,
+        enable_corrective_retry: bool = False,
+    ) -> None:
         """
         Parameters
         ----------
@@ -855,8 +859,21 @@ class ISICClassifier:
             of cases. Existing callers that omit this (default None) get
             the exact previous behaviour: get_llm(TaskType.GENERAL) --
             Ollama, with Claude fallback if Ollama is unreachable.
+        enable_corrective_retry : bool, default False
+            Mirrors ISCOClassifier's enable_corrective_retry exactly (see
+            that class's docstring for the full evidence trail). When
+            True, and only when the keyword match is still ambiguous
+            after normal LLM re-ranking, one additional attempt is made:
+            the LLM proposes a reformulated industry description, that
+            phrase is re-scored with the same keyword matcher, and the
+            retry REPLACES the original only if it produced a strictly
+            wider top1/top2 candidate-score gap (the signal proven
+            reliable for correctness in this project's own measurements,
+            never raw confidence alone). Default False reproduces prior
+            behaviour exactly for every existing caller.
         """
         self._reranker_model_pin = reranker_model
+        self._enable_corrective_retry = enable_corrective_retry
         if reranker_model:
             self._llm = get_llm_strict(reranker_model, temperature=0.3)
         else:
@@ -933,11 +950,16 @@ class ISICClassifier:
         # LLM re-ranking
         top_candidates = [e for _, e in scored[:self._TOP_K]]
         llm_result = self._llm_rerank(text, top_candidates)
-        if llm_result:
-            return llm_result
+        result = llm_result if llm_result else self._make_result(best_entry, best_score * 0.8, "keyword", [], text)
 
-        # LLM failed — fall back to best keyword match with deflated confidence
-        return self._make_result(best_entry, best_score * 0.8, "keyword", [], text)
+        # ── Experimental: corrective retry (mirrors ISCOClassifier) ──────────
+        if self._enable_corrective_retry and self._llm is not None:
+            corrective = self._maybe_corrective_retry(text, gap)
+            if corrective is not None:
+                retry_entry, retry_score = corrective
+                result = self._make_result(retry_entry, retry_score, "keyword_corrective", [], text)
+
+        return result
 
     # ── Hierarchical retrieval, with explicit fallback labelling ────────────────
 
@@ -1048,8 +1070,17 @@ class ISICClassifier:
         (count / max_hits), which is mathematically always 1.0 for the top
         candidate whenever anything matches at all; see the bug note in
         _classify_legacy.
+
+        Tokenisation uses dict.fromkeys(), not set() -- found 2026-08-24: a
+        plain set()'s iteration order is PYTHONHASHSEED-dependent (randomised
+        per process by default), which made this function's tie-broken
+        results non-deterministic across process restarts whenever two
+        candidates matched the same token count -- confirmed directly to
+        flip which candidate wins for identical input text across different
+        hash seeds. dict.fromkeys() dedupes while preserving the tokens'
+        real appearance order in the text, which is deterministic.
         """
-        tokens = set(re.findall(r"[a-z\u0600-\u06ff]{3,}", text.lower()))
+        tokens = dict.fromkeys(re.findall(r"[a-z\u0600-\u06ff]{3,}", text.lower()))
         if not tokens:
             return []
 
@@ -1164,6 +1195,72 @@ class ISICClassifier:
             method="llm",
             raw_text=original_text,
         )
+
+    # ── Corrective retry (experimental, opt-in -- mirrors ISCOClassifier) ──────
+
+    def _maybe_corrective_retry(
+        self, text: str, current_gap: float,
+    ) -> Optional[tuple[dict, float]]:
+        """One-shot corrective retrieval attempt, mirroring
+        ISCOClassifier._maybe_corrective_retry exactly (see that method's
+        docstring for the full evidence trail behind the gap-based accept
+        rule). ISIC's keyword-token-overlap matching substitutes for
+        ISCO's vector retrieval, but "retrieve -> compare candidate-score
+        gap -> accept only if wider" is retrieval-method-agnostic. Returns
+        None (never raises) on any failure, or when the retry did not
+        produce a strictly wider gap than the original."""
+        reformulated = self._llm_reformulate_query(text)
+        if not reformulated:
+            return None
+
+        retry_scored = self._keyword_score(reformulated)
+        if not retry_scored:
+            return None
+
+        retry_score, retry_entry = retry_scored[0]
+        retry_second = retry_scored[1][0] if len(retry_scored) > 1 else 0.0
+        retry_gap = retry_score - retry_second
+
+        if retry_gap <= current_gap:
+            return None
+        return retry_entry, retry_score
+
+    def _llm_reformulate_query(self, text: str) -> Optional[str]:
+        """Ask the LLM for an alternative, more descriptive industry
+        description for *text*, given that the current best keyword match
+        looks ambiguous. Returns None (never raises) if the LLM is
+        unavailable, errors, or returns nothing usable."""
+        task_desc = (
+            f"A survey respondent described their industry as:\n\"{text}\"\n\n"
+            "This description was too ambiguous for automatic ISIC Rev.4 "
+            "classification. Propose a single, more specific and "
+            "descriptive rephrasing of this industry description that "
+            "would help identify the correct classification. Respond "
+            "with ONLY the rephrased text -- no explanation, no markdown, "
+            "no quotation marks."
+        )
+        try:
+            agent = Agent(
+                role="ISIC Industry Classifier",
+                goal="Propose a clearer rephrasing of an ambiguous industry description.",
+                backstory="You are an ILO statistician expert in ISIC Rev.4 industrial classification.",
+                llm=self._llm,
+                verbose=False,
+                allow_delegation=False,
+            )
+            task = Task(
+                description=task_desc,
+                expected_output="A single rephrased industry description, plain text only.",
+                agent=agent,
+            )
+            crew = Crew(agents=[agent], tasks=[task], verbose=False)
+            raw = str(crew.kickoff()).strip()
+        except Exception as exc:
+            log.warning("ISIC corrective retry: query reformulation failed: %s", exc)
+            return None
+
+        raw = raw.strip().strip('"').strip("'").strip()
+        return raw if raw else None
 
     # ── Fallback ──────────────────────────────────────────────────────────────
 

@@ -220,6 +220,29 @@ def test_llm_rerank_exception_falls_back_to_keyword(clf):
 
 
 # ---------------------------------------------------------------------------
+# 3b. Determinism (bug found 2026-08-24, same class as ISCED's): tie-broken
+#     keyword results must not depend on PYTHONHASHSEED / set() order.
+# ---------------------------------------------------------------------------
+
+def test_keyword_score_result_stable_across_repeated_calls():
+    clf = ISICClassifier.__new__(ISICClassifier)
+    text = "management consultancy and advisory services"  # documented real tie, see test_isic_isced_reranker_model.py
+    results = {scored[0][1]["class_code"] for _ in range(20) for scored in [clf._keyword_score(text)]}
+    assert len(results) == 1, f"tie-broken winner must be stable within a process, got {results}"
+
+
+def test_keyword_score_uses_deterministic_tokenisation_not_a_hash_ordered_set():
+    """The fix itself, checked directly: tokenisation must be
+    dict.fromkeys() (order-preserving), not set() (hash-order,
+    PYTHONHASHSEED-dependent) -- a regression guard against this exact
+    bug being reintroduced by a future refactor."""
+    import inspect
+    source = inspect.getsource(ISICClassifier._keyword_score)
+    assert "dict.fromkeys(" in source
+    assert "set(re.findall" not in source
+
+
+# ---------------------------------------------------------------------------
 # 4. method="isic_hierarchical_retrieval": real hierarchical retrieval +
 #    explicit fallback labelling (hermetic: FakeQdrantClient/FakeEmbedder,
 #    no live Qdrant, no embedding-model load)

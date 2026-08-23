@@ -464,7 +464,11 @@ class ISCEDClassifier:
     _MIN_CANDIDATE_GAP       = 0.15   # skip LLM when top1-top2 score gap ≥ this (provisional -- see ISICClassifier._classify_legacy)
     _TOP_K                   = 3
 
-    def __init__(self, reranker_model: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        reranker_model: Optional[str] = None,
+        enable_corrective_retry: bool = False,
+    ) -> None:
         """
         Parameters
         ----------
@@ -486,8 +490,19 @@ class ISCEDClassifier:
             ``reranker_model``: a missing or unreachable pinned model
             raises RuntimeError out of ``__init__`` immediately, never a
             silent substitution.
+        enable_corrective_retry : bool, default False
+            Mirrors ISCOClassifier/ISICClassifier's enable_corrective_retry
+            exactly, scoped to the FIELD dimension only (level is never
+            touched). When True, and only when the field match is still
+            ambiguous after normal LLM re-ranking, one additional attempt
+            is made: the LLM proposes a reformulated education/field
+            description, that phrase is re-scored with the same keyword
+            matcher, and the retry REPLACES the original field only if it
+            produced a strictly wider top1/top2 candidate-score gap.
+            Default False reproduces prior behaviour exactly.
         """
         self._reranker_model_pin = reranker_model
+        self._enable_corrective_retry = enable_corrective_retry
         self._llm = None
         self.reranker_model_resolved = "none (no reranker configured)"
         if reranker_model:
@@ -543,6 +558,13 @@ class ISCEDClassifier:
             if llm_result is not None:
                 field_entry, field_conf = llm_result
                 method = "llm"
+
+        # ── Experimental: corrective retry (mirrors ISCOClassifier/ISICClassifier) ──
+        if self._enable_corrective_retry and self._llm is not None:
+            corrective = self._maybe_corrective_retry_field(text, field_gap)
+            if corrective is not None:
+                field_entry, field_conf = corrective
+                method = "keyword_corrective" if method == "keyword" else f"{method}_corrective"
 
         # Use field confidence if there's a strong signal, else default to generic
         combined_conf = round(min((level_conf * 0.4 + field_conf * 0.6), 1.0), 4)
@@ -630,7 +652,22 @@ class ISCEDClassifier:
     # ── Level scoring ──────────────────────────────────────────────────────────
 
     def _score_level(self, text: str) -> tuple[dict, float]:
-        tokens = set(re.findall(r"[a-z\u0600-\u06ff]{2,}", text.lower()))
+        # Bug found 2026-08-24 while chasing a flaky test: set(re.findall(...))
+        # deduplicates via a Python set, whose iteration order depends on
+        # PYTHONHASHSEED -- randomised per process by default. Whenever two
+        # levels tie on hit count (a real, common case -- e.g. "bachelor"
+        # (level 6) and "education" (level 0, via "no education"'s tokenised
+        # keyword) both hitting once), max(hit_counts, key=...) returns
+        # whichever tied key appeared FIRST in that process's set iteration
+        # order -- confirmed directly to flip the winning level across
+        # different PYTHONHASHSEED values for the identical input text. This
+        # made level classification non-deterministic across server
+        # restarts, not just a test artifact. dict.fromkeys(...) dedupes
+        # while preserving the tokens' real appearance order in the source
+        # text (deterministic, and a more defensible tie-break rule than an
+        # arbitrary hash) -- same fix applied to _score_field_candidates
+        # below and ISICClassifier._keyword_score.
+        tokens = dict.fromkeys(re.findall(r"[a-z\u0600-\u06ff]{2,}", text.lower()))
         hit_counts: dict[int, int] = {}
         hit_entries: dict[int, dict] = {}
         for tok in tokens:
@@ -654,11 +691,17 @@ class ISCEDClassifier:
         normalisation by the winning entry's own hit count (which would make
         the top-1 score mathematically always 1.0 -- see the identical bug
         found and fixed in ISICClassifier._keyword_score, 2026-08-23).
+
+        Tokenisation uses dict.fromkeys(), not set() -- see the bug note in
+        _score_level() above (2026-08-24): a plain set()'s iteration order
+        is PYTHONHASHSEED-dependent, which made tie-broken results here
+        non-deterministic across process restarts. dict.fromkeys() dedupes
+        while preserving the tokens' real appearance order in the text.
         """
-        tokens = set(re.findall(r"[a-z\u0600-\u06ff]{2,}", text.lower()))
+        tokens = dict.fromkeys(re.findall(r"[a-z\u0600-\u06ff]{2,}", text.lower()))
         hit_counts: dict[str, int] = {}
         hit_entries: dict[str, dict] = {}
-        matched_tokens: set[str] = set()
+        matched_tokens: set[str] = set()   # order-independent -- only its length is used below
         for tok in tokens:
             entries = _FIELD_TOKEN_INDEX.get(tok, [])
             if entries:
@@ -756,6 +799,71 @@ class ISCEDClassifier:
             conf *= 0.7
 
         return entry, round(min(conf, 1.0), 4)
+
+    # ── Corrective retry (experimental, opt-in -- mirrors ISCOClassifier/ISICClassifier) ──
+
+    def _maybe_corrective_retry_field(
+        self, text: str, current_gap: float,
+    ) -> Optional[tuple[dict, float]]:
+        """One-shot corrective retrieval attempt for the FIELD dimension
+        only, mirroring ISICClassifier._maybe_corrective_retry exactly
+        (same gap-based accept rule, same evidence trail). ISCED 2011
+        LEVEL is never touched by this -- it stays independently
+        classified by _score_level() regardless. Returns None (never
+        raises) on any failure, or when the retry did not produce a
+        strictly wider gap than the original."""
+        reformulated = self._llm_reformulate_field_query(text)
+        if not reformulated:
+            return None
+
+        retry_scored = self._score_field_candidates(reformulated)
+        if not retry_scored:
+            return None
+
+        retry_score, retry_entry = retry_scored[0]
+        retry_second = retry_scored[1][0] if len(retry_scored) > 1 else 0.0
+        retry_gap = retry_score - retry_second
+
+        if retry_gap <= current_gap:
+            return None
+        return retry_entry, retry_score
+
+    def _llm_reformulate_field_query(self, text: str) -> Optional[str]:
+        """Ask the LLM for an alternative, more descriptive field-of-study
+        description for *text*, given that the current best keyword match
+        looks ambiguous. Returns None (never raises) if the LLM is
+        unavailable, errors, or returns nothing usable."""
+        task_desc = (
+            f"A survey respondent described their education / field of study as:\n\"{text}\"\n\n"
+            "This description was too ambiguous for automatic ISCED-F "
+            "2013 field classification. Propose a single, more specific "
+            "and descriptive rephrasing of this field-of-study description "
+            "that would help identify the correct classification. Respond "
+            "with ONLY the rephrased text -- no explanation, no markdown, "
+            "no quotation marks."
+        )
+        try:
+            agent = Agent(
+                role="ISCED-F 2013 Field Classifier",
+                goal="Propose a clearer rephrasing of an ambiguous field-of-study description.",
+                backstory="You are a UNESCO Institute for Statistics expert in ISCED-F 2013 field-of-education classification.",
+                llm=self._llm,
+                verbose=False,
+                allow_delegation=False,
+            )
+            task = Task(
+                description=task_desc,
+                expected_output="A single rephrased field-of-study description, plain text only.",
+                agent=agent,
+            )
+            crew = Crew(agents=[agent], tasks=[task], verbose=False)
+            raw = str(crew.kickoff()).strip()
+        except Exception as exc:
+            log.warning("ISCED-F corrective retry: query reformulation failed: %s", exc)
+            return None
+
+        raw = raw.strip().strip('"').strip("'").strip()
+        return raw if raw else None
 
     # ── Fallback ───────────────────────────────────────────────────────────────
 
