@@ -343,6 +343,42 @@ dedicated passing tests.
   flagged for a future pass. See
   `Documentation/Conference_I_Reviewer_2/` and the RAG Implementation
   Dossier artifact for the full writeup.
+- **A second, more serious real bug in the same functions, found and
+  fixed 2026-08-24 while porting corrective retry to ISIC/ISCED**:
+  `ISCEDClassifier._score_level()`/`_score_field_candidates()` and
+  `ISICClassifier._keyword_score()` tokenised query text via
+  `set(re.findall(...))`. A Python `set`'s iteration order depends on
+  `PYTHONHASHSEED`, which is **randomised by default every time a Python
+  process starts** — so whenever two candidates tied on keyword-hit
+  count (a common case with this integer-count scoring — e.g. "bachelor"
+  (ISCED level 6) and "education" (level 0, via the level-0 keyword
+  string's own tokenised "no education") both hitting once for a real
+  input text), `max(hit_counts, key=...)`'s tie-break silently depended
+  on which token the hash-randomised set happened to iterate first.
+  **Confirmed directly**: the identical input text classified to a
+  different ISCED level across different `PYTHONHASHSEED` values (tested
+  0 through 6) — meaning **the same respondent answer could classify
+  differently depending on which process/server restart handled it**, a
+  real production non-determinism bug, not just a test flake (it was
+  first caught as an intermittently-failing test). Root cause traced by
+  comparing against `ISCOClassifier._keyword_major_hint()`, which was
+  never affected because it already iterates `re.findall()`'s list
+  directly rather than wrapping it in `set()`. Fixed in all three
+  functions by switching to `dict.fromkeys(re.findall(...))`, which
+  dedupes while preserving each token's real first-appearance order in
+  the source text — deterministic, and a more defensible tie-break rule
+  than an arbitrary hash. 5 new regression tests, including one that
+  greps the fixed function's own source for `dict.fromkeys(` and asserts
+  `set(re.findall` is absent, as a guard against this exact bug being
+  reintroduced by a future refactor.
+- **Corrective RAG retry ported to ISIC/ISCED, 2026-08-24**: previously
+  ISCO-08 only. `ISICClassifier`/`ISCEDClassifier` gained
+  `enable_corrective_retry` mirroring `ISCOClassifier`'s exactly (same
+  gap-based accept rule: retry replaces the original only if it produces
+  a strictly wider top1/top2 candidate-score gap, never on raw
+  confidence alone). ISCED's retry is scoped to the FIELD dimension only
+  — level stays deterministic. Default `False`, zero behavioural change
+  for existing callers. 10 new tests.
 - **`get_llm(TaskType.GENERAL)` local-first automatic fallback chain,
   2026-08-24**: previously fell back only Ollama → Claude; now Ollama →
   Claude → Gemini → Groq → OpenRouter, stopping at the first provider

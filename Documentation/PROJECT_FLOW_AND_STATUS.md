@@ -179,7 +179,7 @@ OTP-based authentication rather than storing passwords.
 | Cloud LLM providers | Anthropic Claude 3.5 Sonnet, Google Gemini, Groq, OpenRouter — all opt-in, fail-closed if unconfigured |
 | Embedding model | `intfloat/multilingual-e5-small` (default, 384-dim) / `multilingual-e5-large` (1024-dim, evaluated, not yet default) |
 | Containerization | Docker Compose (infra services); backend/frontend run natively in development |
-| Testing | pytest (2,352 tests as of this document's date) |
+| Testing | pytest (2,376 tests as of this document's date) |
 
 **Why this stack, briefly**: FastAPI + CrewAI gives typed, testable agent
 boundaries without committing to a heavyweight orchestration framework
@@ -535,7 +535,7 @@ Swagger UI at `/docs` on a running instance.
 
 ## 15. Testing
 
-2,352 tests pass as of this document's date (`pytest backend/tests
+2,376 tests pass as of this document's date (`pytest backend/tests
 eval/ -q`), covering agent logic, the RAG retrieval engine, database
 models, API routes, and the evaluation harness itself. Tests are
 hermetic — no live Qdrant/Ollama/network dependency in the default
@@ -552,7 +552,7 @@ documented smoke tests against a running instance.
 |---|---|
 | Core conversational survey flow (11 sections, skip logic, multilingual) | Built and tested |
 | ISCO-08 classification (flat + hierarchical + optional reranking) | Built, tested, **evaluated at scale** (§12, rows 2–3) |
-| ISIC Rev.4 / ISCED-F 2013 classification | Built and tested; hierarchical retrieval live since 2026-08-23; **accuracy not yet evaluated** against a labelled test set; catalogue coverage is 134/419 ISIC classes and 63/~80 ISCED-F fields |
+| ISIC Rev.4 / ISCED-F 2013 classification | Built and tested; hierarchical retrieval live since 2026-08-23; corrective-retry parity with ISCO-08 added 2026-08-24; a real non-determinism bug in the keyword scorers found and fixed the same day (below); **accuracy not yet evaluated** against a labelled test set; catalogue coverage is 134/419 ISIC classes and 63/~80 ISCED-F fields |
 | Semantic Relation Engine (cross-standard consistency) | Built, tested, validated (§12.3) |
 | HITL escalation | Built, wired into the live API, verified (§12.3) |
 | Local-first, automatic cloud-fallback LLM routing | Built and tested (§8.1) — 2026-08-24 |
@@ -561,6 +561,43 @@ documented smoke tests against a running instance.
 | Real Claude 3.5 Sonnet cost/latency measurement | Not obtained — every attempt so far has hit zero API credit. |
 | Full-scale WISCO evaluation, e5-large retrieval, no reranking | **Done, 2026-08-24** — full 18,747-case heldout, +8.50pp over e5-small (§12 row 4) |
 | Full-scale WISCO evaluation with reranking enabled | Still not run at full 18,747-case scale (500-case samples exist; see §12, rows 10–11) — blocked by real API rate limits, not effort; see §12's reranking-null-result, already proven at n=500 on the stronger retrieval base |
+
+### 16.1 A real production non-determinism bug, found and fixed
+
+While porting corrective retry to ISIC/ISCED (mirroring ISCO-08's
+existing implementation — see below), a test that should have been
+completely deterministic failed intermittently. Chasing it down found a
+genuine bug, not a test artifact: `ISCEDClassifier`'s level/field scorers
+and `ISICClassifier`'s keyword scorer all tokenised query text via
+`set(re.findall(...))`. A Python `set`'s iteration order depends on
+`PYTHONHASHSEED`, which is **randomised by default every time a Python
+process starts**. Whenever two candidates tied on keyword-hit count —
+common, given the integer-count scoring (e.g. "bachelor," ISCED level 6,
+and "education," level 0 via the level-0 keyword string's own tokenised
+"no education," both hitting once for a real input) — the tie-break
+silently depended on which token the hash-randomised set happened to
+iterate first. **Confirmed directly**: the identical input text
+classified to a different ISCED level across different `PYTHONHASHSEED`
+values (tested 0 through 6) — meaning **the same respondent answer could
+classify differently depending on which server process handled it**, a
+real correctness bug, not a benchmark-only concern. `ISCOClassifier` was
+never affected — its own keyword-hint function already iterated
+`re.findall()`'s list directly rather than wrapping it in `set()`, which
+is exactly what pointed to the fix: switch to `dict.fromkeys(re.findall(
+...))`, which dedupes while preserving each token's real first-
+appearance order in the source text. Deterministic, and a more
+defensible tie-break rule than an arbitrary hash. 5 new regression
+tests, including one that inspects the fixed functions' own source to
+guard against this exact bug being reintroduced by a future refactor.
+
+**Corrective retry, ported the same day**: `ISICClassifier`/
+`ISCEDClassifier` gained `enable_corrective_retry`, mirroring
+`ISCOClassifier`'s exactly (same gap-based accept rule — a retry
+replaces the original only if it produces a strictly wider top1/top2
+candidate-score gap, never on raw confidence alone). ISCED's retry is
+scoped to the field dimension only; level stays deterministic. Default
+`False`, zero behavioural change for existing callers. This closes the
+"same logic across ISCO-08/ISIC/ISCED" gap.
 
 ## 17. Open decisions for you and your supervisor
 
@@ -691,6 +728,15 @@ forensic-level detail on any one topic:
 
 ## 21. Change log
 
+- **2026-08-24 (final update, part 2)** — Ported corrective RAG retry to
+  ISIC/ISCED (§16.1), closing the "same logic across ISCO-08/ISIC/ISCED"
+  gap. While doing that, found and fixed a real production non-
+  determinism bug: ISIC/ISCED's keyword scorers used `set()` for
+  tokenisation, whose iteration order is `PYTHONHASHSEED`-dependent —
+  confirmed directly that identical input text could classify to a
+  different result depending on which server process handled it. Fixed
+  to `dict.fromkeys()` (deterministic, order-preserving). 15 new tests
+  across both changes; full suite re-run with zero regressions.
 - **2026-08-24 (final update)** — The full 18,747-case e5-large heldout
   confirmation finished: **29.70% vs. e5-small's 21.19%, +8.50pp,
   McNemar p≈7.34×10⁻¹⁶⁷**, matching the exact scale of the original
