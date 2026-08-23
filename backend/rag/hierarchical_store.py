@@ -120,7 +120,7 @@ from sentence_transformers import SentenceTransformer
 
 from backend.rag import hierarchy_engine
 from backend.rag.hierarchy_engine import HierarchyBeamSearchEngine, SeedSpec, StageConfig, StageOverride
-from backend.rag.official_isco08_catalogue import PROFILE_COLLECTION_NAMES
+from backend.rag.official_isco08_catalogue import PROFILE_COLLECTION_NAMES, embedding_config_for_profile
 
 load_dotenv()
 
@@ -568,7 +568,16 @@ class HierarchicalISCOStore:
         _timeout = timeout_seconds if timeout_seconds is not None else _resolve_qdrant_timeout_seconds()
 
         self._client = QdrantClient(host=_host, port=_port, timeout=_timeout)
-        self._model  = SentenceTransformer(MODEL_NAME)
+        # 2026-08-24: per-profile embedding identity (additive). Every
+        # profile that existed before this date is absent from
+        # PROFILE_EMBEDDING_CONFIG and so resolves to the unchanged
+        # (MODEL_NAME, VECTOR_DIM) default -- byte-identical behaviour for
+        # every existing caller. Only E5LARGE_PROFILE resolves to a
+        # different model.
+        _embed_model_name, _embed_vector_dim = embedding_config_for_profile(profile)
+        self._model  = SentenceTransformer(_embed_model_name)
+        self.embedding_model_identity = _embed_model_name
+        self.embedding_vector_dim = _embed_vector_dim
         self._col_flat = col_flat
 
         # Pre-check which collections exist so we know upfront whether to

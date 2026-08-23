@@ -42,6 +42,7 @@ from typing import Optional
 import yaml
 
 DEFAULT_PROFILE = "official_ilo2021_v1"
+E5LARGE_PROFILE = "official_ilo2021_v1_e5large"
 DEFAULT_METADATA_PATH = Path(__file__).resolve().parents[2] / "eval" / "verified_catalogue_counts.yaml"
 
 LEVELS = ("major", "submajor", "minor", "unit")
@@ -71,7 +72,40 @@ PROFILE_COLLECTION_NAMES: dict[str, dict[str, str]] = {
         "unit": "isco08_unit_groups_ilo2021_v1",
         "flat": "isco08_unit_groups_flat_ilo2021_v1",
     },
+    # 2026-08-24: same official ILO 2021 catalogue records, embedded with
+    # intfloat/multilingual-e5-large (1024-dim) instead of -small (384-dim)
+    # -- a direct retrieval-recall comparison earlier this project measured
+    # +11.1pp Recall@1 for -large over -small. Distinct collection names
+    # (required -- Qdrant collections are fixed-dimension, so a larger
+    # vector size can never reuse the -small collections) and a distinct
+    # profile identifier so this is an additive, opt-in comparator, never a
+    # silent change to the already-published official_ilo2021_v1 Tier-1
+    # result.
+    E5LARGE_PROFILE: {
+        "major": "isco08_major_groups_ilo2021_v1_e5large",
+        "submajor": "isco08_submajor_groups_ilo2021_v1_e5large",
+        "minor": "isco08_minor_groups_ilo2021_v1_e5large",
+        "unit": "isco08_unit_groups_ilo2021_v1_e5large",
+        "flat": "isco08_unit_groups_flat_ilo2021_v1_e5large",
+    },
 }
+
+# Per-profile embedding identity. Every profile not listed here defaults to
+# (intfloat/multilingual-e5-small, 384) -- the project's long-standing
+# default -- via PROFILE_EMBEDDING_CONFIG.get(profile, _DEFAULT_EMBEDDING).
+_DEFAULT_EMBEDDING = ("intfloat/multilingual-e5-small", 384)
+PROFILE_EMBEDDING_CONFIG: dict[str, tuple[str, int]] = {
+    E5LARGE_PROFILE: ("intfloat/multilingual-e5-large", 1024),
+}
+
+
+def embedding_config_for_profile(profile: str) -> tuple[str, int]:
+    """Return (model_name, vector_dim) for *profile*. Every profile not
+    explicitly listed in PROFILE_EMBEDDING_CONFIG (i.e. every profile that
+    existed before 2026-08-24) resolves to the unchanged
+    intfloat/multilingual-e5-small / 384 default -- this function can only
+    ever return something *different* for a profile that opts in."""
+    return PROFILE_EMBEDDING_CONFIG.get(profile, _DEFAULT_EMBEDDING)
 
 
 class OfficialISCO08CatalogueError(Exception):
