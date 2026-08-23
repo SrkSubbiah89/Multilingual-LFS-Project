@@ -82,9 +82,10 @@ ADJUDICATION_STATUSES = frozenset({
 })
 
 SPLIT_DEV = "dev"
+SPLIT_VALIDATION = "validation"
 SPLIT_HELDOUT = "heldout"
 SPLIT_EXCLUDED = "excluded"
-SPLITS = frozenset({SPLIT_DEV, SPLIT_HELDOUT, SPLIT_EXCLUDED})
+SPLITS = frozenset({SPLIT_DEV, SPLIT_VALIDATION, SPLIT_HELDOUT, SPLIT_EXCLUDED})
 
 
 class BenchmarkRecord(BaseModel):
@@ -115,5 +116,5 @@ class BenchmarkRecord(BaseModel):
     ambiguity_flag: bool = Field(False, description="True if this case is ambiguous/unclassifiable -- see exclusion_reason. Never force a false gold_code to avoid setting this.")
     exclusion_reason: Optional[str] = Field(None, description="Required (non-null) when ambiguity_flag is true, or when this record is split='excluded'. Explains why, never fabricated.")
 
-    split: str = Field(..., description="One of SPLITS ('dev', 'heldout', 'excluded').")
+    split: str = Field(..., description="One of SPLITS ('dev', 'validation', 'heldout', 'excluded').")
     record_hash: Optional[str] = Field(None, description="sha256 of this record's canonical JSON, computed by the builder -- lets a reader verify a record was not altered after gold-label assignment.")

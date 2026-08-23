@@ -179,7 +179,11 @@ def check_near_duplicates(records: list[dict], similarity_threshold: float = 0.9
 # ---------------------------------------------------------------------------
 
 def check_code_distribution(records: list[dict]) -> dict:
-    by_split: dict[str, Counter] = {"dev": Counter(), "heldout": Counter(), "excluded": Counter()}
+    # defaultdict, not a fixed {"dev", "heldout", "excluded"} dict -- a
+    # KeyError here on any split value controlled_benchmark_schema.SPLITS
+    # actually allows (e.g. "validation", added 2026-08-24) would be a
+    # real bug, not a defensive check catching bad data.
+    by_split: dict[str, Counter] = defaultdict(Counter)
     unit_by_split: dict[str, set] = defaultdict(set)
     for r in records:
         code = r["gold_code"]

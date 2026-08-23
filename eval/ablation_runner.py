@@ -121,7 +121,7 @@ CONFIGS: dict[str, ExperimentConfig] = {
     ),
 }
 
-VALID_SPLITS = ("dev", "heldout")
+VALID_SPLITS = ("dev", "validation", "heldout")
 
 # GovernanceError is defined in validate_real_lfs_governance.py (the single
 # source of truth for the governance gate) and re-exported here so existing
@@ -140,7 +140,12 @@ def _split_output_dir(split: str, output_root: Optional[Path] = None) -> Path:
         raise ValueError(f"split must be one of {VALID_SPLITS}, got {split!r}")
     if output_root is not None:
         return output_root / split
-    return DEV_SELECTION_DIR if split == "dev" else RAW_RUNS_DIR
+    # 2026-08-24: validation (like dev) is a parameter-selection split --
+    # its output must land in DEV_SELECTION_DIR, never RAW_RUNS_DIR, or
+    # it would silently qualify as a "confirmed result" per this
+    # function's own docstring/module contract. Only heldout goes to
+    # RAW_RUNS_DIR.
+    return RAW_RUNS_DIR if split == "heldout" else DEV_SELECTION_DIR
 
 
 def build_argv(

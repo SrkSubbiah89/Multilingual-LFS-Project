@@ -81,6 +81,20 @@ def test_heldout_split_routes_to_raw_runs_dir():
     assert ar._split_output_dir("heldout") == ar.RAW_RUNS_DIR
 
 
+def test_validation_split_routes_to_dev_selection_dir_not_raw_runs():
+    """validation (2026-08-24) is a parameter-selection split like dev --
+    its output must never land in RAW_RUNS_DIR, or it would silently
+    qualify as a citable confirmed result per this module's own contract
+    (only heldout manifests are ever read as confirmed -- see
+    find_confirmed_manifest())."""
+    assert ar._split_output_dir("validation") == ar.DEV_SELECTION_DIR
+    assert ar._split_output_dir("validation") != ar.RAW_RUNS_DIR
+
+
+def test_validation_is_in_valid_splits():
+    assert "validation" in ar.VALID_SPLITS
+
+
 def test_invalid_split_raises():
     with pytest.raises(ValueError):
         ar._split_output_dir("bogus")
