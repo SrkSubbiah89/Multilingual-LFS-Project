@@ -1029,7 +1029,8 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │   │           ├── 001_initial_schema.py
 │   │           ├── 976b9b9c96d4_add_hitlqueue_evaluation_tables.py
 │   │           ├── f514fcb81c72_add_deleted_at_soft_delete_columns.py
-│   │           └── a3f9c1d2e4b6_add_survey_response_supersedes_id.py
+│   │           ├── a3f9c1d2e4b6_add_survey_response_supersedes_id.py
+│   │           └── c7e2a48f9d31_add_report_isic_isced_coherence_columns.py
 │   ├── llm/
 │   │   └── llm_client.py       # LLM factory: Ollama (GENERAL) / Claude (CRITICAL)
 │   ├── rag/

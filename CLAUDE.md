@@ -81,10 +81,30 @@ docker compose -f docker/docker-compose.yml up --build
 | Redis 7 | internal :6379 | confirmed healthy |
 | Ollama | http://localhost:11434 | confirmed healthy; models present: `llama3.2:1b`, `llama3.2:latest`, `gemma3:4b` |
 
-First-boot note: the embedding model actually in use is
+First-boot note: the embedding model actually in use **by default** is
 `intfloat/multilingual-e5-small` (not `-large` as some older documents
 say) — confirmed in `backend/rag/hierarchical_store.py` and
-`backend/rag/vector_store.py`.
+`backend/rag/vector_store.py`. **2026-08-24: a real, larger alternative
+now exists and is measurably better, but is not yet the default.** A new,
+additive `official_ilo2021_v1_e5large` catalogue profile
+(`intfloat/multilingual-e5-large`, 1024-dim) was built, live-verified,
+and evaluated end-to-end against an independent 500-case WISCO dev
+sample (flat retrieval, no LLM reranking — same config as the published
+21.19% baseline): **29.20% (146/500) vs. e5-small's 20.60% (103/500)**,
+McNemar exact p ≈ 1.77×10⁻⁶, Wilson 95% CIs non-overlapping
+([25.39%,33.33%] vs. [17.29%,24.36%]). Gain is largest on Arabic
+(12.93%→26.72%) and consistent across every language. Cost: ~5.2x
+slower per query (145ms vs. 28ms — both still fast in absolute terms).
+Real artifacts: `eval/local_runs/e5large_build_manifest_20260823.json`,
+`eval/local_runs/e5large_vs_e5small_dev500_20260824/results.csv`. **Not
+yet switched to production default** — `official_ilo2021_v1` (e5-small)
+remains the default `isco_catalogue_profile`; switching requires
+rebuilding the flat/hierarchical/ISIC/ISCED-F collections too and is a
+call for you and your supervisor, same as the flat-vs-hierarchical
+default decision already flagged elsewhere in this document. New code:
+`backend/rag/build_official_isco08_collections_e5large.py`,
+`embedding_config_for_profile()` in `official_isco08_catalogue.py`. 10
+new tests, full suite re-run: 2,342 passed, 0 failed.
 
 Real, currently-pinned dependency versions (from `requirements-dev.txt`,
 the file that actually pins exact versions — `requirements.txt` itself
@@ -110,10 +130,33 @@ pytest-asyncio==1.3.0
 `hitl_queue`, `person_register`, `survey_report_records`.
 
 Migrations (`backend/database/migrations/versions/`, confirmed current
-chain, applied through head as of 2026-08-12):
+chain, applied through head as of 2026-08-21):
 `001_initial_schema` → `976b9b9c96d4_add_hitlqueue_evaluation_tables` →
 `f514fcb81c72_add_deleted_at_soft_delete_columns` →
-`a3f9c1d2e4b6_add_survey_response_supersedes_id`.
+`a3f9c1d2e4b6_add_survey_response_supersedes_id` →
+`c7e2a48f9d31_add_report_isic_isced_coherence_columns` — fixes a real bug
+found 2026-08-21: `ReportGenerator.generate()` (`backend/agents/
+report_generator.py`) correctly computed ISIC/ISCED/semantic-coherence
+results on first generation, but `survey_report_records` had no columns
+to persist them, so every subsequent cache-hit read of an already-
+generated report (`regenerate=False`, the default — i.e. any normal
+report re-view) silently returned `null` for all three, even when the
+underlying data was present and classifiable. Reproduced against a real
+account before being fixed; regression tests in
+`backend/tests/test_report_generator.py::TestEnrichmentPersistence`.
+
+**A second, independent bug in the same code path, found by that same
+regression test**: `report_generator.py`'s `semantic_coherence` dict was
+built with `dataclasses.asdict(v) for v in val` over an already-recursed
+`dataclasses.asdict(sc)` result — `asdict()` already converts nested
+dataclasses (e.g. `sc.violations`) to plain dicts, so the second call
+raised `TypeError` on every single invocation, silently swallowed by a
+bare `except Exception: pass`. This meant `semantic_coherence` was `null`
+in every report this method ever generated, independent of the caching
+bug above. Fixed to a single `dataclasses.asdict(sc)` call — the same
+fix already applied earlier to the identical pattern in
+`backend/api/survey_routes.py`'s `semantic_coherence_out` (that fix did
+not get propagated to this second, separate occurrence at the time).
 
 ## API (17 routes, from the live OpenAPI spec)
 
@@ -237,10 +280,39 @@ dedicated passing tests.
   (`backend/rag/hierarchy_nodes.py`, `standard_hierarchical_store.py`,
   `build_standard_hierarchical_collections.py`), reusing the same
   generic beam-search engine ISCO-08 uses. **The live Qdrant collections
-  for these have never been populated** (`--execute` never run) — so in
-  practice, `method="isic_hierarchical_retrieval"` always falls back to
-  the legacy keyword/LLM pipeline today. Data coverage: 134/419 ISIC
-  classes, 63/~80 ISCED-F detailed fields.
+  were built and populated 2026-08-23** (`--execute` run for both
+  standards: `isic_rev4_{sections,divisions,groups,classes}` — 21/68/118/134
+  nodes — and `iscedf2013_{broad,narrow,detailed}_fields` — 11/25/63 nodes),
+  confirmed live directly: `ISICClassifier().classify(text,
+  method=ISIC_HIERARCHICAL_RETRIEVAL)` and the ISCED-F equivalent both
+  return `fallback_used=False` on a real query — genuine hierarchical
+  retrieval, not the legacy fallback. **Accuracy against a labelled test
+  set is still not yet evaluated** — that remains open. Data coverage
+  (unchanged by this): 134/419 ISIC classes, 63/~80 ISCED-F detailed
+  fields.
+- **ISIC/ISCED-F reranker parity + a real dead-code bug, fixed 2026-08-23**:
+  `ISICClassifier`/`ISCEDClassifier` gained a `reranker_model` constructor
+  param mirroring `ISCOClassifier`'s exactly (fail-closed via
+  `get_llm_strict()`, `None` default preserves prior behaviour byte-for-
+  byte). Wiring it up surfaced a genuine, previously-undiscovered bug: both
+  classifiers' keyword-confidence score normalised the top candidate by
+  *its own hit count* (`count / max_hits`), which is algebraically always
+  1.0 — since the LLM-rerank gate was `score >= 0.85`, the LLM branch
+  (present since these classifiers were first written) was **permanently
+  unreachable in production**, confirmed by computing real scores against
+  real queries. Fixed by renormalising to a genuine match-coverage
+  fraction plus a gap-based trigger reusing the top1/top2-candidate-gap
+  method already proven for ISCO (`_MIN_CANDIDATE_GAP = 0.15`, a disclosed
+  provisional judgement call, not independently measured). 17 new tests;
+  full suite (2,332 tests) passes with zero regressions. Live-verified
+  against the real Gemini API: genuinely-ambiguous inputs (e.g. "medical
+  and dental studies") now correctly fire `method="llm"`; unambiguous ones
+  correctly stay `"keyword"`. A smaller, separate quirk (a keyword
+  repeated within one catalogue entry's own keyword string is indexed once
+  per repetition, inflating that entry's score) was found but not fixed —
+  flagged for a future pass. See
+  `Documentation/Conference_I_Reviewer_2/` and the RAG Implementation
+  Dossier artifact for the full writeup.
 
 ## The actual published WISCO evaluation result — read this before citing any accuracy number
 
@@ -291,43 +363,112 @@ search.
 
 ## Active task backlog — real status, not the external draft's assumed status
 
-- **Module A (WISCO external validation)**: substantially done. Real
-  Week 1 data-prep work exists (`Documentation/Phase_2/Week_1/`); the
-  actual official-profile classification run happened (table above).
-  Per-language accuracy breakdown not yet compiled as a standalone table.
+**Correction, 2026-08-24**: everything below this line was stale. This
+document's own header claims verification "on 2026-08-12," but a real,
+committed, 9-prompt work sequence (commits `cabcc75` through `df813af`,
+dated 2026-08-15 through 2026-08-21 — all on this branch, confirmed via
+`git log`) substantially completed Modules A/D/F/I/J *after* that date
+and was never folded back into this document. Corrected below by reading
+the actual committed evidence directly, not by trusting the prior text.
+
+- **Module A (WISCO external validation)**: substantially done, **and
+  the per-language breakdown this document previously said was missing
+  already exists**: `Documentation/Conference_I_Reviewer_2/generated/
+  wisco_tier1_topk_kappa.json` (commit `cabcc75`) — real per-language
+  top-1/top-3/Cohen's κ/95% CI for all 5 languages, both flat and
+  hierarchical, reproduced in `Documentation/Phase_2/
+  FINAL_RESULTS_PACKAGE.md` Table 6.1b.
 - **Module B (ISIC full coverage)**: infrastructure ready and tested;
-  data coverage 134/419 is the real remaining gap.
-- **Module C (ISCED-F full coverage)**: infrastructure ready and tested;
-  data coverage 63/~80 is the real remaining gap.
-- **Module D (SRE official crosswalk)**: LOW-severity gap already fixed.
-  Crosswalk tables still hand-built — real work needed, requires the
-  actual official ILO/UNESCO source documents, not a guess.
-- **Module E (pilot, n=30)**: not started. No ethics application
-  submitted as of the last check — the single most time-critical open
-  item in the whole project, independent of all code work.
-- **Module F (synthetic Person Register data)**: not started, no code
-  exists yet, correctly scoped as supplementary-only.
-- **Module G (multilingual validation)**: WISCO's Arabic data confirmed
-  to have zero dialectal content — the planned dialect-normalization A/B
-  test cannot run against it as originally scoped; needs a different
-  data source or a redefined experiment.
-- **Module H (CrewAI architecture evaluation)**: not started. Its
-  "delegation correctness" framing needs rescoping first — this system
-  never uses CrewAI delegation (see agent table above); the real
-  evaluable target is "orchestration correctness" (does the calling code
-  invoke the right agent at the right time).
-- **Modules I/J (computational efficiency, LLM tier-routing ablation)**:
-  not independently verified against the repo in this pass — treat as
-  genuinely not-yet-started unless checked directly.
+  hierarchical-retrieval Qdrant collections populated and live-verified
+  2026-08-23 (see above); `reranker_model` cloud-LLM parity added
+  2026-08-23, plus a genuine dead-code confidence-scoring bug found and
+  fixed the same day (see below). Data coverage (134/419 classes) is the
+  real remaining gap — unchanged, and no official ISIC Rev.4 catalogue
+  has ever been imported/verified (unlike ISCO-08's Task 20/21 primary-
+  source pass), so `official_count_verified` stays `null`.
+- **Module C (ISCED-F full coverage)**: same status as Module B —
+  collections live, reranker parity added, same bug fixed. Data coverage
+  (63/~80 detailed fields) is the real remaining gap.
+- **Module D (SRE official crosswalk)**: more resolved than "needs work."
+  LOW-severity gap fixed. Expanded to a real 61-case validation set with
+  `n_mismatches=0` (commit `f44cd79`, see `Documentation/Phase_2/
+  FINAL_RESULTS_PACKAGE.md` Table 6.3). **A HIGH-severity SRE result now
+  genuinely escalates to the live HITL queue** — wired and verified 3x
+  against the real `/survey/sessions/{id}/message` endpoint, 100%/15 HIGH
+  escalated, 0%/46 non-HIGH escalated, byte-identical across all 3 runs
+  (commit `0eba4d4`). The crosswalk-table sourcing question this
+  document previously framed as "find the ILO/UNESCO document" was
+  **investigated directly and found to be a dead end, not a to-do**: the
+  real, complete 433-page ISCO-08 Vol. I PDF was searched page-by-page —
+  no ISCO-08↔ISIC correspondence table exists in it, and no other ILO
+  document mapping ISCO-08 to ISIC was found either (commit `f44cd79`).
+  The crosswalk tables remain hand-built by necessity, not by omission —
+  any future improvement needs a different sourcing strategy, not "the
+  document we haven't found yet."
+- **Module E (pilot, n=30)**: confirmed still not started — re-checked
+  directly against `Documentation/Phase_2/Week_1/
+  ethics_submission_log.md`, every field is still an unfilled `<FILL>`
+  placeholder. No ethics application submitted. Still the single most
+  time-critical open item in the whole project, independent of all code
+  work.
+- **Module F (synthetic Person Register data)**: **done, not "not
+  started"** — `eval/synthetic_person_register_stress_test.py` (commit
+  `506e794`, 2026-08-15) exists, is committed, and stress-tests
+  `PersonRegisterService`'s real pre-fill logic against statistically-
+  sampled (not GAN-generated — disclosed reasoning in the file) synthetic
+  records. Correctly and explicitly scoped as supplementary/stress-test
+  only, never pilot evidence.
+- **Module G (multilingual validation)**: unchanged — WISCO's Arabic
+  data confirmed to have zero dialectal content, the planned dialect-
+  normalization A/B test cannot run against it as originally scoped;
+  needs a different data source or a redefined experiment.
+- **Module H (CrewAI architecture evaluation)**: confirmed still not
+  started — no commit or document anywhere in this repo's history
+  mentions it. Its "delegation correctness" framing needs rescoping
+  first — this system never uses CrewAI delegation (see agent table
+  above); the real evaluable target is "orchestration correctness" (does
+  the calling code invoke the right agent at the right time).
+- **Module I (computational efficiency)**: **done, not "unverified"** —
+  real measurements for every metric measurable on available hardware
+  (commit `b73dbca`; full writeup `Documentation/Phase_2/Week_2/
+  module_i_computational_efficiency_report.md`): hierarchical/flat RAG
+  latency (133.9ms / 31.1ms mean, from the real 18,747-case Task 36 run),
+  embedding compute (19.1ms mean), Qdrant on-disk size (~4.3MB) and RSS
+  (94.9MB), and a real load-test breaking point (100% success through 42
+  concurrent users, fails at 50). Genuinely still unmeasured, disclosed
+  as such: LLM re-rank trigger rate and any real Claude 3.5 Sonnet
+  cost/latency figure (a prior attempt was found to be a 100%-silent-
+  fallback artifact from zero Anthropic credit, not used) — needs the
+  stratified 300-500-case pilot Week 2 already recommends.
+- **Module J (LLM tier-routing ablation)**: **complete, not "unverified"**
+  — all 3 GENERAL-tier agents (LanguageProcessor/NER, ConversationManager,
+  EmotionalIntelligence) have real, warmed, 3-run comparisons of
+  llama3.2 vs. qwen2.5:3b (commits `b01d768`, `ad47312`; full writeup
+  `Documentation/Phase_2/Week_2/
+  module_j_llm_task_routing_ablation_status.md`). Finding: qwen2.5:3b
+  matches or beats llama3.2 on every comparison, most clearly on Arabic-
+  script NER (F1 0.509 vs. 0.421 mean). **This is a measurement, not a
+  decision** — `llm_client.py`'s actual default (`OLLAMA_MODEL=llama3.2`)
+  was deliberately left unchanged, pending a human call.
 - A separate, much larger implementation plan (method registry, coverage
   audit, evaluation manifest/reproducibility instrumentation, ablation
   runner, figure-data exports — a formal A/C/D/E/F/G/H/I/J build spanning
   `eval/` and `backend/rag/hierarchy_engine.py`) was drafted for branch
-  `master` earlier in this project and approved via plan mode, but its
-  execution status against the current branch has not been re-verified
-  as part of this document. Do not assume it is either done or pending
-  without checking current code and asking the user which branch it was
-  meant to target.
+  `master` earlier in this project and approved via plan mode.
+  **Re-verified 2026-08-24**: its deliverables (method registry, coverage
+  audit, manifest/analyze, ablation runner, SRE evidence fields, figure
+  exports) are confirmed present, tested, and *this branch has them too*
+  — see `Documentation/Conference_I_Reviewer_2/`. What's still genuinely
+  missing: a real, full-scale ablation run against WISCO with reranking
+  (the "reranking tier" / Phase D.2 / Tier 2) has **not** been executed —
+  only the non-reranked Tier-1 run (table above) and a tiny 5-case
+  synthetic-fixture integration run exist. The authoritative, per-
+  reviewer-comment status lives in `Documentation/Conference_I_Reviewer_2/
+  REVIEWER_RESPONSE_IMPLEMENTATION_MATRIX.md` — dated 2026-08-10, so
+  itself older than the Module A/D/F/I/J work above and due for a
+  refresh; only comments #1 (Springer formatting) and #6 (LLM roles
+  documented) are marked "Ready for paper update" there, everything else
+  is "Partially evidenced" / "Awaiting data" / "Awaiting measurement."
 
 ## Do not
 
