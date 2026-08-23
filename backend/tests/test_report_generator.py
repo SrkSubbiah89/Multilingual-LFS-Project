@@ -443,6 +443,88 @@ class TestGenerateHappyPath:
         assert r.language == "ar"
 
 
+class TestEnrichmentPersistence:
+    """
+    Regression tests for a real bug: semantic_coherence, isic_classification,
+    and isced_classification were computed correctly on first generation but
+    never written to survey_report_records, so any later cache-hit read of an
+    already-generated report (regenerate=False, the default) came back with
+    those three fields silently null even though the underlying data was
+    present and classifiable. Reproduced live against a real account (session
+    457: industry="government", education_level="bachelor",
+    field_of_study="Engineering", job_title -> ISCO 2511) before being fixed.
+    """
+
+    def _make_classifiable_session(self, session_factory):
+        u = _make_user(session_factory)
+        s = _make_session(session_factory, u.id)
+        _make_response(session_factory, s.id, "employment_status", "employed")
+        _make_response(session_factory, s.id, "industry", "government")
+        _make_response(session_factory, s.id, "education_level", "bachelor")
+        _make_response(session_factory, s.id, "field_of_study", "Engineering")
+        _make_response(
+            session_factory, s.id, "job_title", "Engineering",
+            isco_code="2511", confidence_score=0.80,
+        )
+        return s
+
+    def test_enrichment_populated_on_fresh_generation(self, monkeypatch, session_factory, mgr):
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "ر.",
+        }))
+        s = self._make_classifiable_session(session_factory)
+        r = mgr.generate(session_id=s.id)
+        assert r.isic_classification is not None
+        assert r.isic_classification["section"] == "O"
+        assert r.isced_classification is not None
+        assert r.isced_classification["level"] == 6
+        assert r.semantic_coherence is not None
+
+    def test_enrichment_survives_cache_hit(self, monkeypatch, session_factory, mgr):
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "ر.",
+        }))
+        s = self._make_classifiable_session(session_factory)
+        mgr.generate(session_id=s.id)                     # fresh generation
+        r2 = mgr.generate(session_id=s.id)                 # cache-hit path
+        assert r2.isic_classification is not None
+        assert r2.isic_classification["section"] == "O"
+        assert r2.isced_classification is not None
+        assert r2.isced_classification["level"] == 6
+        assert r2.semantic_coherence is not None
+
+    def test_enrichment_persisted_to_db_columns(self, monkeypatch, session_factory, mgr):
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "ر.",
+        }))
+        s = self._make_classifiable_session(session_factory)
+        mgr.generate(session_id=s.id)
+        db = session_factory()
+        record = db.query(SurveyReportRecord).filter(
+            SurveyReportRecord.session_id == s.id
+        ).first()
+        db.close()
+        assert record.isic_classification_json is not None
+        assert record.isced_classification_json is not None
+        assert record.semantic_coherence_json is not None
+
+    def test_no_enrichment_when_no_isco_code(self, monkeypatch, session_factory, mgr):
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "ر.",
+        }))
+        u = _make_user(session_factory)
+        s = _make_session(session_factory, u.id)
+        _make_response(session_factory, s.id, "employment_status", "employed")  # no job_title/isco
+        r = mgr.generate(session_id=s.id)
+        assert r.isic_classification is None
+        assert r.isced_classification is None
+        assert r.semantic_coherence is None
+
+
 class TestGenerateWithQuality:
     def test_quality_score_included(self, monkeypatch, session_factory, mgr):
         _mock_crew(monkeypatch, json.dumps({
