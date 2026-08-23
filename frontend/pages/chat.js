@@ -1063,6 +1063,90 @@ export default function ChatPage() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// ── Validation-summary parsing ──────────────────────────────────────────────
+// The VALIDATING-state reply is a bullet list ("• Label: value • Label: value
+// ...") followed by a yes/no question. Plain-text chat bubbles collapse the
+// backend's line breaks into one dense paragraph, which is unreadable once a
+// respondent has 30+ answered fields. Parse the known bullet pattern out and
+// render it as an actual table instead; falls back to plain text (returns
+// null) for anything that doesn't match, so an LLM-phrased reply (non-
+// FAST_MODE) or any other message is never mangled.
+const _VALIDATION_QUESTION_ANCHORS = [
+  "Is everything correct",
+  "هل جميع المعلومات صحيحة",
+];
+
+function parseValidationSummary(text) {
+  if (!text || !text.includes("•")) return null;
+
+  let anchorIdx = -1;
+  let anchor = null;
+  for (const a of _VALIDATION_QUESTION_ANCHORS) {
+    const idx = text.indexOf(a);
+    if (idx !== -1) { anchorIdx = idx; anchor = a; break; }
+  }
+  if (anchorIdx === -1) return null;
+
+  const body = text.slice(0, anchorIdx).trim();
+  const question = text.slice(anchorIdx).trim();
+
+  const firstBullet = body.indexOf("•");
+  if (firstBullet === -1) return null;
+  const intro = body.slice(0, firstBullet).trim();
+  const bulletsText = body.slice(firstBullet);
+
+  const rows = bulletsText
+    .split("•")
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const colonIdx = chunk.indexOf(":");
+      if (colonIdx === -1) return null;
+      return {
+        label: chunk.slice(0, colonIdx).trim(),
+        value: chunk.slice(colonIdx + 1).trim(),
+      };
+    })
+    .filter(Boolean);
+
+  if (rows.length === 0) return null;
+  return { intro, rows, question };
+}
+
+function ValidationSummaryTable({ parsed, isAr }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {parsed.intro && <p style={{ margin: 0 }}>{parsed.intro}</p>}
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+          <tbody>
+            {parsed.rows.map((row, i) => (
+              <tr key={i} style={{ background: i % 2 === 0 ? C.white : C.panel }}>
+                <td style={{
+                  padding: "6px 10px", color: C.muted, fontWeight: 500,
+                  width: "44%", borderTop: i > 0 ? `1px solid ${C.border}` : "none",
+                  verticalAlign: "top",
+                }}>
+                  {row.label}
+                </td>
+                <td style={{
+                  padding: "6px 10px", color: C.text, fontWeight: 600,
+                  borderTop: i > 0 ? `1px solid ${C.border}` : "none",
+                  borderInlineStart: `1px solid ${C.border}`,
+                  verticalAlign: "top", wordBreak: "break-word",
+                }}>
+                  {row.value}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ margin: 0, fontWeight: 500 }}>{parsed.question}</p>
+    </div>
+  );
+}
+
 function buildMeta(res) {
   return {
     state:         res.state,
@@ -1214,18 +1298,24 @@ function MessageBubble({ msg, lang, t }) {
   }
 
   const hasAiData = !isUser && msg.meta != null;
+  const isAr = RTL_LANGS.has(lang);
+  const validationSummary =
+    !isUser && msg.meta?.state === "validating" ? parseValidationSummary(msg.text) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4, marginBottom: 12 }}>
 
       {/* Bubble */}
       <div style={{
-        maxWidth: "78%", padding: "10px 14px", fontSize: 13, lineHeight: 1.55, borderRadius: 14,
+        maxWidth: validationSummary ? "92%" : "78%", padding: "10px 14px", fontSize: 13, lineHeight: 1.55, borderRadius: 14,
+        whiteSpace: validationSummary ? "normal" : "pre-wrap",
         ...(isUser
           ? { background: C.green, color: "#fff", borderBottomRightRadius: 4 }
           : { background: C.white, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.green}`, color: C.text, borderBottomLeftRadius: 4 }),
-      }} dir={RTL_LANGS.has(lang) ? "rtl" : "ltr"}>
-        {msg.text}
+      }} dir={isAr ? "rtl" : "ltr"}>
+        {validationSummary
+          ? <ValidationSummaryTable parsed={validationSummary} isAr={isAr} />
+          : msg.text}
       </div>
 
       {/* AI Analysis panel */}

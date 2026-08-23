@@ -64,7 +64,7 @@ const T = {
 };
 
 const STATS = [
-  { value: "441", label: "ISCO-08 Unit Groups" },
+  { value: "436", label: "ISCO-08 Unit Groups" },
   { value: "5",   label: "Languages Supported" },
   { value: "4",   label: "Classification Standards" },
   { value: "4",   label: "Pipeline Stages" },
@@ -95,7 +95,7 @@ const PIPELINE_STAGES = [
   { stage: "Stage 1", label: "Major Group",  count: "10" },
   { stage: "Stage 2", label: "Sub-major",    count: "43" },
   { stage: "Stage 3", label: "Minor Group",  count: "130" },
-  { stage: "Stage 4", label: "Unit Group",   count: "441" },
+  { stage: "Stage 4", label: "Unit Group",   count: "436" },
 ];
 
 const LANG_PILLS = [
@@ -175,9 +175,8 @@ export default function LoginPage() {
   return (
     <>
       <Head>
-        <title>{t.title} — AI Platform</title>
+        <title>{`${t.title} — AI Platform`}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
       </Head>
 
       <div dir={dir} style={{ fontFamily: SANS, background: C.bg, minHeight: "100vh", color: C.text }}>

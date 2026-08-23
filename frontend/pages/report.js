@@ -8,49 +8,42 @@ import { useRouter } from "next/router";
 import { getReport } from "../components/api";
 import LanguageToggle from "../components/LanguageToggle";
 
-// ── RAG Evaluation benchmark data ─────────────────────────────────────────────
-const RAG_EVAL = {
-  systems: [
-    {
-      key: "bm25",
-      name: "BM25 Baseline",
-      desc: "TF-IDF keyword matching (no embeddings)",
-      color: "text-red-600",
-      border: "border-red-200",
-      bg: "bg-red-50",
-      top1: 0.22, top3: 0.36, kappa: 0.376, hitl: 0.05, latency: 0.13,
-    },
-    {
-      key: "flat",
-      name: "Flat Vector RAG",
-      desc: "Single-collection dense retrieval",
-      color: "text-amber-600",
-      border: "border-amber-200",
-      bg: "bg-amber-50",
-      top1: 0.34, top3: 0.40, kappa: 0.750, hitl: 0.00, latency: 57.94,
-    },
-    {
-      key: "hierarchical",
-      name: "Hierarchical RAG",
-      desc: "4-stage Major → Sub-major → Minor → Unit (thesis contribution)",
-      color: "text-emerald-700",
-      border: "border-emerald-200",
-      bg: "bg-emerald-50",
-      top1: 0.32, top3: 0.45, kappa: 0.696, hitl: 0.00, latency: 513.9,
-      isBest: true,
-    },
+// ── WISCO v2 controlled benchmark — real, published, sourced results ──────────
+// Every number below matches
+// Documentation/Conference_I_Reviewer_2/OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md
+// character-for-character. This is a controlled, externally sourced benchmark
+// (WISCO v2, CC-BY-4.0, Zenodo DOI 10.5281/zenodo.8262593) — NOT real Labour
+// Force Survey respondent data, and does not constitute field validation.
+// Flat retrieval was substantially MORE accurate than strict hierarchical
+// retrieval in this configuration; this must never be shown as a hierarchical
+// win. See MANUSCRIPT_SAFE_WISCO_WORDING.md for the wording this section
+// follows.
+const WISCO_EVAL = {
+  heldoutCases: 18747,
+  headline: [
+    { key: "flat", name: "Flat retrieval", correct: 3973, accuracy: 0.2119, ciLow: 0.2061, ciHigh: 0.2178 },
+    { key: "hier", name: "Strict hierarchical retrieval", correct: 1941, accuracy: 0.1035, ciLow: 0.0993, ciHigh: 0.1080 },
   ],
+  diffPct: -10.84,
+  mcnemarP: "1.86 × 10⁻³⁰¹",
   perMajor: [
-    { code: "0", label: "Armed Forces",          bm25: 0.000, flat: 0.800, hier: 1.000 },
-    { code: "1", label: "Managers",              bm25: 0.316, flat: 0.778, hier: 0.857 },
-    { code: "2", label: "Professionals",         bm25: 0.545, flat: 0.829, hier: 0.800 },
-    { code: "3", label: "Technicians",           bm25: 0.333, flat: 0.600, hier: 0.353 },
-    { code: "4", label: "Clerical Support",      bm25: 0.133, flat: 0.900, hier: 0.571 },
-    { code: "5", label: "Service & Sales",       bm25: 0.750, flat: 0.800, hier: 0.667 },
-    { code: "6", label: "Skilled Agricultural",  bm25: 0.000, flat: 0.909, hier: 1.000 },
-    { code: "7", label: "Craft & Trade",         bm25: 0.600, flat: 0.762, hier: 0.889 },
-    { code: "8", label: "Plant & Machine Ops.",  bm25: 0.444, flat: 0.667, hier: 0.857 },
-    { code: "9", label: "Elementary",            bm25: 0.476, flat: 0.778, hier: 0.615 },
+    { code: "0", flat: 0.1888, hier: 0.2937 },
+    { code: "1", flat: 0.2923, hier: 0.1789 },
+    { code: "2", flat: 0.2632, hier: 0.0839 },
+    { code: "3", flat: 0.2364, hier: 0.0881 },
+    { code: "4", flat: 0.2338, hier: 0.1829 },
+    { code: "5", flat: 0.1947, hier: 0.0730 },
+    { code: "6", flat: 0.1336, hier: 0.1064 },
+    { code: "7", flat: 0.1444, hier: 0.0705 },
+    { code: "8", flat: 0.1969, hier: 0.1843 },
+    { code: "9", flat: 0.1585, hier: 0.0856 },
+  ],
+  perLanguage: [
+    { code: "ar", label: "Arabic",  flat: 0.1462, hier: 0.0978 },
+    { code: "en", label: "English", flat: 0.3798, hier: 0.2252 },
+    { code: "hi", label: "Hindi",   flat: 0.2307, hier: 0.0809 },
+    { code: "tl", label: "Tagalog", flat: 0.1447, hier: 0.0531 },
+    { code: "ur", label: "Urdu",    flat: 0.1533, hier: 0.0571 },
   ],
 };
 
@@ -124,21 +117,25 @@ const T = {
     semanticIncoherent: "INCONSISTENT",
     semanticViolations: "Detected Violations",
     semanticNoData: "No cross-standard analysis available.",
-    evalSection: "RAG System Evaluation — ISCO-08 Classification Performance",
-    evalSubtitle: "Benchmark on 100 synthetic test cases covering all 10 ISCO major groups (n=100, UAE occupations EN+AR)",
-    evalSystem: "System", evalTop1: "Top-1 Acc.", evalTop3: "Top-3 Acc.",
-    evalKappa: "Cohen's κ", evalHitl: "HITL Rate", evalLatency: "Avg. Latency",
-    evalPerMajor: "F1 Score by ISCO Major Group",
+    evalSection: "Retrieval Comparison — WISCO v2 Controlled Benchmark",
+    evalSubtitle: "Controlled exact-code evaluation on an externally sourced multilingual occupation-title reference benchmark (WISCO v2, 18,747 held-out cases, official ILO 2021 ISCO-08 catalogue, LLM reranking disabled). This is not a Labour Force Survey field validation.",
+    evalSystem: "Method", evalCases: "Cases", evalCorrect: "Exact matches", evalAccuracy: "Accuracy", evalCi: "95% Wilson CI",
+    evalDiff: "Accuracy difference (hierarchical − flat)",
+    evalMcnemar: "McNemar exact two-sided p-value",
+    evalPerMajor: "Exact-match accuracy by ISCO-08 major group",
+    evalPerLanguage: "Exact-match accuracy by input language",
     evalMajorGroup: "Major Group",
-    evalWhyBetter: "Why Hierarchical RAG achieves higher Top-3 accuracy",
-    evalReasonHeader: "Design Advantage",
-    evalReasons: [
-      { title: "Constrained search space", body: "Each stage filters by parent_code, eliminating semantically distant candidates. A Flat RAG searches all 441 unit groups simultaneously — hierarchical narrows to ~10 candidates at Unit stage." },
-      { title: "Compounding confidence", body: "Weighted stage scores (0.10×Major + 0.20×Sub-major + 0.20×Minor + 0.50×Unit) penalise cascading errors and reward structurally consistent classifications." },
-      { title: "Perfect recall on sparse groups", body: "Armed Forces (Major 0) and Skilled Agriculture (Major 6) reach F1=1.00 vs flat's 0.80/0.91. Hierarchical routing prevents semantic bleed from large adjacent groups." },
-      { title: "LLM re-ranking quality gate", body: "Top-1 candidate is passed to Claude 3.5 Sonnet for re-ranking when confidence < 0.92. BM25 and Flat baselines lack this step — their Top-1 accuracy reflects raw retrieval only." },
+    evalLanguage: "Language",
+    evalInterpretHeader: "Interpretation",
+    evalInterpret: "In this specific controlled configuration — the official ILO 2021 ISCO-08 profile, exact four-digit-code matching, no LLM reranking, full 18,747-case WISCO v2 heldout split — flat retrieval was substantially more accurate than strict hierarchical retrieval. This is a negative finding for hierarchical retrieval relative to flat retrieval in this one configuration; it is not evidence that the system as a whole underperforms, and does not generalise beyond this benchmark, catalogue profile, and reranking-off setting.",
+    evalNotEstablishHeader: "What this does not establish",
+    evalNotEstablish: [
+      "Not real Labour Force Survey validation — WISCO is externally sourced reference data, not survey respondent data.",
+      "Not an ISIC, ISCED, or Semantic Relation Engine evaluation — none of those components were exercised.",
+      "Not an LLM reranking comparison — reranking was disabled in both arms.",
+      "Not a cost, memory, throughput, scalability, or production-latency claim.",
     ],
-    evalNote: "* Cohen's κ computed at major-group (1-digit) level. Top-1/Top-3 at unit-group (4-digit) level. Test set: 100 balanced cases, 10 per major group.",
+    evalSource: "Source: OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md (WISCO v2, CC-BY-4.0, Zenodo DOI 10.5281/zenodo.8262593).",
     recommendationsSection: "Data Collector Recommendations",
     researchFooter: "ILO ICLS-19 compliant · UAE PDPL & GDPR Art. 15 · Multilingual Conversational AI LFS System",
     toggleAr: "عربي",
@@ -209,21 +206,25 @@ const T = {
     semanticIncoherent: "غير متوافق",
     semanticViolations: "الانتهاكات المكتشفة",
     semanticNoData: "لا يوجد تحليل توافق متاح.",
-    evalSection: "تقييم أنظمة RAG — أداء تصنيف ISCO-08",
-    evalSubtitle: "معيار قياسي على 100 حالة اختبار تغطي جميع المجموعات الرئيسية العشر لـ ISCO (ن=100، مهن الإمارات EN+AR)",
-    evalSystem: "النظام", evalTop1: "دقة Top-1", evalTop3: "دقة Top-3",
-    evalKappa: "كابا كوهين", evalHitl: "معدل HITL", evalLatency: "متوسط الزمن",
-    evalPerMajor: "درجة F1 حسب المجموعة الرئيسية لـ ISCO",
+    evalSection: "مقارنة الاسترجاع — معيار WISCO v2 المُتحكَّم به",
+    evalSubtitle: "تقييم مُتحكَّم به لدقة الرمز الكامل على معيار مرجعي متعدد اللغات لعناوين المهن مصدره خارجي (WISCO v2، 18,747 حالة اختبار محجوزة، كتالوج ISCO-08 الرسمي لمنظمة العمل الدولية 2021، مع تعطيل إعادة الترتيب بالذكاء الاصطناعي). هذا ليس تحققًا ميدانيًا لمسح القوى العاملة.",
+    evalSystem: "الطريقة", evalCases: "عدد الحالات", evalCorrect: "تطابق تام", evalAccuracy: "الدقة", evalCi: "فاصل ويلسون 95%",
+    evalDiff: "فرق الدقة (الهرمي − المسطح)",
+    evalMcnemar: "قيمة McNemar الاحتمالية (ثنائية الاتجاه)",
+    evalPerMajor: "دقة التطابق التام حسب المجموعة الرئيسية لـ ISCO-08",
+    evalPerLanguage: "دقة التطابق التام حسب لغة الإدخال",
     evalMajorGroup: "المجموعة الرئيسية",
-    evalWhyBetter: "لماذا يحقق RAG الهرمي دقة Top-3 أعلى",
-    evalReasonHeader: "ميزة التصميم",
-    evalReasons: [
-      { title: "مساحة بحث مقيدة", body: "تصفية كل مرحلة بـ parent_code يزيل المرشحين البعيدين دلالياً. يبحث Flat RAG في 441 مجموعة فردية في آنٍ واحد — أما الهرمي فيضيق نطاق البحث إلى ~10 مرشحين في مرحلة الوحدة." },
-      { title: "ثقة مركبة", body: "الأوزان المرحلية (0.10×رئيسية + 0.20×شبه رئيسية + 0.20×فرعية + 0.50×وحدة) تعاقب الأخطاء المتتالية وتكافئ التصنيفات المتسقة هيكلياً." },
-      { title: "استرجاع كامل للمجموعات النادرة", body: "القوات المسلحة (المجموعة 0) والزراعة الماهرة (المجموعة 6) تحقق F1=1.00 مقابل 0.80/0.91 للنموذج المسطح. يمنع التوجيه الهرمي التداخل الدلالي من المجموعات الكبيرة المجاورة." },
-      { title: "بوابة جودة إعادة ترتيب LLM", body: "يُمرَّر المرشح الأول إلى Claude 3.5 Sonnet لإعادة الترتيب عندما تكون الثقة < 0.92. تفتقر خطوط أساس BM25 والمسطح إلى هذه الخطوة." },
+    evalLanguage: "اللغة",
+    evalInterpretHeader: "التفسير",
+    evalInterpret: "في هذا الإعداد المُتحكَّم به تحديدًا — كتالوج ISCO-08 الرسمي 2021، مطابقة الرمز الكامل من أربعة أرقام، دون إعادة ترتيب بالذكاء الاصطناعي، على كامل مجموعة WISCO v2 المحجوزة (18,747 حالة) — كان الاسترجاع المسطح أكثر دقة بشكل ملحوظ من الاسترجاع الهرمي الصارم. هذه نتيجة سلبية للاسترجاع الهرمي مقارنةً بالمسطح في هذا الإعداد فقط؛ ولا تعني أن النظام ككل أقل كفاءة، ولا تُعمَّم خارج نطاق هذا المعيار وكتالوجه وإعداد تعطيل إعادة الترتيب.",
+    evalNotEstablishHeader: "ما لا يثبته هذا القياس",
+    evalNotEstablish: [
+      "ليس تحققًا حقيقيًا لمسح القوى العاملة — بيانات WISCO مرجعية مصدرها خارجي، وليست بيانات مستجيبين حقيقية.",
+      "ليس تقييمًا لـ ISIC أو ISCED أو محرك العلاقة الدلالية — لم يُفعَّل أي من هذه المكونات.",
+      "ليس مقارنة لإعادة الترتيب بالذكاء الاصطناعي — كانت معطّلة في كلا الجانبين.",
+      "ليس ادعاءً متعلقًا بالتكلفة أو الذاكرة أو الإنتاجية أو قابلية التوسع أو زمن الاستجابة الإنتاجي.",
     ],
-    evalNote: "* كابا كوهين محسوبة على مستوى المجموعة الرئيسية (رقم واحد). Top-1/Top-3 على مستوى مجموعة الوحدة (أربعة أرقام). مجموعة الاختبار: 100 حالة متوازنة، 10 لكل مجموعة رئيسية.",
+    evalSource: "المصدر: OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md (معيار WISCO v2، رخصة CC-BY-4.0، معرّف Zenodo الرقمي 10.5281/zenodo.8262593).",
     recommendationsSection: "توصيات جامع البيانات",
     researchFooter: "متوافق مع ILO ICLS-19 · PDPL الإماراتي و GDPR المادة 15 · نظام مسح قوة العمل بالذكاء الاصطناعي",
     toggleAr: "عربي",
@@ -842,7 +843,7 @@ export default function ReportPage() {
                 </div>
               </div>
 
-              {/* ── 9. RAG Evaluation Comparison ─────────────────────────── */}
+              {/* ── 9. WISCO v2 Retrieval Comparison ─────────────────────── */}
               <div className="bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="px-4 py-2.5 border-b border-blue-100 bg-blue-50 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -850,90 +851,67 @@ export default function ReportPage() {
                       {t.evalSection}
                     </h3>
                     <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-300 px-1.5 py-0.5 rounded-full font-medium">
-                      Thesis Evaluation
+                      Controlled Benchmark
                     </span>
                   </div>
-                  <span className="text-[10px] text-gray-400 font-mono">n=100</span>
+                  <span className="text-[10px] text-gray-400 font-mono">n={WISCO_EVAL.heldoutCases.toLocaleString()}</span>
                 </div>
 
                 <div className="px-4 py-4 space-y-5">
                   <p className="text-[11px] text-gray-500">{t.evalSubtitle}</p>
 
-                  {/* ── Summary metrics table ── */}
+                  {/* ── Headline table ── */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs border-collapse">
                       <thead>
                         <tr className="border-b border-gray-200">
                           <th className="text-left py-2 pr-3 text-gray-500 font-semibold">{t.evalSystem}</th>
-                          <th className="text-center py-2 px-2 text-gray-500 font-semibold">{t.evalTop1}</th>
-                          <th className="text-center py-2 px-2 text-gray-500 font-semibold">{t.evalTop3}</th>
-                          <th className="text-center py-2 px-2 text-gray-500 font-semibold">{t.evalKappa}</th>
-                          <th className="text-center py-2 px-2 text-gray-500 font-semibold">{t.evalHitl}</th>
-                          <th className="text-center py-2 pl-2 text-gray-500 font-semibold">{t.evalLatency}</th>
+                          <th className="text-center py-2 px-2 text-gray-500 font-semibold">{t.evalCases}</th>
+                          <th className="text-center py-2 px-2 text-gray-500 font-semibold">{t.evalCorrect}</th>
+                          <th className="text-center py-2 px-2 text-gray-500 font-semibold">{t.evalAccuracy}</th>
+                          <th className="text-center py-2 pl-2 text-gray-500 font-semibold">{t.evalCi}</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {RAG_EVAL.systems.map((sys) => {
-                          const top1Pct = Math.round(sys.top1 * 100);
-                          const top3Pct = Math.round(sys.top3 * 100);
-                          const hitlPct = Math.round(sys.hitl * 100);
-                          const barW1   = `${top1Pct}%`;
-                          const barW3   = `${top3Pct}%`;
-                          const bar1Col = top1Pct >= 50 ? "bg-emerald-500" : top1Pct >= 30 ? "bg-amber-500" : "bg-red-500";
-                          const bar3Col = top3Pct >= 60 ? "bg-emerald-500" : top3Pct >= 40 ? "bg-amber-500" : "bg-red-500";
+                        {WISCO_EVAL.headline.map((sys) => {
+                          const pct   = (sys.accuracy * 100).toFixed(2);
+                          const color = sys.key === "flat" ? "text-emerald-700" : "text-amber-700";
+                          const barW  = `${sys.accuracy * 100}%`;
+                          const barCol = sys.key === "flat" ? "bg-emerald-500" : "bg-amber-500";
                           return (
-                            <tr key={sys.key} className={`border-b border-gray-100 ${sys.isBest ? "bg-emerald-50" : ""}`}>
+                            <tr key={sys.key} className="border-b border-gray-100">
                               <td className="py-3 pr-3">
-                                <div className="flex items-center gap-2">
-                                  {sys.isBest && (
-                                    <span className="text-[9px] bg-emerald-100 border border-emerald-300 text-emerald-700 px-1.5 py-0.5 rounded font-bold">BEST</span>
-                                  )}
-                                  <div>
-                                    <p className={`font-semibold ${sys.color}`}>{sys.name}</p>
-                                    <p className="text-[10px] text-gray-400 mt-0.5">{sys.desc}</p>
-                                  </div>
-                                </div>
+                                <p className={`font-semibold ${color}`}>{sys.name}</p>
+                              </td>
+                              <td className="py-3 px-2 text-center font-mono tabular-nums text-gray-700">
+                                {sys.correct.toLocaleString()}/{WISCO_EVAL.heldoutCases.toLocaleString()}
+                              </td>
+                              <td className="py-3 px-2 text-center font-mono tabular-nums text-gray-500">
+                                {sys.correct.toLocaleString()}
                               </td>
                               <td className="py-3 px-2 text-center">
                                 <div className="flex flex-col items-center gap-1">
-                                  <span className={`font-bold tabular-nums ${sys.color}`}>{top1Pct}%</span>
-                                  <div className="w-12 bg-gray-200 rounded-full h-1.5">
-                                    <div className={`${bar1Col} h-1.5 rounded-full`} style={{ width: barW1 }} />
+                                  <span className={`font-bold tabular-nums ${color}`}>{pct}%</span>
+                                  <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                                    <div className={`${barCol} h-1.5 rounded-full`} style={{ width: barW }} />
                                   </div>
                                 </div>
                               </td>
-                              <td className="py-3 px-2 text-center">
-                                <div className="flex flex-col items-center gap-1">
-                                  <span className={`font-bold tabular-nums ${sys.isBest ? "text-emerald-700 underline decoration-dotted" : sys.color}`}>{top3Pct}%</span>
-                                  <div className="w-12 bg-gray-200 rounded-full h-1.5">
-                                    <div className={`${bar3Col} h-1.5 rounded-full`} style={{ width: barW3 }} />
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="py-3 px-2 text-center">
-                                <span className={`font-mono font-bold tabular-nums ${
-                                  sys.kappa >= 0.70 ? "text-emerald-600" : sys.kappa >= 0.50 ? "text-amber-600" : "text-red-600"
-                                }`}>{sys.kappa.toFixed(3)}</span>
-                              </td>
-                              <td className="py-3 px-2 text-center">
-                                <span className={hitlPct > 0 ? "text-amber-600 font-bold" : "text-emerald-600 font-bold"}>
-                                  {hitlPct}%
-                                </span>
-                              </td>
-                              <td className="py-3 pl-2 text-center">
-                                <span className="font-mono text-gray-700 tabular-nums">
-                                  {sys.latency < 1 ? `${sys.latency.toFixed(2)}ms` : sys.latency < 1000 ? `${Math.round(sys.latency)}ms` : `${(sys.latency/1000).toFixed(1)}s`}
-                                </span>
+                              <td className="py-3 pl-2 text-center font-mono tabular-nums text-gray-500">
+                                [{(sys.ciLow * 100).toFixed(2)}%, {(sys.ciHigh * 100).toFixed(2)}%]
                               </td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
-                    <p className="text-[10px] text-gray-400 mt-2 italic">{t.evalNote}</p>
+                    <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-[10px] text-gray-500">
+                      <span>{t.evalDiff}: <strong className="text-red-600">{WISCO_EVAL.diffPct.toFixed(2)} pp</strong></span>
+                      <span>{t.evalMcnemar}: <strong>p ≈ {WISCO_EVAL.mcnemarP}</strong></span>
+                    </div>
                   </div>
 
-                  {/* ── Per-major F1 heatmap table ── */}
+                  {/* ── Per-major-group accuracy table ── */}
                   <div>
                     <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">{t.evalPerMajor}</p>
                     <div className="overflow-x-auto">
@@ -941,38 +919,21 @@ export default function ReportPage() {
                         <thead>
                           <tr className="border-b border-gray-200">
                             <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">{t.evalMajorGroup}</th>
-                            <th className="text-center py-1.5 px-2 text-red-600 font-semibold">BM25</th>
-                            <th className="text-center py-1.5 px-2 text-amber-600 font-semibold">Flat RAG</th>
-                            <th className="text-center py-1.5 px-2 text-emerald-700 font-semibold">Hierarchical</th>
-                            <th className="text-center py-1.5 pl-2 text-gray-500 font-semibold">Winner</th>
+                            <th className="text-center py-1.5 px-2 text-emerald-700 font-semibold">Flat</th>
+                            <th className="text-center py-1.5 pl-2 text-amber-700 font-semibold">Hierarchical</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {RAG_EVAL.perMajor.map((row) => {
-                            const best   = Math.max(row.bm25, row.flat, row.hier);
-                            const winner = row.hier === best ? "hier" : row.flat === best ? "flat" : "bm25";
-                            const f1Color = (v) => v >= 0.80 ? "text-emerald-600" : v >= 0.60 ? "text-amber-600" : v >= 0.30 ? "text-orange-600" : "text-red-600";
-                            const cell = (v, key) => (
-                              <td key={key} className={`py-1.5 px-2 text-center font-mono tabular-nums ${f1Color(v)} ${winner === key && v === best ? "font-bold" : "opacity-60"}`}>
-                                {v === 0 ? "—" : v.toFixed(3)}
-                                {winner === key && v === best && <span className="ml-0.5 text-[9px]">★</span>}
-                              </td>
-                            );
-                            const wLabel = winner === "hier"
-                              ? <span className="text-emerald-700 font-bold text-[10px]">Hier ★</span>
-                              : winner === "flat"
-                              ? <span className="text-amber-600 font-bold text-[10px]">Flat ★</span>
-                              : <span className="text-red-600 font-bold text-[10px]">BM25 ★</span>;
+                          {WISCO_EVAL.perMajor.map((row) => {
+                            const info = ISCO_MAJOR[row.code];
                             return (
                               <tr key={row.code} className="border-b border-gray-100 hover:bg-gray-50">
                                 <td className="py-1.5 pr-3">
                                   <span className="text-gray-400 font-mono mr-1.5">{row.code}</span>
-                                  <span className="text-gray-700">{row.label}</span>
+                                  <span className="text-gray-700">{info ? info.label : row.code}</span>
                                 </td>
-                                {cell(row.bm25, "bm25")}
-                                {cell(row.flat, "flat")}
-                                {cell(row.hier, "hier")}
-                                <td className="py-1.5 pl-2 text-center">{wLabel}</td>
+                                <td className="py-1.5 px-2 text-center font-mono tabular-nums text-emerald-700">{(row.flat * 100).toFixed(2)}%</td>
+                                <td className="py-1.5 pl-2 text-center font-mono tabular-nums text-amber-700">{(row.hier * 100).toFixed(2)}%</td>
                               </tr>
                             );
                           })}
@@ -981,33 +942,54 @@ export default function ReportPage() {
                     </div>
                   </div>
 
-                  {/* ── Why Hierarchical is better ── */}
+                  {/* ── Per-language accuracy table ── */}
                   <div>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">{t.evalWhyBetter}</p>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {t.evalReasons.map((r, i) => (
-                        <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                              {i + 1}
-                            </span>
-                            <p className="text-xs font-semibold text-emerald-700">{r.title}</p>
-                          </div>
-                          <p className="text-[11px] text-gray-600 leading-relaxed pl-7">{r.body}</p>
-                        </div>
-                      ))}
+                    <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">{t.evalPerLanguage}</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">{t.evalLanguage}</th>
+                            <th className="text-center py-1.5 px-2 text-emerald-700 font-semibold">Flat</th>
+                            <th className="text-center py-1.5 pl-2 text-amber-700 font-semibold">Hierarchical</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {WISCO_EVAL.perLanguage.map((row) => (
+                            <tr key={row.code} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="py-1.5 pr-3">
+                                <span className="text-gray-400 font-mono mr-1.5 uppercase">{row.code}</span>
+                                <span className="text-gray-700">{row.label}</span>
+                              </td>
+                              <td className="py-1.5 px-2 text-center font-mono tabular-nums text-emerald-700">{(row.flat * 100).toFixed(2)}%</td>
+                              <td className="py-1.5 pl-2 text-center font-mono tabular-nums text-amber-700">{(row.hier * 100).toFixed(2)}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
-                  {/* ── Key insight callout ── */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex gap-3 items-start">
-                    <span className="text-blue-500 text-lg flex-shrink-0">★</span>
-                    <div className="text-[11px] text-blue-800 leading-relaxed space-y-1">
-                      <p><strong>Hierarchical RAG achieves the highest Top-3 accuracy (45%)</strong> — a 25 percentage-point improvement over BM25 and 5pp over Flat RAG — while eliminating HITL escalation entirely.</p>
-                      <p>Cohen's κ = 0.696 indicates <strong>substantial agreement</strong> at the major-group level (ILO definition), significantly above BM25 (κ=0.376, fair) and confirming structural classification quality beyond random chance.</p>
-                      <p>The 4-stage pipeline delivers <strong>perfect F1=1.00 on Armed Forces and Agriculture</strong> — occupations that BM25 completely fails (F1=0.00) due to sparse keyword overlap. This validates the thesis hypothesis that hierarchical constraint significantly reduces error propagation in occupation coding.</p>
-                    </div>
+                  {/* ── Interpretation ── */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-1.5">
+                    <p className="text-xs font-semibold text-gray-700">{t.evalInterpretHeader}</p>
+                    <p className="text-[11px] text-gray-600 leading-relaxed">{t.evalInterpret}</p>
                   </div>
+
+                  {/* ── What this does not establish ── */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                    <p className="text-xs font-semibold text-amber-800 mb-1.5">{t.evalNotEstablishHeader}</p>
+                    <ul className="space-y-1">
+                      {t.evalNotEstablish.map((item, i) => (
+                        <li key={i} className="text-[11px] text-amber-800 leading-relaxed flex gap-2">
+                          <span className="flex-shrink-0">·</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <p className="text-[10px] text-gray-400 italic">{t.evalSource}</p>
                 </div>
               </div>
 
