@@ -104,7 +104,18 @@ call for you and your supervisor, same as the flat-vs-hierarchical
 default decision already flagged elsewhere in this document. New code:
 `backend/rag/build_official_isco08_collections_e5large.py`,
 `embedding_config_for_profile()` in `official_isco08_catalogue.py`. 10
-new tests, full suite re-run: 2,342 passed, 0 failed.
+new tests, full suite re-run: 2,342 passed, 0 failed. **Immediate
+follow-up, same day**: does LLM reranking help more on top of the
+stronger retrieval? Re-ran the identical 500-case sample with Groq
+reranking enabled (`reranker_model="groq/openai/gpt-oss-120b"` —
+Gemini's free-tier daily quota was already exhausted). Result:
+**29.20% (146/500) — byte-identical to the no-rerank e5-large result**;
+499/500 predicted codes matched exactly, the reranker fired on 100% of
+cases and changed nothing. This is the third independent confirmation
+that retrieval quality, not reranking/reasoning quality, is the real
+accuracy ceiling (see "Semantic Relation Engine" section's earlier
+Gemini-vs-local-model finding) — now shown on a stronger retrieval base
+and a different provider, which rules out a one-off coincidence.
 
 Real, currently-pinned dependency versions (from `requirements-dev.txt`,
 the file that actually pins exact versions — `requirements.txt` itself
