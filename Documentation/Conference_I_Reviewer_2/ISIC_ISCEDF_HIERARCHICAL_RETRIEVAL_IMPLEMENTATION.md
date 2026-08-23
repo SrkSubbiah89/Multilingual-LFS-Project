@@ -37,8 +37,11 @@ backend/rag/build_standard_hierarchical_collections.py
     Operator-only CLI. --dry-run runs node derivation + validation only
     (no Qdrant/embedding-model/network dependency -- verified by test).
     --execute is the separate, explicit, destructive action that actually
-    creates and populates the live Qdrant collections; NOT run as part of
-    this repository's own work.
+    creates and populates the live Qdrant collections. Run for real on
+    2026-08-23 for both standards (see "Operator build commands" below) --
+    the 7 collections listed under "Collection names" are now live and
+    populated; classify(method=<hierarchical constant>) has been confirmed
+    to genuinely fire against them (fallback_used=False on a real query).
 
 backend/agents/isic_classifier.py / isced_classifier.py
     classify(text, method="isic_hierarchical_retrieval" /
@@ -127,7 +130,7 @@ independent `_score_level()` scorer regardless of which path runs — it is
 never part of the ISCED-F hierarchical retrieval and is never zeroed or
 blanked by a fallback.
 
-## Operator build commands (not run by this repository's own work)
+## Operator build commands (--execute run 2026-08-23)
 
 ```bash
 # Safe, offline, no Qdrant/embedding-model/network dependency:
@@ -136,7 +139,10 @@ python -m backend.rag.build_standard_hierarchical_collections --standard iscedf 
 
 # Operator-only, live Qdrant write -- creates and populates the real
 # collections listed above. Requires a running Qdrant instance and
-# downloads the embedding model if not already cached.
+# downloads the embedding model if not already cached. Run for real
+# 2026-08-23: isic -> 341 nodes (21/68/118/134 sections/divisions/
+# groups/classes); iscedf -> 99 nodes (11/25/63 broad/narrow/detailed
+# fields). Both confirmed live via a direct classify(method=...) call.
 python -m backend.rag.build_standard_hierarchical_collections --standard isic --execute
 python -m backend.rag.build_standard_hierarchical_collections --standard iscedf --execute
 ```
@@ -191,10 +197,11 @@ embedding-model load, no network call):
 
 **Safe wording:**
 
-> "The prototype implements parent-filtered hierarchical retrieval code for
+> "The prototype implements parent-filtered hierarchical retrieval for
 > ISIC Rev.4 and ISCED-F 2013 using the repository's currently embedded
-> classification records. Collection population and controlled performance
-> evaluation remain pending."
+> classification records. The live Qdrant collections were populated and
+> confirmed to serve real queries on 2026-08-23; controlled performance
+> evaluation against a labelled test set remains pending."
 
 **Unsafe wording — must NOT appear as a claim:**
 

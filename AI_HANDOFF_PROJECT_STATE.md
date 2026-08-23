@@ -301,10 +301,18 @@ and check with the user before stopping them if they might be using it.
   submitted as of the last check — this is the highest-lead-time item in
   the entire project.
 - **ISIC/ISCED-F hierarchical retrieval**: infrastructure built and
-  tested (§5f), but the live Qdrant collections have never been populated
-  (`--execute` never run) and data coverage is well short of the 419/~80
-  targets. Do not describe ISIC/ISCED as "deployed hierarchical RAG" —
-  only ISCO-08's is live.
+  tested (§5f); the live Qdrant collections were populated 2026-08-23
+  (`build_standard_hierarchical_collections.py --standard isic --execute`
+  → 341 nodes: 21/68/118/134 sections/divisions/groups/classes;
+  `--standard iscedf --execute` → 99 nodes: 11/25/63 broad/narrow/detailed
+  fields) and this path now genuinely fires live, confirmed directly via
+  `classify(method=...)` returning `fallback_used=False` on real queries.
+  Data coverage is unchanged by this and remains well short of the
+  419/~80 targets (134/419 ISIC classes, 63/~80 ISCED-F fields), and
+  accuracy against a labelled test set is still NOT YET EVALUATED. Do
+  not describe ISIC/ISCED hierarchical retrieval as benchmarked or as
+  matching ISCO-08's evaluated accuracy — only ISCO-08 has a published
+  accuracy result (see the WISCO Tier-1 table in CLAUDE.md).
 - **The SRE crosswalk tables** (`_ISCO_MAJOR_TO_ISIC` etc. in
   `semantic_relation.py`) are confirmed still hand-built, not yet rebuilt
   from the official ILO ISCO-08 Volume I / UNESCO ISCED 2011 Operational

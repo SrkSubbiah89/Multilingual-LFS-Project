@@ -29,13 +29,16 @@ ISIC_KEYWORD_LLM = "isic_keyword_llm"
 # ISIC Rev.4: hierarchical retrieval (Section->Division->Group->Class,
 # parent-filtered, built on the same generic backend.rag.hierarchy_engine
 # ISCO uses) -- code path is real and tested (backend/rag/
-# standard_hierarchical_store.py), but NOT YET EVALUATED for accuracy, and
-# only produces a live result once an operator has built the
-# isic_rev4_* Qdrant collections (backend/rag/
-# build_standard_hierarchical_collections.py --standard isic --execute).
-# Until then -- or whenever the store returns no usable result -- classify()
-# reports one of the ISIC_HIERARCHICAL_FALLBACK_* labels below instead, never
-# this constant.
+# standard_hierarchical_store.py). The isic_rev4_* Qdrant collections were
+# built and populated 2026-08-23 (backend/rag/
+# build_standard_hierarchical_collections.py --standard isic --execute,
+# 341 nodes: 21/68/118/134 sections/divisions/groups/classes) -- this path
+# now genuinely fires live, confirmed directly (method="isic_hierarchical_
+# retrieval", fallback_used=False on a real query). Accuracy is still NOT
+# YET EVALUATED against a labelled test set -- that remains open. If the
+# store ever returns no usable result (e.g. Qdrant unreachable), classify()
+# reports one of the ISIC_HIERARCHICAL_FALLBACK_* labels below instead,
+# never silently relabels a fallback result as this constant.
 ISIC_HIERARCHICAL_RETRIEVAL = "isic_hierarchical_retrieval"
 
 # ISIC Rev.4: explicit fallback labels used when the hierarchical-retrieval
@@ -52,10 +55,12 @@ ISIC_HIERARCHICAL_FALLBACK_LLM = "isic_hierarchical_fallback_llm"
 ISCED_RULE_KEYWORD = "isced_rule_keyword"
 
 # ISCED-F 2013: hierarchy-aware field classification (Broad->Narrow->Detailed,
-# parent-filtered), same real-but-unevaluated status as
-# ISIC_HIERARCHICAL_RETRIEVAL above. ISCED 2011 attainment LEVEL is never
-# part of this path -- it stays independently classified either way (see
-# ISCEDClassifier.classify()'s docstring).
+# parent-filtered). The iscedf2013_* Qdrant collections were built and
+# populated 2026-08-23 (99 nodes: 11/25/63 broad/narrow/detailed fields) --
+# same now-live, still-unevaluated-for-accuracy status as
+# ISIC_HIERARCHICAL_RETRIEVAL above, confirmed directly the same way. ISCED
+# 2011 attainment LEVEL is never part of this path -- it stays independently
+# classified either way (see ISCEDClassifier.classify()'s docstring).
 ISCEDF_HIERARCHICAL_RETRIEVAL = "iscedf_hierarchical_retrieval"
 
 # ISCED-F 2013: explicit fallback label, same contract as the ISIC fallback
