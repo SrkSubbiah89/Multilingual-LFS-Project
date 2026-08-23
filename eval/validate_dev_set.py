@@ -90,7 +90,7 @@ _DEFAULT_FULL130_MANIFEST = _DEFAULT_DIR / "configs" / "full130_leakage_manifest
 # maintained copy of the ISCO-08 standard that could drift from it. There
 # is no standalone JSON/CSV catalogue in this repo -- backend/rag/
 # load_full_isco.py's `_UNIT: list[tuple[str, str]] = [...]` module-level
-# literal (441 (code, label_en) tuples) IS the catalogue; it is what
+# literal (436 (code, label_en) tuples) IS the catalogue; it is what
 # populates the isco08_unit_groups Qdrant collection every classification
 # actually queries against. Read as plain text and regex-parsed here
 # rather than imported, specifically so loading the catalogue never pulls

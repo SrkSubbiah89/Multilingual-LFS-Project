@@ -92,12 +92,13 @@ This checks:
   field-level check runs).
 - Schema/field validity, including that `gold_isco_code` is not just
   4 digits but exists in the **classifier-supported** ISCO catalogue
-  (441 codes from `backend/rag/load_full_isco.py`, read as text --
+  (436 codes from `backend/rag/load_full_isco.py`, read as text --
   `0000`/`9999`-style codes are rejected even though they're syntactically
-  valid). This is "codes the classifier can predict," not an independently
+  valid). This is "codes the classifier can predict," and as of the
+  2026-08-12 primary-source ILO cross-check, also an independently
   verified statement of official ILO ISCO-08 coverage -- see
-  `eval/dev_set_schema.md`'s follow-up audit note on the 441-vs-436
-  discrepancy. If this catalogue can't be loaded at all, the run is FATAL
+  `eval/dev_set_schema.md`'s now-resolved 441-vs-436 discrepancy note.
+  If this catalogue can't be loaded at all, the run is FATAL
   (exit 1) rather than silently downgrading to format-only validation.
 - Leakage-safety against `eval/test_set_smoke20.csv` (read directly -- it
   is not held-out) and `eval/test_set_full130.csv` (checked via

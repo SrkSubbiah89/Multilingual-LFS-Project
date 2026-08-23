@@ -440,7 +440,7 @@ def test_checklist_includes_isco_catalogue_loaded_item(tmp_path):
     )
     names = dict((n, ok) for n, ok, _ in checklist)
     assert "isco_catalogue_loaded" in names
-    assert names["isco_catalogue_loaded"] is True  # real catalogue, 441 codes
+    assert names["isco_catalogue_loaded"] is True  # real catalogue, 436 codes
 
 
 def test_checklist_isco_catalogue_missing_is_a_hard_failure(tmp_path, monkeypatch):

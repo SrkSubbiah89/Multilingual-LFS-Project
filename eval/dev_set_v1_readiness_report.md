@@ -5,6 +5,13 @@ current state of `eval/dev_set_v1.csv` — **0 data rows**, canonical
 7-column schema (see `eval/dev_set_schema.md`). This report is a real run
 against the real (empty) file, not a projection of a populated one.
 
+> **Update, 2026-08-22**: this report's "441-code catalogue" mentions below
+> are a historical record from this pass and are left unedited. The
+> 441-vs-436 discrepancy they reference was resolved 2026-08-12 (primary-
+> source ILO cross-check); the catalogue is now 436 codes, live-reconfirmed
+> 2026-08-22. See `eval/dev_set_schema.md`'s "Resolved: former 441-versus-436
+> discrepancy" section for the current, maintained state.
+
 ## What changed in this pass
 
 Schema is unchanged (still 7 columns; see `eval/dev_set_schema.md`'s

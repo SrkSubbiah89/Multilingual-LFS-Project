@@ -64,10 +64,11 @@ Format validation (`^[0-9]{4}$`) alone accepts nonsense codes like `0000`
 or `9999` that no version of this project's classifier could ever predict.
 `eval/validate_dev_set.py`'s `load_isco_unit_group_catalogue()` closes this
 gap by checking `gold_isco_code` against the **classifier-supported ISCO
-catalogue** — the codes this project's classifier can actually return, not
-an independently verified transcription of the official ILO ISCO-08
-standard (see the discrepancy note and required follow-up audit below —
-this distinction matters and must not be blurred in any paper claim):
+catalogue** — the codes this project's classifier can actually return. As
+of the 2026-08-12 primary-source ILO cross-check documented in `CLAUDE.md`
+("Knowledge base construction"), this catalogue has been independently
+verified against the official ILO ISCO-08 unit-group list (see the
+resolved-discrepancy note below):
 
 - **Source**: `backend/rag/load_full_isco.py`'s `_UNIT: list[tuple[str,
   str]] = [...]` module-level literal — the same data that populates the
@@ -78,7 +79,10 @@ this distinction matters and must not be blurred in any paper claim):
   (`\(\s*"(\d{4})"\s*,`), never imported as a Python module — importing
   `load_full_isco.py` would pull in `qdrant_client`/`sentence_transformers`
   at import time, which this validator must never risk triggering.
-- **Count**: 441 unique 4-digit codes as of this writing.
+- **Count**: 436 unique 4-digit codes, live-verified 2026-08-22 (both
+  directly against `_UNIT` and against the live `isco08_unit_groups`
+  Qdrant collection). This matches the official ISCO-08 unit-group count
+  exactly.
 - **Versioned/documented**: the source path
   (`_DEFAULT_ISCO_CATALOGUE_SOURCE`) and parsing logic are both in
   `eval/validate_dev_set.py`, overridable via `--isco-catalogue-source` for
@@ -95,21 +99,21 @@ this distinction matters and must not be blurred in any paper claim):
   injected (possibly empty) catalogue for unit tests — only the CLI/gate
   entry points are fail-closed, not the library function itself.
 
-### Required follow-up: 441-versus-official-source discrepancy
+### Resolved: former 441-versus-436 discrepancy
 
-`backend/rag/load_full_isco.py`'s own docstring claims 436 unit groups
-(matching the official ILO ISCO-08 standard's published count); the
-literal `_UNIT` list actually contains 441 unique codes. **This discrepancy
-has not been independently audited** and must not be silently treated as
-"441 is correct" or "436 is correct" — it could reflect intentional
-project-specific additions, a transcription error, duplicate/near-duplicate
-entries under different codes, or something else. **Before any
-conference-paper claim about complete or correct official ISCO-08
-coverage, this discrepancy requires a dedicated data-quality audit**
-(diffing `_UNIT` against the published ILO ISCO-08 unit-group list,
-case by case) — out of scope for this validator, which only needs "codes
-the classifier can actually predict," not "codes that are officially
-correct." Track this as an open item, not a resolved one.
+This section previously flagged an open discrepancy: `_UNIT` contained 441
+entries while the module docstring claimed 436. **This is now resolved.**
+A 2026-08-12 primary-source ILO cross-check (isco.ilo.org's official CSV
+export) found 19 non-standard codes, 14 missing official codes, and 6
+further codes carrying the wrong occupation's label — all fixed. `_UNIT`
+now contains exactly 436 unique codes, independently verified against the
+official ILO ISCO-08 standard. Live-reconfirmed 2026-08-22: `_UNIT` has
+436 entries in source, and the live `isco08_unit_groups` Qdrant collection
+also serves exactly 436 points (the fix was actually deployed via
+`--recreate`, not just committed to source). Full detail and the one
+disclosed remaining exception (Major Group 0 code-length convention):
+`CLAUDE.md`'s "Knowledge base construction" section and
+`backend/tests/test_load_full_isco_catalogue_consistency.py`.
 
 ## Text normalisation (leakage checks only — never classifier input)
 
