@@ -1,20 +1,28 @@
-> **ARCHIVED — SUPERSEDED (2026-08-02).** This is the original project-kickoff
-> prompt used to bootstrap the codebase in March 2026. The folder layout,
-> agent file names (`agents/agent_01_auth.py` … `agent_10_audit.py`), and the
-> `hierarchical_rag/` module described below were **never built this way** —
-> the system evolved into a different, flatter structure under
-> `backend/agents/`, `backend/rag/`, `backend/api/`, etc. **It also does not
-> live at the project root**, so Claude Code does not auto-load it.
+> **ARCHIVED — SUPERSEDED (2026-08-02). Renamed and moved 2026-08-24.**
+> This is the original project-kickoff prompt used to bootstrap the
+> codebase in March 2026. It used to be named `Documentation/CLAUDE.md`
+> — identical to the real, current `CLAUDE.md` at the repo root except
+> for its folder, which was confusing enough in practice (two files
+> named `CLAUDE.md` in the same repo) that it was renamed here and moved
+> into `Documentation/Archive/` specifically to stop that confusion. The
+> folder layout, agent file names (`agents/agent_01_auth.py` …
+> `agent_10_audit.py`), and the `hierarchical_rag/` module described
+> below were **never built this way** — the system evolved into a
+> different, flatter structure under `backend/agents/`, `backend/rag/`,
+> `backend/api/`, etc. It never lived at the project root, so Claude
+> Code never auto-loaded it.
 >
 > For the actual current architecture, endpoints, agent list, database
-> schema, and file layout, see **`README.md`** at the repo root — it is kept
-> up to date and verified against the live codebase. Keep this file only as
-> a historical record of the original plan; do not use it to navigate or
-> modify the current code.
+> schema, and file layout, see **`CLAUDE.md`** at the repo root (kept up
+> to date and verified against the live codebase) and
+> **`Documentation/PROJECT_FLOW_AND_STATUS.md`** (the current,
+> maintained business + technical status document). Keep this file only
+> as a historical record of the original plan; do not use it to
+> navigate or modify current code.
 
 ---
 
-# CLAUDE.md — Master Instructions for LFS AI System
+# Original kickoff prompt (historical only) — Master Instructions for LFS AI System
 # M.Tech Thesis: Multilingual Conversational AI for Labour Force Surveys
 # IIIT Kottayam 2026 | Supervisor: Dr. Goutam Mali
 #

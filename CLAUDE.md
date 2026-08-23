@@ -33,12 +33,15 @@ corrected earlier in this project's history
 (`Documentation/Phase_2/PHASE_II_PLAN_CORRECTIONS.md`).
 
 An even older, fully archived kickoff prompt lives at
-`Documentation/CLAUDE.md` — it describes a `hierarchical_rag/`,
-10-agent, `Process.hierarchical` architecture that was never actually
-built; the real system is the flatter `backend/agents/` / `backend/rag/`
-/ `backend/api/` structure described below. That file is marked
-ARCHIVED — SUPERSEDED in its own header and should not be used to
-navigate or modify current code.
+`Documentation/Archive/ARCHIVED_ORIGINAL_KICKOFF_PROMPT.md` (moved and
+renamed 2026-08-24 — it used to be named `Documentation/CLAUDE.md`,
+which was confusing enough in practice, two files both named
+`CLAUDE.md`, that it was relocated specifically to stop that). It
+describes a `hierarchical_rag/`, 10-agent, `Process.hierarchical`
+architecture that was never actually built; the real system is the
+flatter `backend/agents/` / `backend/rag/` / `backend/api/` structure
+described below. That file is marked ARCHIVED — SUPERSEDED in its own
+header and should not be used to navigate or modify current code.
 
 ## Corrections to the externally-supplied draft
 
