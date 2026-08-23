@@ -42,6 +42,7 @@ import time
 import urllib.error
 import urllib.request
 from enum import Enum
+from typing import Optional
 
 from crewai import LLM
 from dotenv import load_dotenv
@@ -143,9 +144,117 @@ def _get_claude_llm(temperature: float) -> LLM:
 # Public factory
 # ---------------------------------------------------------------------------
 
+# 2026-08-24: full GENERAL-task fallback chain. Local Ollama first (free,
+# private), then cloud providers in this fixed order if Ollama is down or
+# a later provider itself fails -- Claude, then Gemini, then Groq, then
+# OpenRouter. Each cloud hop reuses get_llm_strict() (same fail-closed
+# per-provider key check), so a *missing key* for one provider just moves
+# to the next hop instead of raising -- get_llm() already had a
+# documented "may fall back" contract (Ollama -> Claude only, before this
+# date), so extending that chain is widening an existing, disclosed
+# behaviour, not introducing a new one. get_llm_strict() itself is
+# UNCHANGED and still never substitutes -- that guarantee is what the
+# evaluation harness depends on for reproducible runs.
+_GENERAL_FALLBACK_CHAIN = ("ollama", "anthropic", "gemini", "groq", "openrouter")
+
+
+def _excluded_fallback_providers() -> set[str]:
+    """LLM_FALLBACK_EXCLUDE (comma-separated provider names) lets a
+    deployment skip a hop entirely rather than reach it and fail at
+    actual inference time.
+
+    Why this exists: get_llm_strict()'s per-provider check is
+    construction-time only (does the API key exist?), not a real
+    liveness probe (does it still have credit/quota?) -- a key can be
+    present and syntactically valid while the account has zero credit,
+    which only surfaces when the LLM is actually invoked inside a
+    CrewAI Agent/Task, not when get_llm() constructs it. A real probe
+    call would answer that, but costs a real request against whichever
+    provider's quota is being checked -- for Gemini specifically (20
+    requests/day, free tier, confirmed in this project), spending any of
+    that just to *check* liveness before every fallback resolution isn't
+    worth it. This env var is the cheap, explicit alternative: the
+    deployment operator (who knows e.g. "Anthropic has zero credit right
+    now") states it once, instead of the chain rediscovering it by
+    failing on every single request."""
+    raw = os.getenv("LLM_FALLBACK_EXCLUDE", "")
+    return {p.strip().lower() for p in raw.split(",") if p.strip()}
+
+
+def _cloud_fallback_model(provider: str) -> str:
+    """Model string used for *provider* when it's reached as a GENERAL-task
+    fallback hop. Overridable per-provider via env var so a caller can pin
+    a specific model without editing code (mirrors OLLAMA_MODEL)."""
+    if provider == "anthropic":
+        return MODEL_CRITICAL
+    if provider == "gemini":
+        return os.getenv("GEMINI_FALLBACK_MODEL", "gemini/gemini-3.6-flash")
+    if provider == "groq":
+        return os.getenv("GROQ_FALLBACK_MODEL", "groq/openai/gpt-oss-120b")
+    if provider == "openrouter":
+        return os.getenv("OPENROUTER_FALLBACK_MODEL", "openrouter/nvidia/nemotron-3-nano-30b-a3b:free")
+    raise ValueError(f"no fallback model configured for provider {provider!r}")
+
+
+def _get_general_llm_with_fallback(temp: float, trace: Optional[dict]) -> LLM:
+    attempted: list[str] = []
+    failure_reasons: dict[str, str] = {}
+    excluded = _excluded_fallback_providers()
+
+    for provider in _GENERAL_FALLBACK_CHAIN:
+        if provider in excluded:
+            failure_reasons[provider] = "excluded via LLM_FALLBACK_EXCLUDE"
+            continue
+        attempted.append(provider)
+        try:
+            if provider == "ollama":
+                if not _ollama_is_running():
+                    raise RuntimeError(f"Ollama not reachable at {_OLLAMA_BASE_URL}")
+                llm = LLM(
+                    model=MODEL_GENERAL, temperature=temp,
+                    base_url=_OLLAMA_BASE_URL, timeout=_OLLAMA_INFERENCE_TIMEOUT,
+                )
+                resolved_model = MODEL_GENERAL
+            else:
+                resolved_model = _cloud_fallback_model(provider)
+                llm = get_llm_strict(resolved_model, temperature=temp)
+        except Exception as exc:
+            failure_reasons[provider] = str(exc)
+            _logger.warning(
+                "get_llm(GENERAL): provider %r unavailable (%s); trying next in "
+                "the fallback chain.", provider, exc,
+            )
+            continue
+
+        if provider != "ollama":
+            _logger.warning(
+                "get_llm(GENERAL): Ollama and any earlier providers were "
+                "unavailable; falling back to %r (%s). Restore Ollama to "
+                "return to local inference.", provider, resolved_model,
+            )
+        if trace is not None:
+            trace["resolved_provider"] = provider
+            trace["resolved_model"] = getattr(llm, "model", resolved_model)
+            trace["attempted_providers"] = list(attempted)
+            trace["failure_reasons"] = dict(failure_reasons)
+        return llm
+
+    if trace is not None:
+        trace["attempted_providers"] = list(attempted)
+        trace["failure_reasons"] = dict(failure_reasons)
+    raise RuntimeError(
+        "get_llm(GENERAL): every provider in the fallback chain "
+        f"({', '.join(_GENERAL_FALLBACK_CHAIN)}) is unavailable or "
+        "unconfigured. Start Ollama, or set at least one of "
+        "ANTHROPIC_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, "
+        "OPENROUTER_API_KEY in your .env file."
+    )
+
+
 def get_llm(
     task_type: TaskType | str = TaskType.GENERAL,
     temperature: float | None = None,
+    trace: Optional[dict] = None,
 ) -> LLM:
     """
     Return a configured CrewAI LLM for the given task type.
@@ -153,13 +262,29 @@ def get_llm(
     Parameters
     ----------
     task_type : TaskType | str
-        "general"  → Llama 3.2 via Ollama (no API key required).
-                     Falls back to Claude 3.5 Sonnet if Ollama is unreachable
-                     and ANTHROPIC_API_KEY is available.
-        "critical" → Claude 3.5 Sonnet (ANTHROPIC_API_KEY required).
+        "general"  → Llama 3.2 via Ollama (no API key required). If
+                     Ollama is unreachable, falls back through a fixed
+                     provider chain — Claude 3.5 Sonnet, then Gemini,
+                     then Groq, then OpenRouter — stopping at the first
+                     one that is actually configured and reachable. This
+                     widens the pre-2026-08-24 Ollama→Claude-only
+                     fallback; the "may fall back" contract itself is
+                     unchanged (get_llm_strict() is the function with a
+                     "never falls back" guarantee, not this one).
+        "critical" → Claude 3.5 Sonnet (ANTHROPIC_API_KEY required, no
+                     fallback — CRITICAL tasks are meant to pin a single,
+                     high-accuracy model).
     temperature : float | None
         Override the default temperature for this task type.
         If None, uses the task-appropriate default (0.3 general / 0.0 critical).
+    trace : dict, optional
+        When supplied (GENERAL tasks only), populated with
+        ``resolved_provider``, ``resolved_model``, ``attempted_providers``
+        (in the order tried), and ``failure_reasons`` (provider → error
+        string, for every provider that was tried and skipped) — so an
+        automatic fallback substitution is always inspectable by a caller
+        that cares which model actually answered, never silent. Existing
+        callers that omit this (default None) are unaffected.
 
     Returns
     -------
@@ -173,8 +298,9 @@ def get_llm(
     EnvironmentError
         If ANTHROPIC_API_KEY is not set when using TaskType.CRITICAL.
     RuntimeError
-        If TaskType.GENERAL is requested, Ollama is not reachable, and
-        ANTHROPIC_API_KEY is also missing (no fallback available).
+        If TaskType.GENERAL is requested and every provider in the
+        fallback chain (Ollama, Anthropic, Gemini, Groq, OpenRouter) is
+        unavailable or unconfigured.
     """
     try:
         task = TaskType(task_type)
@@ -186,38 +312,7 @@ def get_llm(
 
     if task == TaskType.GENERAL:
         temp = temperature if temperature is not None else _TEMP_GENERAL
-
-        # Ollama is the primary provider for GENERAL tasks (local, free).
-        # Only fall back to Claude when Ollama is not reachable.
-        if _ollama_is_running():
-            return LLM(
-                model=MODEL_GENERAL,
-                temperature=temp,
-                base_url=_OLLAMA_BASE_URL,
-                timeout=_OLLAMA_INFERENCE_TIMEOUT,
-            )
-
-        # Ollama is down — fall back to Claude if API key is available
-        _logger.warning(
-            "Ollama is not reachable at %s (model: %s). "
-            "Falling back to Claude 3.5 Sonnet for GENERAL tasks. "
-            "Start Ollama to restore local inference.",
-            _OLLAMA_BASE_URL,
-            _OLLAMA_MODEL_NAME,
-        )
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                f"Ollama is not running at {_OLLAMA_BASE_URL} and "
-                "ANTHROPIC_API_KEY is not set — no LLM available for "
-                "GENERAL tasks. Either start Ollama (`ollama serve`) or "
-                "add ANTHROPIC_API_KEY to your .env file."
-            )
-        return LLM(
-            model=MODEL_CRITICAL,
-            temperature=temp,
-            api_key=api_key,
-        )
+        return _get_general_llm_with_fallback(temp, trace)
 
     # CRITICAL — Claude 3.5 Sonnet via Anthropic
     return _get_claude_llm(
