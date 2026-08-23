@@ -391,6 +391,15 @@ def _keyword_major_hint(job_title: str) -> str:
     return max(scores, key=scores.__getitem__)
 
 
+def _top_candidate_gap(top_candidates: list) -> Optional[float]:
+    """Score gap between the top-1 and top-2 retrieval candidates, or None
+    when fewer than 2 candidates are available. See _MIN_TRUSTED_CANDIDATE_GAP
+    for the evidence behind using this as a confidence signal."""
+    if len(top_candidates) < 2:
+        return None
+    return float(top_candidates[0].score) - float(top_candidates[1].score)
+
+
 # ---------------------------------------------------------------------------
 # Thresholds
 # ---------------------------------------------------------------------------
@@ -403,6 +412,23 @@ MIN_USABLE_CONFIDENCE = 0.35
 
 # Confidence below which a human reviewer should inspect the result.
 HITL_THRESHOLD = 0.70
+
+# Thesis RAG-comparison finding (2026-08-23, 63-case stratified WISCO
+# sample, official ILO 2021 profile, flat retrieval + ollama/llama3.2
+# reranking): raw top-1 confidence barely varied between correct and
+# incorrect predictions (0.778-0.903 for BOTH), so HITL_THRESHOLD alone
+# missed 47 of 50 actual errors in that sample (94%). The gap between the
+# top-1 and top-2 candidate scores separated correct from incorrect far
+# better in the same sample: mean gap 0.0151 when correct vs. 0.0041 when
+# incorrect: cases with gap >= 0.01 were correct 58.3% of the time (12
+# cases) vs. 20.6% overall. This is real, disclosed evidence from a SMALL
+# sample (n=63) -- promising, not proven -- so it is wired in as opt-in
+# only (use_gap_aware_confidence= / enable_corrective_retry=), never as a
+# change to default behaviour. Raw data:
+# eval/local_runs/small_rerank_sample_20260822/flat/*.csv. Do not cite
+# this threshold in any manuscript without validating on a larger sample
+# first.
+_MIN_TRUSTED_CANDIDATE_GAP = 0.01
 
 
 # ---------------------------------------------------------------------------
@@ -465,6 +491,8 @@ class ISCOClassifier:
         capture_pool_metadata: bool = False,
         enable_llm: bool = True,
         isco_catalogue_profile: str = LEGACY_PROFILE,
+        enable_corrective_retry: bool = False,
+        use_gap_aware_confidence: bool = False,
     ) -> None:
         """
         Parameters
@@ -573,6 +601,37 @@ class ISCOClassifier:
             direct, unfiltered retrieval against only the official flat
             four-digit unit-group collection (the "full-unit-group flat
             comparator"), bypassing hierarchical beam search entirely.
+        enable_corrective_retry : bool, default False
+            Experimental (thesis RAG-comparison work). When True, and only
+            when the post-reranking result is still below HITL_THRESHOLD
+            (0.70) with an LLM available, one additional retrieval attempt
+            is made: the LLM is asked to propose a reformulated search
+            phrase for the job title, and if it does, that phrase is
+            re-retrieved and reranked. The corrective result REPLACES the
+            original only if its confidence is strictly higher; otherwise
+            the original stands. Every corrective attempt (whether it fired,
+            whether it won, the reformulated query used) is recorded in
+            ``trace`` when a trace dict is supplied, never silently. Default
+            False reproduces prior behaviour exactly for every existing
+            caller -- this parameter changes nothing unless explicitly set.
+            Regardless of this flag, a corrective retry attempt (when
+            enabled) always also considers _MIN_TRUSTED_CANDIDATE_GAP, not
+            just HITL_THRESHOLD -- that part of the recalibration is
+            intrinsic to what a "corrective retry" is for, not a separate
+            opt-in.
+        use_gap_aware_confidence : bool, default False
+            Thesis RAG-comparison work (see _MIN_TRUSTED_CANDIDATE_GAP's
+            module-level comment for the evidence). When True, the
+            reported ``hitl_required`` flag becomes True whenever EITHER
+            confidence < HITL_THRESHOLD (the original rule, unchanged) OR
+            the top-1/top-2 candidate score gap is below
+            _MIN_TRUSTED_CANDIDATE_GAP -- catching the class of confident-
+            but-wrong result the raw-confidence-only rule was found to
+            miss. Default False reproduces the original HITL rule exactly
+            for every existing caller; this is a real behavioural change
+            to production HITL escalation volume if ever enabled, so it is
+            never on by default and must be an explicit, informed choice,
+            not something switched on incidentally.
         """
         self._disable_keyword_map   = disable_keyword_map
         self._beam                  = beam
@@ -587,6 +646,8 @@ class ISCOClassifier:
         self._reranker_model_pin    = reranker_model
         self.reranker_model_resolved = ""
         self._isco_catalogue_profile = isco_catalogue_profile
+        self._enable_corrective_retry = enable_corrective_retry
+        self._use_gap_aware_confidence = use_gap_aware_confidence
         # Task 21: force_flat_only means "call search_flat_only() on the
         # official-profile HierarchicalISCOStore" -- distinct from the
         # legacy force_flat=True path (self._flat_store, legacy VectorStore).
@@ -912,6 +973,60 @@ class ISCOClassifier:
         # Re-evaluate hitl after potential LLM reselection
         hitl = primary_match.confidence < HITL_THRESHOLD
 
+        # Gap-aware ambiguity signal (see _MIN_TRUSTED_CANDIDATE_GAP's
+        # module-level comment for the evidence this is based on). Computed
+        # unconditionally -- cheap, pure arithmetic over scores already
+        # retrieved -- but only ALLOWED to change reported behaviour when
+        # explicitly opted into below.
+        candidate_gap = _top_candidate_gap(h.top_candidates)
+        is_ambiguous = candidate_gap is not None and candidate_gap < _MIN_TRUSTED_CANDIDATE_GAP
+        if trace is not None:
+            trace["top_candidate_gap"] = candidate_gap
+            trace["gap_ambiguous"] = is_ambiguous
+
+        if self._use_gap_aware_confidence:
+            hitl = hitl or is_ambiguous
+
+        # ── Experimental: corrective retry (Task: thesis RAG comparison) ──
+        # Opt-in only (see __init__'s docstring). Fires once, only when the
+        # result is still weak after normal reranking -- never on an
+        # already-confident result, never more than one extra retrieval.
+        # Triggers on EITHER the original HITL_THRESHOLD rule OR a thin
+        # candidate gap, regardless of use_gap_aware_confidence -- a
+        # corrective retry's own purpose is to catch what raw confidence
+        # alone misses, so it always consults both signals once enabled.
+        if (
+            self._enable_corrective_retry
+            and (hitl or is_ambiguous)
+            and use_llm
+            and self._agent_available
+        ):
+            corrective = self._maybe_corrective_retry(
+                job_title=job_title,
+                context=context,
+                lang=lang,
+                current_match=primary_match,
+                top_k=top_k,
+                current_gap=candidate_gap,
+                trace=trace,
+            )
+            if corrective is not None:
+                retry_match, retry_reasoning = corrective
+                primary_match = retry_match
+                reasoning = f"[Corrective retry] {retry_reasoning}"
+                method = f"{method}_corrective"
+                hitl = primary_match.confidence < HITL_THRESHOLD
+                if self._use_gap_aware_confidence:
+                    # Retry candidates weren't re-measured for gap here --
+                    # _maybe_corrective_retry only returns the winning
+                    # ISCOMatch, not its full candidate list -- so the gap
+                    # signal reverts to "not re-assessed" rather than
+                    # fabricating one. The pre-retry hitl-or-ambiguous
+                    # already earned this case a second look; that is not
+                    # lost, it's simply not compounded with a second,
+                    # unmeasured gap check.
+                    hitl = hitl or is_ambiguous
+
         return ISCOClassification(
             query=job_title,
             language=lang,
@@ -923,6 +1038,162 @@ class ISCOClassifier:
             hitl_required=hitl,
             reasoning=reasoning,
         )
+
+    # ------------------------------------------------------------------
+    # Corrective retry (experimental, opt-in -- see __init__ docstring)
+    # ------------------------------------------------------------------
+
+    def _maybe_corrective_retry(
+        self,
+        job_title: str,
+        context: str,
+        lang: str,
+        current_match: ISCOMatch,
+        top_k: int,
+        current_gap: Optional[float] = None,
+        trace: Optional[dict] = None,
+    ) -> Optional[tuple[ISCOMatch, str]]:
+        """
+        One-shot corrective retrieval attempt. Asks the LLM to propose a
+        reformulated search phrase for a job title whose best match is
+        still weak after normal reranking, re-retrieves with that phrase,
+        reranks the new candidates, and returns the new (match, reasoning)
+        pair ONLY if it represents a genuine improvement -- see the
+        acceptance-rule comment inline for exactly what "improvement" means
+        (gap-based, not raw-confidence-based, per real evidence this
+        codebase's own thesis RAG-comparison work found). Returns None (no
+        improvement, or nothing usable produced) on any failure -- never
+        raises, never fabricates a result, never silently replaces a decent
+        match with a worse or equal one.
+
+        current_gap : float, optional
+            The ORIGINAL result's top-1/top-2 candidate score gap (from
+            _top_candidate_gap on the pre-retry candidates), if available.
+            Passed in rather than recomputed so the acceptance rule can
+            compare the retry's gap against the specific result it would
+            replace, not some other reference point.
+        """
+        if trace is not None:
+            trace["corrective_retry_attempted"] = True
+
+        reformulated = self._llm_reformulate_query(job_title, context, lang, current_match)
+        if not reformulated:
+            if trace is not None:
+                trace["corrective_retry_query"] = None
+                trace["corrective_retry_used"] = False
+            return None
+
+        if trace is not None:
+            trace["corrective_retry_query"] = reformulated
+
+        try:
+            if self._force_flat_only:
+                h2 = self._hierarchical_store.search_flat_only(reformulated, top_k=top_k)
+            else:
+                h2 = self._hierarchical_store.search(
+                    reformulated, top_k=top_k, major_hint="",
+                    beam=self._beam, stage1_mode=self._stage1_mode,
+                    reranker_candidates=self._reranker_candidates,
+                    branch_collapse=self._branch_collapse,
+                )
+        except Exception as exc:
+            _logger.warning("ISCO corrective retry: re-retrieval failed: %s", exc)
+            if trace is not None:
+                trace["corrective_retry_used"] = False
+            return None
+
+        if h2 is None or not h2.code or not h2.top_candidates:
+            if trace is not None:
+                trace["corrective_retry_used"] = False
+            return None
+
+        retry_match, retry_reasoning = self._llm_select_from_candidates(
+            job_title=job_title, candidates=h2.top_candidates, context=context,
+            lang=lang, stage_confidences=h2.stage_confidences,
+        )
+
+        # Acceptance rule (fixed 2026-08-23): raw confidence alone is a
+        # known-unreliable signal for correctness -- measured directly on a
+        # real 63-case run, correct and incorrect predictions both landed in
+        # the same 0.78-0.90 band. The candidate score GAP was confirmed
+        # reliable on that same run (twice, independently). So the retry is
+        # now accepted primarily on whether it produced a WIDER gap than the
+        # original result -- a genuinely more separated, trustworthy pick --
+        # not merely a higher raw score, which the original rule used and
+        # which this project's own evidence showed doesn't track correctness.
+        # Falls back to the old confidence comparison only when a gap can't
+        # be computed for one or both sides (e.g. a single-candidate result),
+        # since the reliable signal isn't available to decide on there.
+        retry_gap = _top_candidate_gap(h2.top_candidates)
+        if retry_gap is not None and current_gap is not None:
+            improved = retry_gap > current_gap
+        elif retry_gap is not None and current_gap is None:
+            improved = retry_gap >= _MIN_TRUSTED_CANDIDATE_GAP
+        else:
+            improved = retry_match.confidence > current_match.confidence
+
+        if trace is not None:
+            trace["corrective_retry_used"] = improved
+            trace["corrective_retry_result_confidence"] = retry_match.confidence
+            trace["corrective_retry_result_gap"] = retry_gap
+        if not improved:
+            return None
+        return retry_match, retry_reasoning
+
+    def _llm_reformulate_query(
+        self,
+        job_title: str,
+        context: str,
+        lang: str,
+        weak_match: ISCOMatch,
+    ) -> Optional[str]:
+        """Ask the LLM for an alternative, more descriptive search phrase
+        for *job_title*, given that the current best match looks weak.
+        Returns None (never raises) if the LLM is unavailable, errors, or
+        returns nothing usable -- callers must treat None as "no retry"."""
+        context_line = f"\nAdditional context: {context}" if context.strip() else ""
+        lang_note = {
+            "ar":    "The job title is written in Arabic.",
+            "mixed": "The job title is code-switched (Arabic and English).",
+        }.get(lang, "The job title is written in English.")
+
+        task = Task(
+            description=(
+                "You are helping an ISCO-08 occupation-classification search "
+                "engine that just returned a weak match.\n\n"
+                f'Original job title: "{job_title}"\n'
+                f"{lang_note}{context_line}\n"
+                f"Best match found so far: [{weak_match.code}] {weak_match.title_en} "
+                f"(confidence {weak_match.confidence:.0%}, likely wrong or too vague).\n\n"
+                "Propose ONE alternative English search phrase for this job title that "
+                "better captures its core duties/profession, to re-run the search with. "
+                "Do not guess an ISCO code yourself -- only reformulate the search text.\n\n"
+                "Return ONLY a valid JSON object -- no markdown fences, no extra text:\n"
+                '{"reformulated_query": "<alternative search phrase>"}'
+            ),
+            expected_output='JSON: {"reformulated_query": "<phrase>"}',
+            agent=self._agent,
+        )
+        try:
+            crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
+            raw = str(crew.kickoff()).strip()
+        except Exception as exc:
+            _logger.warning("ISCO corrective retry: reformulation LLM call failed: %s", exc)
+            return None
+
+        clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
+        data: dict = {}
+        try:
+            data = json.loads(clean)
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", clean, re.DOTALL)
+            if m:
+                try:
+                    data = json.loads(m.group())
+                except json.JSONDecodeError:
+                    pass
+        phrase = str(data.get("reformulated_query", "")).strip()
+        return phrase or None
 
     # ------------------------------------------------------------------
     # Flat classification (init-level fallback only)
