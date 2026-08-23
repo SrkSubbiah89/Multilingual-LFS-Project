@@ -104,6 +104,7 @@ class ConversationContext:
     correction_applied: bool = False                     # True for one turn after a VALIDATING correction
     corrected_fields: set = field(default_factory=set)   # field keys changed by the correction just applied (one turn)
     correction_rejected_field: Optional[str] = None      # field key whose parsed correction failed the sanity check (one turn)
+    correction_no_target: bool = False                    # True for one turn when the respondent said "no"/wants a correction but named no field at all
 
 
 # ---------------------------------------------------------------------------
@@ -1651,7 +1652,7 @@ class ConversationManager:
         "last_job_title":        "Most Recent Job Title",
         "reason_left_job":       "Reason for Leaving Last Job",
         "outside_lf_reason":     "Reason for Not Seeking Work",
-        "ai_preference":         "Preference: AI vs Human Interviewer",
+        "ai_preference":         "Interviewer Preference (AI vs Human)",
         "data_confidence":       "Confidence in Data Privacy",
         # ── Demographics ──────────────────────────────────────────────────────
         "gender":                "Gender",
@@ -1720,7 +1721,7 @@ class ConversationManager:
         "last_job_title":        "آخر مسمى وظيفي",
         "reason_left_job":       "سبب ترك آخر وظيفة",
         "outside_lf_reason":     "سبب عدم البحث عن عمل",
-        "ai_preference":         "التفضيل: ذكاء اصطناعي أم محاور بشري",
+        "ai_preference":         "تفضيل المحاور (ذكاء اصطناعي أم بشري)",
         "data_confidence":       "الثقة بسرية البيانات",
         # ── Demographics ──────────────────────────────────────────────────────
         "gender":                "الجنس",
@@ -1970,6 +1971,14 @@ class ConversationManager:
                     f"Got it, I've updated that for you. Here's your updated summary:\n{summary}\n\n"
                     "Is everything correct now? (yes / no, I'd like to correct something)"
                 )
+            if ctx.correction_no_target:
+                ctx.correction_no_target = False
+                if is_ar:
+                    return "لا مشكلة — ما الذي تريد تصحيحه؟ اذكر الحقل والقيمة الصحيحة، مثال: \"مستوى التعليم يجب أن يكون بكالوريوس\"."
+                return (
+                    "No problem — what would you like to correct? "
+                    "Tell me the field and the correct value, e.g. \"education level should be bachelor\"."
+                )
             if is_ar:
                 return (
                     f"إليك ملخص ما جمعناه:\n{summary}\n\n"
@@ -2079,6 +2088,14 @@ class ConversationManager:
                 "then read back the FULL updated summary of all answers and ask the respondent "
                 "to confirm everything is now correct."
             )
+        elif ctx.state == ConversationState.VALIDATING and ctx.correction_no_target:
+            correction_note = (
+                "\n\nCORRECTION REQUESTED, NO FIELD NAMED: The respondent said they want to "
+                "correct something (e.g. just 'no') but did not say what. Do NOT re-show the "
+                "full summary again. Instead, briefly acknowledge and ask specifically which "
+                "field they'd like to change, with a short example of how to phrase it."
+            )
+            ctx.correction_no_target = False
 
         lang_instruction = _LANG_RESPONSE_INSTRUCTION.get(lang, "Respond in English.")
 
@@ -2183,6 +2200,7 @@ class ConversationManager:
                 # this produced a silent loop where corrections never took effect.
                 ctx.corrected_fields = set()
                 ctx.correction_rejected_field = None
+                ctx.correction_no_target = False
                 regex_ok = self._extract_correction(ctx, user_message)
                 llm_ok = False if regex_ok else self._llm_extract_correction(ctx, user_message)
                 correction_ok = regex_ok or llm_ok
@@ -2196,10 +2214,19 @@ class ConversationManager:
                 elif correction_ok:
                     # Remain VALIDATING; signal _build_task to re-read updated summary
                     ctx.correction_applied = True
-                # else: neither extractor found anything to change — stay in
-                # VALIDATING with correction_applied left False, so the reply
-                # falls back to re-asking "is everything correct?" instead of
-                # falsely claiming the correction was applied.
+                elif not ctx.correction_rejected_field:
+                    # Bare "no" (or similar) with no field named at all -- distinct
+                    # from correction_rejected_field, where a field WAS identified
+                    # but its new value couldn't be parsed. Previously this fell
+                    # through with no signal set at all, so the reply just re-showed
+                    # the identical validation summary with no indication the "no"
+                    # was understood -- a real, reproduced dead-end loop (respondent
+                    # says "no", gets back the exact same message, with nothing
+                    # telling them to name what's wrong).
+                    ctx.correction_no_target = True
+                # else: correction_rejected_field was set by the extractor -- a
+                # field WAS identified but its value failed the sanity check;
+                # that already has its own dedicated reply branch.
 
         # COMPLETING is terminal
 

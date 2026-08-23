@@ -402,6 +402,35 @@ class TestTransition:
         mgr._transition(ctx, "wait, that's not it", "")
         assert ctx.state == ConversationState.VALIDATING
         assert ctx.correction_applied is False
+        assert ctx.correction_no_target is True
+
+    def test_validating_bare_no_sets_correction_no_target(self, mgr, ctx, monkeypatch):
+        # Regression test for a real, live-reproduced dead-end: a respondent
+        # replying with a bare "no" (no field named) previously left every
+        # correction flag unset, so the reply just re-showed the identical
+        # validation summary forever with no indication the "no" was ever
+        # understood. correction_no_target must now be set so the reply asks
+        # what to correct instead of silently repeating the same message.
+        monkeypatch.setattr(mgr, "_llm_extract_correction", lambda ctx, text: False)
+        ctx.state = ConversationState.VALIDATING
+        mgr._transition(ctx, "no", "")
+        assert ctx.state == ConversationState.VALIDATING
+        assert ctx.correction_applied is False
+        assert ctx.correction_rejected_field is None
+        assert ctx.correction_no_target is True
+
+    def test_validating_correction_no_target_stub_reply_asks_what_to_correct(self, mgr, ctx, monkeypatch):
+        # The FAST_MODE / no-LLM-available template must not repeat the
+        # identical summary when correction_no_target is set — it must ask
+        # specifically what the respondent wants to correct.
+        monkeypatch.setattr(mgr, "_llm_extract_correction", lambda ctx, text: False)
+        ctx.state = ConversationState.VALIDATING
+        ctx.collected_data["employment_status"] = "employed"
+        mgr._transition(ctx, "no", "")
+        reply = mgr._dev_stub_response(ctx)
+        assert "what would you like to correct" in reply.lower()
+        assert "here's a summary of what i've collected" not in reply.lower()
+        assert ctx.correction_no_target is False  # consumed after one reply
 
     def test_validating_correction_updates_field(self, mgr, ctx):
         ctx.state = ConversationState.VALIDATING
@@ -429,6 +458,7 @@ class TestTransition:
         mgr._transition(ctx, "change something to value", "")
         assert ctx.state == ConversationState.VALIDATING
         assert ctx.correction_applied is False
+        assert ctx.correction_no_target is True
 
     def test_completing_is_terminal(self, mgr, ctx):
         ctx.state = ConversationState.COMPLETING
