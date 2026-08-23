@@ -242,9 +242,10 @@ def get_llm_strict(model: str, temperature: float) -> LLM:
     Parameters
     ----------
     model : str
-        Fully-qualified LiteLLM routing string, e.g. "ollama/llama3.2:1b"
-        or "anthropic/claude-3-5-sonnet-20241022". No other providers are
-        recognised.
+        Fully-qualified LiteLLM routing string, e.g. "ollama/llama3.2:1b",
+        "anthropic/claude-3-5-sonnet-20241022", "groq/llama-3.3-70b-versatile",
+        "gemini/gemini-1.5-flash", or "openrouter/<model>". No other
+        providers are recognised.
     temperature : float
         Passed straight through to the LLM constructor.
 
@@ -300,7 +301,65 @@ def get_llm_strict(model: str, temperature: float) -> LLM:
             )
         return LLM(model=model, temperature=temperature, api_key=api_key)
 
+    if model.startswith("groq/"):
+        # Thesis RAG-comparison work (2026-08-23): the local Ollama models
+        # available on this machine are memory-constrained (this machine
+        # has 7.7GB total RAM, frequently under 1GB free) -- larger local
+        # models measurably degrade into repeated request timeouts rather
+        # than genuinely better answers (confirmed directly: aya:latest,
+        # 8B, hit 120s timeouts on ~7.6 of every 10 reranking calls).
+        # Groq hosts open models on its own infrastructure over a free-tier
+        # API, so inference runs on Groq's hardware, not this machine's --
+        # this removes the memory-pressure failure mode entirely, not just
+        # swaps which local model degrades. Same fail-closed contract as
+        # the anthropic/ branch above: missing key aborts immediately,
+        # never silently substitutes a different provider/model.
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                f"Pinned reranker model {model!r} requires GROQ_API_KEY, "
+                "which is not set. Aborting rather than silently substituting "
+                "a different model."
+            )
+        return LLM(model=model, temperature=temperature, api_key=api_key)
+
+    if model.startswith("gemini/"):
+        # Recommended primary free-tier option for this project's RAG-
+        # comparison work (2026-08-23): Google AI Studio's Gemini Flash --
+        # strong at document/survey-text understanding, long prompts, and
+        # structured JSON extraction, which is exactly this reranker's
+        # task shape. Same fail-closed contract as anthropic/ and groq/
+        # above: a missing key aborts immediately, never silently
+        # substitutes a different provider/model. LiteLLM routes
+        # "gemini/<model>" (e.g. "gemini/gemini-1.5-flash") to the Google
+        # AI Studio API using GEMINI_API_KEY -- distinct from Vertex AI,
+        # which uses a different auth mechanism not wired here.
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                f"Pinned reranker model {model!r} requires GEMINI_API_KEY, "
+                "which is not set. Aborting rather than silently substituting "
+                "a different model."
+            )
+        return LLM(model=model, temperature=temperature, api_key=api_key)
+
+    if model.startswith("openrouter/"):
+        # Model-testing fallback (2026-08-23): OpenRouter's free catalog is
+        # permanent but rate-limited (commonly ~50 requests/day without
+        # account credit) -- useful for benchmarking several free open
+        # models without rewriting this client, not for a full evaluation
+        # run. Same fail-closed contract: missing key aborts immediately.
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                f"Pinned reranker model {model!r} requires OPENROUTER_API_KEY, "
+                "which is not set. Aborting rather than silently substituting "
+                "a different model."
+            )
+        return LLM(model=model, temperature=temperature, api_key=api_key)
+
     raise ValueError(
         f"get_llm_strict: unrecognised provider prefix in {model!r} "
-        "(expected 'ollama/...' or 'anthropic/...')"
+        "(expected 'ollama/...', 'anthropic/...', 'groq/...', 'gemini/...', "
+        "or 'openrouter/...')"
     )

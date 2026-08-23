@@ -53,7 +53,7 @@
 # pydantic major-version bumps have historically changed Agent/Crew/Task
 # call signatures in ways that would need re-verifying).
 
-crewai==1.9.3
+crewai[google-genai]==1.9.3
 pydantic==2.11.10
 python-dotenv==1.1.1
 qdrant-client==1.17.0

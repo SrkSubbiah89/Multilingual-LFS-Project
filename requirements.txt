@@ -1,4 +1,4 @@
-crewai==1.9.3
+crewai[google-genai]==1.9.3
 fastapi==0.131.0
 uvicorn[standard]==0.41.0
 sqlalchemy==2.0.46
