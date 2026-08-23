@@ -35,7 +35,8 @@ ISCEDClassification
   .detailed_code   – "0613"                      ← 4-digit specialisation
   .detailed_title  – "Software and applications development and analysis"
   .confidence      – float 0–1
-  .method          – "keyword" | "rule"
+  .method          – "keyword" | "rule" | "llm" (only when a reranker_model
+                     is configured -- see ISCEDClassifier.__init__)
 
 Usage
 -----
@@ -54,14 +55,21 @@ print(r.detailed_code)  # "0912"
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Optional
+
+from crewai import Agent, Crew, Task
 
 from backend.agents.classifier_methods import (
     ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD,
     ISCEDF_HIERARCHICAL_RETRIEVAL,
 )
+from backend.llm.llm_client import get_llm_strict
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -449,8 +457,42 @@ class ISCEDClassifier:
       - ISCED 2011 Level (0–8)
       - ISCED-F 2013 Field of Specialisation (4-digit detailed code)
 
-    Fully offline — no LLM required.
+    Fully offline by default — no LLM required unless reranker_model is set.
     """
+
+    _FIELD_KEYWORD_THRESHOLD = 0.85   # skip LLM when field keyword score ≥ this
+    _MIN_CANDIDATE_GAP       = 0.15   # skip LLM when top1-top2 score gap ≥ this (provisional -- see ISICClassifier._classify_legacy)
+    _TOP_K                   = 3
+
+    def __init__(self, reranker_model: Optional[str] = None) -> None:
+        """
+        Parameters
+        ----------
+        reranker_model : str, optional
+            Default ``None`` preserves this classifier's original, fully
+            offline, no-LLM behaviour exactly — every existing caller that
+            omits this parameter sees identical output to before. ISCED
+            2011 attainment LEVEL is never affected by this parameter
+            either way; it always comes from the deterministic
+            ``_score_level()`` scorer. When set to a provider-qualified
+            model string (e.g. "gemini/gemini-3.6-flash",
+            "groq/openai/gpt-oss-120b"), the ISCED-F 2013 FIELD dimension
+            gains an optional LLM re-ranking step mirroring
+            ISICClassifier's keyword+LLM pattern: when the keyword field
+            match is ambiguous (score < _FIELD_KEYWORD_THRESHOLD), an LLM
+            picks the best of the top-3 keyword field candidates and
+            ``method`` becomes ``"llm"``. Uses ``get_llm_strict()`` — the
+            same fail-closed contract as ISCOClassifier/ISICClassifier's
+            ``reranker_model``: a missing or unreachable pinned model
+            raises RuntimeError out of ``__init__`` immediately, never a
+            silent substitution.
+        """
+        self._reranker_model_pin = reranker_model
+        self._llm = None
+        self.reranker_model_resolved = "none (no reranker configured)"
+        if reranker_model:
+            self._llm = get_llm_strict(reranker_model, temperature=0.3)
+            self.reranker_model_resolved = getattr(self._llm, "model", reranker_model)
 
     def classify(self, text: str, *, method: Optional[str] = None) -> ISCEDClassification:
         """
@@ -488,7 +530,19 @@ class ISCEDClassifier:
             return self._fallback(text)
 
         level_entry, level_conf = self._score_level(text)
-        field_entry, field_conf = self._score_field(text)
+        scored_fields = self._score_field_candidates(text)
+        field_conf, field_entry = (scored_fields[0] if scored_fields else (0.0, _DEFAULT_FIELD))
+        method = "keyword"
+
+        second_field_conf = scored_fields[1][0] if len(scored_fields) > 1 else 0.0
+        field_gap = field_conf - second_field_conf
+        ambiguous = field_conf < self._FIELD_KEYWORD_THRESHOLD and field_gap < self._MIN_CANDIDATE_GAP
+        if self._llm is not None and scored_fields and ambiguous:
+            top_candidates = [e for _, e in scored_fields[:self._TOP_K]]
+            llm_result = self._llm_rerank_field(text, top_candidates)
+            if llm_result is not None:
+                field_entry, field_conf = llm_result
+                method = "llm"
 
         # Use field confidence if there's a strong signal, else default to generic
         combined_conf = round(min((level_conf * 0.4 + field_conf * 0.6), 1.0), 4)
@@ -503,7 +557,7 @@ class ISCEDClassifier:
             detailed_code=field_entry["detailed_code"],
             detailed_title=field_entry["detailed_title"],
             confidence=combined_conf,
-            method="keyword",
+            method=method,
             raw_text=text,
         )
 
@@ -592,20 +646,116 @@ class ISCEDClassifier:
 
     # ── Field scoring ──────────────────────────────────────────────────────────
 
-    def _score_field(self, text: str) -> tuple[dict, float]:
+    def _score_field_candidates(self, text: str) -> list[tuple[float, dict]]:
+        """Return (score, entry) pairs sorted descending by score.
+
+        score = (tokens matching this entry) / (distinct query tokens that
+        matched *something*) -- a genuine match-coverage fraction, not a
+        normalisation by the winning entry's own hit count (which would make
+        the top-1 score mathematically always 1.0 -- see the identical bug
+        found and fixed in ISICClassifier._keyword_score, 2026-08-23).
+        """
         tokens = set(re.findall(r"[a-z\u0600-\u06ff]{2,}", text.lower()))
         hit_counts: dict[str, int] = {}
         hit_entries: dict[str, dict] = {}
+        matched_tokens: set[str] = set()
         for tok in tokens:
-            for entry in _FIELD_TOKEN_INDEX.get(tok, []):
+            entries = _FIELD_TOKEN_INDEX.get(tok, [])
+            if entries:
+                matched_tokens.add(tok)
+            for entry in entries:
                 code = entry["detailed_code"]
                 hit_counts[code] = hit_counts.get(code, 0) + 1
                 hit_entries[code] = entry
         if not hit_counts:
+            return []
+        denom = len(matched_tokens)
+        scored = [
+            (round(count / denom, 4), hit_entries[code])
+            for code, count in hit_counts.items()
+        ]
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return scored
+
+    def _score_field(self, text: str) -> tuple[dict, float]:
+        scored = self._score_field_candidates(text)
+        if not scored:
             return _DEFAULT_FIELD, 0.0
-        max_h = max(hit_counts.values())
-        best_code = max(hit_counts, key=hit_counts.__getitem__)
-        return hit_entries[best_code], round(hit_counts[best_code] / max_h, 4)
+        return scored[0][1], scored[0][0]
+
+    # \u2500\u2500 LLM re-ranking (field dimension only) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+    def _llm_rerank_field(
+        self, text: str, candidates: list[dict]
+    ) -> Optional[tuple[dict, float]]:
+        candidates_text = "\n".join(
+            f"Field {c['detailed_code']}: {c['detailed_title']} "
+            f"[Narrow {c['narrow_code']}: {c['narrow_title']}, "
+            f"Broad {c['broad_code']}: {c['broad_title']}]"
+            for c in candidates
+        )
+        task_desc = (
+            f"A survey respondent described their education / field of study as:\n\"{text}\"\n\n"
+            f"Choose the single most appropriate ISCED-F 2013 detailed field (4-digit) from:\n"
+            f"{candidates_text}\n\n"
+            "Respond with JSON only (no markdown):\n"
+            '{"detailed_code": "XXXX", "confidence": 0.0-1.0, "reasoning": "..."}'
+        )
+
+        try:
+            agent = Agent(
+                role="ISCED-F 2013 Field Classifier",
+                goal="Select the best ISCED-F 2013 detailed field for the education description.",
+                backstory="You are a UNESCO Institute for Statistics expert in ISCED-F 2013 field-of-education classification.",
+                llm=self._llm,
+                verbose=False,
+                allow_delegation=False,
+            )
+            task = Task(
+                description=task_desc,
+                expected_output='JSON: {"detailed_code": "XXXX", "confidence": 0.0, "reasoning": "..."}',
+                agent=agent,
+            )
+            crew = Crew(agents=[agent], tasks=[task], verbose=False)
+            raw = str(crew.kickoff()).strip()
+        except Exception as exc:
+            log.warning("ISCED-F LLM re-ranking failed: %s", exc)
+            return None
+
+        return self._parse_llm_field_response(raw, candidates)
+
+    @staticmethod
+    def _parse_llm_field_response(
+        raw: str, candidates: list[dict]
+    ) -> Optional[tuple[dict, float]]:
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+        raw = re.sub(r"\s*```$", "", raw)
+
+        data: Optional[dict] = None
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                try:
+                    data = json.loads(m.group())
+                except json.JSONDecodeError:
+                    pass
+
+        if not data:
+            return None
+
+        code = str(data.get("detailed_code", "")).strip()
+        conf = float(data.get("confidence", 0.7))
+
+        entry = next((c for c in candidates if c["detailed_code"] == code), None)
+        if entry is None:
+            entry = next((c for c in candidates if c["narrow_code"] == code), None)
+        if entry is None:
+            entry = candidates[0]
+            conf *= 0.7
+
+        return entry, round(min(conf, 1.0), 4)
 
     # ── Fallback ───────────────────────────────────────────────────────────────
 

@@ -56,7 +56,7 @@ from backend.agents.classifier_methods import (
     ISIC_HIERARCHICAL_FALLBACK_LLM,
     ISIC_HIERARCHICAL_RETRIEVAL,
 )
-from backend.llm.llm_client import TaskType, get_llm
+from backend.llm.llm_client import TaskType, get_llm, get_llm_strict
 
 log = logging.getLogger(__name__)
 
@@ -836,11 +836,32 @@ class ISICClassification:
 class ISICClassifier:
     """Classify free-text industry descriptions to ISIC Rev.4 4-digit classes."""
 
-    _KEYWORD_THRESHOLD = 0.85   # skip LLM when keyword score ≥ this
-    _TOP_K             = 3
+    _KEYWORD_THRESHOLD  = 0.85   # skip LLM when keyword score ≥ this
+    _MIN_CANDIDATE_GAP  = 0.15   # skip LLM when top1-top2 score gap ≥ this (provisional -- see _classify_legacy)
+    _TOP_K              = 3
 
-    def __init__(self) -> None:
-        self._llm = get_llm(TaskType.GENERAL)
+    def __init__(self, reranker_model: Optional[str] = None) -> None:
+        """
+        Parameters
+        ----------
+        reranker_model : str, optional
+            Pin the LLM re-ranking step to exactly this model (e.g.
+            "gemini/gemini-3.6-flash", "groq/openai/gpt-oss-120b") via
+            get_llm_strict() instead of get_llm(). Mirrors
+            ISCOClassifier's reranker_model parameter and the same
+            fail-closed contract: a missing/unreachable pinned model
+            raises RuntimeError out of __init__ immediately rather than
+            silently falling back to a different model for some subset
+            of cases. Existing callers that omit this (default None) get
+            the exact previous behaviour: get_llm(TaskType.GENERAL) --
+            Ollama, with Claude fallback if Ollama is unreachable.
+        """
+        self._reranker_model_pin = reranker_model
+        if reranker_model:
+            self._llm = get_llm_strict(reranker_model, temperature=0.3)
+        else:
+            self._llm = get_llm(TaskType.GENERAL)
+        self.reranker_model_resolved = getattr(self._llm, "model", reranker_model or "")
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -885,7 +906,28 @@ class ISICClassifier:
             return self._fallback(text)
 
         best_score, best_entry = scored[0]
-        if best_score >= self._KEYWORD_THRESHOLD:
+        second_score = scored[1][0] if len(scored) > 1 else 0.0
+        gap = best_score - second_score
+        # Bug found 2026-08-23 while wiring reranker_model support: _keyword_score
+        # previously normalised by the WINNING entry's own hit count
+        # (count / max_hits), which makes the top-1 score mathematically
+        # always exactly 1.0 whenever any token matches at all -- confirmed
+        # directly (see backend/tests/test_isic_classifier.py's scoring
+        # tests). Since _KEYWORD_THRESHOLD=0.85, that made this LLM
+        # re-ranking branch permanently unreachable in production: every
+        # non-empty keyword match short-circuited to "keyword" regardless of
+        # real ambiguity. _keyword_score now normalises by the number of
+        # distinct query tokens that matched *something* (a genuine
+        # match-coverage fraction, not a tautology), and this gate adds a
+        # gap check reusing the top1/top2-candidate-gap methodology already
+        # proven reliable for ISCO in this same project (see
+        # _MIN_TRUSTED_CANDIDATE_GAP in isco_classifier.py) -- a large gap
+        # means one entry is a clear front-runner even if its absolute score
+        # is below the raw threshold. _MIN_CANDIDATE_GAP's exact value is a
+        # provisional, disclosed judgement call (like Module G's LOW-severity
+        # band), not independently measured -- flag before citing in the
+        # manuscript.
+        if best_score >= self._KEYWORD_THRESHOLD or gap >= self._MIN_CANDIDATE_GAP:
             return self._make_result(best_entry, best_score, "keyword", scored, text)
 
         # LLM re-ranking
@@ -998,16 +1040,28 @@ class ISICClassifier:
     # ── Keyword scoring ───────────────────────────────────────────────────────
 
     def _keyword_score(self, text: str) -> list[tuple[float, dict]]:
-        """Return (score, entry) pairs sorted descending by score."""
+        """Return (score, entry) pairs sorted descending by score.
+
+        score = (tokens matching this entry) / (distinct query tokens that
+        matched *something*) -- a genuine match-coverage fraction. Earlier
+        this normalised by the winning entry's own hit count instead
+        (count / max_hits), which is mathematically always 1.0 for the top
+        candidate whenever anything matches at all; see the bug note in
+        _classify_legacy.
+        """
         tokens = set(re.findall(r"[a-z\u0600-\u06ff]{3,}", text.lower()))
         if not tokens:
             return []
 
         hit_counts: dict[int, int] = {}
         hit_entries: dict[int, dict] = {}
+        matched_tokens: set[str] = set()
 
         for tok in tokens:
-            for entry in _TOKEN_INDEX.get(tok, []):
+            entries = _TOKEN_INDEX.get(tok, [])
+            if entries:
+                matched_tokens.add(tok)
+            for entry in entries:
                 eid = id(entry)
                 hit_counts[eid] = hit_counts.get(eid, 0) + 1
                 hit_entries[eid] = entry
@@ -1015,9 +1069,9 @@ class ISICClassifier:
         if not hit_counts:
             return []
 
-        max_hits = max(hit_counts.values())
+        denom = len(matched_tokens)
         scored = [
-            (count / max_hits, hit_entries[eid])
+            (round(count / denom, 4), hit_entries[eid])
             for eid, count in hit_counts.items()
         ]
         scored.sort(key=lambda x: x[0], reverse=True)
