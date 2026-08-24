@@ -293,3 +293,25 @@ as its own explicit test
 rather than left as an implicit side-effect of the main test passing.
 No production code was changed — this is evaluation-only,
 zero-risk-to-ship. Full test suite re-run after: 2,384 passed, 0 failed.
+
+**Fourth reranking check (2026-08-24, later the same day) — relevant to
+row 2 (novelty)'s reranker-contribution question.** The three prior
+reranking checks (63-case and 500-case, two providers, two retrieval
+bases — see `PROJECT_FLOW_AND_STATUS.md` §12 rows 5–11) all found
+reranking made zero difference, byte-identical predictions every time.
+This check used the real validation split (642 cases, built 2026-08-23,
+first genuine use of it) on the production-default e5-small profile — a
+combination the prior three hadn't covered — and found the first
+non-zero effect: 18.22%→18.69% (+0.47pp), McNemar exact p=0.25 (not
+significant), 638/642 predictions identical. Investigated the 4
+differences: all 4 are the same occupation ("Air force captain," gold
+code `0110`), the already-disclosed Armed Forces catalogue quirk (see
+row 5's evidence column). 3 of 4 flipped wrong→right. **This does not
+change row 2's evidence base or its "Partially evidenced" status** — a
+non-significant, single-occupation effect isn't grounds for a reranker-
+contribution novelty claim; if anything it strengthens confidence in the
+prior null result by showing the method is sensitive enough to detect a
+real (if narrow) effect when one exists, rather than being uniformly
+insensitive. Full detail and numbers: `PROJECT_FLOW_AND_STATUS.md` §12
+row 13; real artifacts:
+`eval/results/dev_selection/validation_reranking_check/*.csv`.
