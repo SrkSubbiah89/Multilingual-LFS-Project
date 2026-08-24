@@ -642,12 +642,24 @@ the actual committed evidence directly, not by trusting the prior text.
   data confirmed to have zero dialectal content, the planned dialect-
   normalization A/B test cannot run against it as originally scoped;
   needs a different data source or a redefined experiment.
-- **Module H (CrewAI architecture evaluation)**: confirmed still not
-  started — no commit or document anywhere in this repo's history
-  mentions it. Its "delegation correctness" framing needs rescoping
-  first — this system never uses CrewAI delegation (see agent table
-  above); the real evaluable target is "orchestration correctness" (does
-  the calling code invoke the right agent at the right time).
+- **Module H (CrewAI architecture evaluation)**: **done, 2026-08-24, not
+  "not started"** — rescoped from "delegation correctness" (doesn't apply;
+  no CrewAI delegation anywhere, see agent table above) to "orchestration
+  correctness" (does the calling code invoke the right agent at the right
+  time), then built as `backend/tests/test_orchestration_correctness.py`
+  (8 tests): a full per-turn call-order assertion against
+  `survey_routes.py`'s own documented Stage comments, 6 conditional-gating
+  tests (agent NOT called when its trigger field is absent), and 1
+  cross-function ordering test guarding the one invariant the code
+  explicitly comments on (`_ensure_isco_classification` before
+  `_trigger_quality_review`, line 1224). Real finding while building it:
+  `EmotionalIntelligence` shares `LanguageProcessor`'s `not skip_ner` gate
+  (both silently skipped under `LFS_FAST_MODE=true`) — the Stage 4f
+  comment alone didn't make that shared dependency obvious; caught by an
+  order-sensitive test failing, not by inspection. No production code
+  changed. See `Documentation/Conference_I_Reviewer_2/
+  REVIEWER_RESPONSE_IMPLEMENTATION_MATRIX.md`'s 2026-08-24 update section
+  for the full writeup.
 - **Module I (computational efficiency)**: **done, not "unverified"** —
   real measurements for every metric measurable on available hardware
   (commit `b73dbca`; full writeup `Documentation/Phase_2/Week_2/

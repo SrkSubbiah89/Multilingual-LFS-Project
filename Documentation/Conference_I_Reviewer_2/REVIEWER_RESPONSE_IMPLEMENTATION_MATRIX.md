@@ -245,3 +245,51 @@ automatic fallback chain (Ollama → Claude → Gemini → Groq → OpenRouter),
 addressing operational resilience to any single provider's
 unavailability — relevant context for row 6's LLM-role documentation if
 cited.
+
+**Module H (CrewAI architecture evaluation), built 2026-08-24 — relevant
+to row 2 (novelty)**. This was the one item in the project's internal
+backlog with zero prior work and no external blocker. Its original
+"delegation correctness" framing doesn't apply to this codebase — as row
+2 already establishes, this system never uses CrewAI's hierarchical
+delegation (no `Process.hierarchical`, no `manager_agent`; every
+`backend/agents/*.py` module is invoked by ordinary Python calling code
+in `backend/api/survey_routes.py`, not by an LLM manager deciding who to
+call). The real evaluable target — does the calling code invoke the
+right agent at the right time, in the right order — is a correctness
+property, not a statistical one, so it's implemented as
+`backend/tests/test_orchestration_correctness.py` (8 tests, all passing)
+rather than an accuracy metric with a confidence interval:
+- **Full per-turn order** (`test_stage_order_matches_documented_pipeline`):
+  asserts the real recorded call sequence
+  (ConversationManager → ISCOClassifier → ISICClassifier →
+  ISCEDClassifier → NationalityClassifier → SemanticRelationEngine →
+  ValidationAgent → ContextMemory → AuditLogger) exactly matches
+  `survey_routes.py`'s own documented Stage 1/3/4/4b-g comments.
+- **6 conditional-gating tests**: each agent whose trigger condition
+  isn't met this turn (no `industry` collected → ISICClassifier must not
+  fire; wrong FSM state → ValidationAgent must not fire; etc.) is
+  asserted absent from the call list, not just present-in-the-right-order
+  when it does fire.
+- **1 cross-function ordering test**
+  (`test_ensure_isco_classification_runs_before_quality_review`) guards
+  the one invariant `survey_routes.py` explicitly documents in a comment
+  (line 1224) — that `_ensure_isco_classification` must run before
+  `_trigger_quality_review` so HITL scoring sees the freshly-assigned
+  ISCO code. This is exactly the kind of bug an output-only test
+  (asserting a `QualityReview` row exists) would never catch.
+
+**A real finding surfaced while building this**: the first draft of the
+full-order test asserted `EmotionalIntelligence` fires between
+`SemanticRelationEngine` and `ValidationAgent`, per
+`survey_routes.py`'s own Stage 4f comment — it failed. `EmotionalIntelligence`
+turns out to share the exact same `not skip_ner` gate as `LanguageProcessor`
+(both silently skipped whenever `LFS_FAST_MODE=true`, not just on short
+acknowledgement tokens as Stage 4f's comment alone would suggest). Not a
+bug — correct, intentional behavior — but a real case of documentation
+(a code comment) not fully describing a shared dependency, caught by
+writing an order-sensitive test rather than trusting the comment. Added
+as its own explicit test
+(`test_emotional_intelligence_and_language_processor_share_skip_ner_gate`)
+rather than left as an implicit side-effect of the main test passing.
+No production code was changed — this is evaluation-only,
+zero-risk-to-ship. Full test suite re-run after: 2,384 passed, 0 failed.

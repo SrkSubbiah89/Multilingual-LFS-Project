@@ -596,7 +596,7 @@ number in this document comes from `eval/`'s main harness, never from
 | HITL escalation | Built, wired into the live API, verified (§12.3) |
 | Local-first, automatic cloud-fallback LLM routing | Built and tested (§8.1) — 2026-08-24 |
 | Real-world pilot (n=30, the actual planned field validation) | **Not started.** No ethics application submitted. This is not a coding task and is the single highest-priority open item in the project. |
-| CrewAI orchestration-correctness evaluation | **Not started.** |
+| CrewAI orchestration-correctness evaluation | **Done, 2026-08-24** — `backend/tests/test_orchestration_correctness.py`, 8 tests (§18 item 5) |
 | Real Claude 3.5 Sonnet cost/latency measurement | Not obtained — every attempt so far has hit zero API credit. |
 | Full-scale WISCO evaluation, e5-large retrieval, no reranking | **Done, 2026-08-24** — full 18,747-case heldout, +8.50pp over e5-small (§12 row 4) |
 | Full-scale WISCO evaluation with reranking enabled | Still not run at full 18,747-case scale (500-case samples exist; see §12, rows 10–11) — blocked by real API rate limits, not effort; see §12's reranking-null-result, already proven at n=500 on the stronger retrieval base |
@@ -678,9 +678,17 @@ scoped to the field dimension only; level stays deterministic. Default
    the one major gap in §16's status table. The hierarchical-retrieval
    infrastructure is live; no accuracy number exists yet for it, unlike
    ISCO-08.
-5. **Module H (CrewAI orchestration-correctness evaluation)** — the only
-   remaining module with zero work started and no external blocker. A
-   reasonable next engineering task once 2–4 above are settled.
+5. ~~**Module H (CrewAI orchestration-correctness evaluation)**~~ —
+   **done, 2026-08-24.** `backend/tests/test_orchestration_correctness.py`
+   (8 tests): asserts the real per-turn agent call order matches
+   `survey_routes.py`'s own documented Stage sequence, that agents whose
+   trigger field wasn't collected this turn are correctly never called,
+   and that the one explicitly-documented cross-function invariant
+   (`_ensure_isco_classification` before `_trigger_quality_review`) holds.
+   Found and documented a real shared-gate detail while building it
+   (`EmotionalIntelligence` and `LanguageProcessor` both silently skip
+   under `LFS_FAST_MODE`) that a code comment alone hadn't made obvious.
+   No production code changed.
 6. **Refresh `Documentation/Conference_I_Reviewer_2/REVIEWER_RESPONSE_IMPLEMENTATION_MATRIX.md`**
    against everything in §12 and §16 — it's dated 2026-08-10 and predates
    all of this document's newer findings.
