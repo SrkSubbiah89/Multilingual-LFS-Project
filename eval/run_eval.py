@@ -156,6 +156,7 @@ from backend.agents.isced_classifier import ISCEDClassifier  # noqa: E402
 from backend.agents.semantic_relation import SemanticRelationEngine  # noqa: E402
 from backend.rag.hierarchical_store import MODEL_NAME as EMBEDDING_MODEL_NAME  # noqa: E402
 from backend.rag.hierarchical_store import LEGACY_PROFILE, OFFICIAL_PROFILE_ILO2021_V1  # noqa: E402
+from backend.rag.official_isco08_catalogue import ENRICHED_PROFILE  # noqa: E402
 from eval.legacy_thesis_ch6.evaluate import BM25Baseline  # noqa: E402
 
 try:
@@ -1102,7 +1103,7 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--isco-catalogue-profile", choices=[LEGACY_PROFILE, OFFICIAL_PROFILE_ILO2021_V1], default=LEGACY_PROFILE,
+        "--isco-catalogue-profile", choices=[LEGACY_PROFILE, OFFICIAL_PROFILE_ILO2021_V1, ENRICHED_PROFILE], default=LEGACY_PROFILE,
         help=(
             "Task 21: which ISCO-08 catalogue/collection identity --system "
             "hierarchical/flat use (ignored for --system bm25). Default "

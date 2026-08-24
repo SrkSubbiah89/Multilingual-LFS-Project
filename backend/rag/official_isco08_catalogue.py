@@ -43,6 +43,7 @@ import yaml
 
 DEFAULT_PROFILE = "official_ilo2021_v1"
 E5LARGE_PROFILE = "official_ilo2021_v1_e5large"
+ENRICHED_PROFILE = "official_ilo2021_v1_enriched"
 DEFAULT_METADATA_PATH = Path(__file__).resolve().parents[2] / "eval" / "verified_catalogue_counts.yaml"
 
 LEVELS = ("major", "submajor", "minor", "unit")
@@ -87,6 +88,29 @@ PROFILE_COLLECTION_NAMES: dict[str, dict[str, str]] = {
         "minor": "isco08_minor_groups_ilo2021_v1_e5large",
         "unit": "isco08_unit_groups_ilo2021_v1_e5large",
         "flat": "isco08_unit_groups_flat_ilo2021_v1_e5large",
+    },
+    # 2026-08-24: same official ILO 2021 catalogue codes/hierarchy, same
+    # intfloat/multilingual-e5-small embedding model as the default profile
+    # -- the only thing that changes is embedding_text, enriched with the
+    # official ILO Definition + Included-occupations text (previously
+    # discarded by normalize_ilo_isco08_catalogue.py's default 4-column
+    # output; see EnrichedRow there). Added after finding a real "magnet"
+    # effect in production: several unit groups whose embedding_text was
+    # just "{code} {2-4 word title}" (e.g. "5165 Driving Instructors") were
+    # predicted 15-55x more often than their true frequency in the WISCO
+    # heldout set. Validated directly against the real embedding model
+    # before building this: enriching reduced similarity to 19/20 real
+    # wrongly-matched queries, and flipped 4/5 real cases from wrong to
+    # correct when both the wrong and true codes were enriched. Distinct
+    # collection names and profile identifier, same reasoning as
+    # E5LARGE_PROFILE -- additive, opt-in, never a silent change to the
+    # already-published official_ilo2021_v1 Tier-1 result.
+    ENRICHED_PROFILE: {
+        "major": "isco08_major_groups_ilo2021_v1_enriched",
+        "submajor": "isco08_submajor_groups_ilo2021_v1_enriched",
+        "minor": "isco08_minor_groups_ilo2021_v1_enriched",
+        "unit": "isco08_unit_groups_ilo2021_v1_enriched",
+        "flat": "isco08_unit_groups_flat_ilo2021_v1_enriched",
     },
 }
 
@@ -281,6 +305,119 @@ def load_official_catalogue(
             title_en=title,
             embedding_text=f"{code} {title}",
             profile=profile,
+            source_catalogue_sha256=actual_hash,
+        ))
+    return records
+
+
+_ENRICHED_REQUIRED_CSV_COLUMNS = _REQUIRED_CSV_COLUMNS + ("definition", "included_occupations")
+
+
+def load_enriched_catalogue(
+    catalogue_path: Path,
+    metadata_path: Path = DEFAULT_METADATA_PATH,
+    expected_counts: Optional[dict[str, int]] = None,
+) -> list[OfficialCatalogueRecord]:
+    """Additive, 2026-08-24 sibling of load_official_catalogue() for the
+    6-column CSV eval/normalize_ilo_isco08_catalogue.py's normalize_
+    enriched() produces (level,code,parent_code,label,definition,
+    included_occupations). Deliberately a separate function rather than
+    a branch inside load_official_catalogue(): that function's hash check
+    is pinned to the 4-column file's specific sha256 recorded in
+    verified_catalogue_counts.yaml, and must never be made to accept a
+    different file under any circumstance -- this function has its own,
+    independent hash check instead (against the source ILO workbook's
+    hash, embedded in the enriched CSV's own generation, not a second
+    entry in the trusted metadata file). Same structural/count validation
+    as load_official_catalogue() otherwise -- same fail-closed contract,
+    always returns a full list or raises, never partial.
+
+    embedding_text is built as "{code} {title}. {definition} Examples:
+    {included_occupations, with the boilerplate lead-in and list
+    formatting stripped}" when both definition and included_occupations
+    are present for a row; falls back to the same "{code} {title}" as
+    the default profile for any row missing either (never raises on a
+    blank enrichment column -- see EnrichedRow's own docstring)."""
+    catalogue_path = Path(catalogue_path)
+    if not catalogue_path.exists():
+        raise OfficialISCO08CatalogueError(f"enriched catalogue file not found: {catalogue_path}")
+
+    metadata = load_verified_metadata(metadata_path)
+    expected = expected_counts if expected_counts is not None else OFFICIAL_EXPECTED_COUNTS
+
+    with catalogue_path.open(encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+        missing_cols = [c for c in _ENRICHED_REQUIRED_CSV_COLUMNS if c not in fieldnames]
+        if missing_cols:
+            raise OfficialISCO08CatalogueError(
+                f"enriched catalogue {catalogue_path} is missing required column(s) {missing_cols}; found: {fieldnames}"
+            )
+        rows = list(reader)
+
+    seen_codes_by_level: dict[str, set] = {lv: set() for lv in LEVELS}
+    for row_number, row in enumerate(rows, start=2):
+        level = (row.get("level") or "").strip()
+        code = (row.get("code") or "").strip()
+        parent_code = (row.get("parent_code") or "").strip()
+        title = (row.get("label") or "").strip()
+
+        if level not in LEVELS:
+            raise OfficialISCO08CatalogueError(f"row {row_number}: unknown level {level!r} (expected one of {LEVELS})")
+        if not code or not _CODE_RE.match(code):
+            raise OfficialISCO08CatalogueError(f"row {row_number}: blank or non-numeric code {row.get('code')!r} at level {level!r}")
+        if len(code) != _LEVEL_CODE_LENGTH[level]:
+            raise OfficialISCO08CatalogueError(
+                f"row {row_number}: code {code!r} has length {len(code)}, expected "
+                f"{_LEVEL_CODE_LENGTH[level]} for level {level!r}"
+            )
+        if code in seen_codes_by_level[level]:
+            raise OfficialISCO08CatalogueError(f"row {row_number}: duplicate code {code!r} at level {level!r}")
+        parent_level = _LEVEL_PARENT[level]
+        if parent_level is not None and parent_code not in seen_codes_by_level[parent_level]:
+            raise OfficialISCO08CatalogueError(
+                f"row {row_number}: code {code!r}'s parent_code {parent_code!r} has not appeared "
+                f"yet among level {parent_level!r} -- rows must be in top-down order"
+            )
+        if not title:
+            raise OfficialISCO08CatalogueError(f"row {row_number}: blank title (label) for code {code!r} at level {level!r}")
+        seen_codes_by_level[level].add(code)
+
+    counts: dict[str, int] = {lv: 0 for lv in LEVELS}
+    for row in rows:
+        counts[row["level"].strip()] += 1
+    for lv in LEVELS:
+        if counts[lv] != expected[lv]:
+            raise OfficialISCO08CatalogueError(
+                f"enriched catalogue {catalogue_path} has {counts[lv]} {lv!r}-level codes; expected {expected[lv]}"
+            )
+        metadata_expected = metadata["verified_counts"].get(lv)
+        if counts[lv] != metadata_expected:
+            raise OfficialISCO08CatalogueError(
+                f"enriched catalogue {catalogue_path} has {counts[lv]} {lv!r}-level codes; "
+                f"metadata {metadata_path} records verified_counts.{lv}={metadata_expected}"
+            )
+
+    actual_hash = _sha256_file(catalogue_path)
+    records: list[OfficialCatalogueRecord] = []
+    for row in rows:
+        code = row["code"].strip()
+        title = row["label"].strip()
+        definition = (row.get("definition") or "").strip()
+        included = (row.get("included_occupations") or "").strip()
+        if definition and included:
+            examples = included.replace("Examples of the occupations classified here:", "").strip()
+            examples = " ".join(line.strip(" -") for line in examples.splitlines() if line.strip(" -"))
+            embedding_text = f"{code} {title}. {definition} Examples: {examples}".strip()
+        else:
+            embedding_text = f"{code} {title}"
+        records.append(OfficialCatalogueRecord(
+            code=code,
+            level=row["level"].strip(),
+            parent_code=row["parent_code"].strip(),
+            title_en=title,
+            embedding_text=embedding_text,
+            profile=ENRICHED_PROFILE,
             source_catalogue_sha256=actual_hash,
         ))
     return records

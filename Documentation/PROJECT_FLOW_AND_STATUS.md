@@ -458,6 +458,8 @@ and nothing invalid is presented as if it were usable evidence:
 | 11 | Flat + e5-large + reranker: `groq/gpt-oss-120b` | 500 | 29.20% | Valid — **byte-identical to row 10**, 499/500 predictions matched exactly, reranker fired on 100% of cases and changed nothing |
 | 12 | Flat + e5-large + corrective retry + gap-aware confidence, reranker: Gemini | 300 | 21.00% | **Invalid** — Gemini's free-tier daily quota (20 requests/day) was exhausted after ~20 cases; the remaining ~280 silently fell back to unreranked retrieval, so this number is not a real reranked measurement |
 | 13 | Flat + e5-small (production default) + reranker: `groq/gpt-oss-120b`, on the **validation split** (real, previously-unused) | 642 | 18.69% vs. 18.22% no-rerank | Valid, but **not from the heldout split — not citable as a confirmed result**, only as a real check using the validation split for its intended purpose (§11.1). See note below the table — this is the first of 4 independent reranking checks to show *any* non-zero effect. |
+| 14 | Flat + e5-small + **enriched catalogue text** (validation-split preview) | 642 | 32.55% vs. 18.22% baseline | Valid, **superseded in scale by row 15** — preview run on the validation split (+14.33pp, McNemar p=2.65×10⁻¹⁷) before committing to the full heldout run |
+| 15 | **Flat retrieval, no reranking, e5-small + enriched catalogue text** (full-scale confirmation) | **18,747** | **32.55%** | Valid — **+11.36pp over row 2 on the identical 18,747 cases**, McNemar p≈2.19×10⁻²⁷⁴. **The single largest accuracy gain found in this project — bigger than row 4's e5-large result (+8.50pp), same embedding model, zero extra inference cost.** See §12.4 below. |
 
 **Per-language, row 4 vs. row 2 (full 18,747 heldout, exact per-case pairing)** —
 the real story is sharper than the aggregate number:
@@ -530,6 +532,68 @@ effect is not evidence against the conclusion above. Real artifacts:
   tasks)**: `qwen2.5:3b` matches or beats `llama3.2` on every tested
   agent, most clearly on Arabic-script NER. Not yet switched in
   production — a measurement, not a decision.
+
+### 12.4 The catalogue-enrichment finding, 2026-08-24 — the largest single accuracy gain in this project
+
+Prompted directly by a "why isn't accuracy better — find the real issue"
+question, not a routine check. Root-caused rather than assumed: every one
+of the 436 official catalogue entries' embedding text was just `"{code}
+{2-4 word title}"` (e.g. `"6122 Poultry Producers"`) —
+`backend/rag/official_isco08_catalogue.py:282` — while the official ILO
+source workbook already on disk carries full `Definition`, `Tasks
+include`, and `Included occupations` (real example job titles) for every
+entry, silently discarded at the very first normalization step. This
+caused a measurable "magnet" effect: several thin-text codes (e.g.
+`5165` "Driving Instructors") were predicted 15–55× more often than
+their true frequency in the WISCO heldout set.
+
+**Validated against the real embedding model before building
+anything**: 19 of 20 real wrongly-matched queries (pulled from the
+actual heldout results) showed reduced similarity to the wrong "magnet"
+code once it was enriched with its real definition and examples; 4 of 5
+real cases flipped from wrong to correct when both the wrong and true
+codes were enriched — e.g. "Piano tutor (private tuition)" correctly
+favored `2354` Other Music Teachers (whose official ILO example list
+literally contains "Piano teacher (private tuition)") over `5165`, once
+both carried real text.
+
+**Built additively**, same discipline as the e5-large profile: the
+original 4-column normalized CSV's SHA-256 is verified byte-for-byte
+unchanged (the existing hash-locked pipeline is completely untouched); a
+new `ENRICHED_PROFILE` (`official_ilo2021_v1_enriched`) with its own
+loader and hash check; a new, dedicated build script mirroring the
+e5-large one; all 5 Qdrant collections built and verified (619 + 436
+points). Same `intfloat/multilingual-e5-small` model as the default
+profile — only the input text changed.
+
+**Full 18,747-case heldout result** (§12 row 15, identical cases/config
+as the canonical 21.19% baseline): **32.55% (6,102/18,747) vs. 21.19%
+(3,973/18,747) — +11.36pp, McNemar p≈2.19×10⁻²⁷⁴.** Larger than the
+e5-large gain (+8.50pp) and markedly cheaper — same model, same
+inference speed. Unlike e5-large, this helps **every** language
+including English:
+
+| Language | Baseline (thin text) | Enriched (rich text) | Gain |
+|---|---:|---:|---:|
+| Arabic | 14.62% | 25.15% | +10.53pp |
+| English | 37.98% | **54.85%** | **+16.87pp** (largest of any language) |
+| Hindi | 23.07% | 33.80% | +10.73pp |
+| Tagalog | 14.47% | 23.13% | +8.66pp |
+| Urdu | 15.33% | 25.19% | +9.87pp |
+
+Magnet effect confirmed resolved on the same codes: `6122` 468→24
+predictions, `5165` 276→31, `6114` 208→6, `8153` 203→7 — all now close
+to their true frequency.
+
+**Not yet done, the obvious next question**: does this combine with
+e5-large? Both plausibly work via different mechanisms (embedding-model
+capacity vs. input-text richness) and could be additive — untested.
+**Not yet switched to production default** — same category of decision
+as e5-large, now with an even stronger case, and cheaper to adopt (no
+larger model, no slower inference). Real artifacts: `eval/results/
+dev_selection/enriched_catalogue_validation_check/` (642-case preview),
+`eval/results/raw_runs/enriched_catalogue_heldout_20260824/` (the full,
+citable confirmation).
 
 ## 13. Data model & API surface
 

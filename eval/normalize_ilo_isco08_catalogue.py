@@ -55,6 +55,7 @@ import openpyxl
 
 DEFAULT_SHEET_NAME = "ISCO-08 EN Struct and defin"
 _REQUIRED_COLUMNS = ("Level", "ISCO 08 Code", "Title EN")
+_ENRICHED_COLUMNS = ("Definition", "Included occupations")
 
 _LEVEL_NAME_BY_DIGIT = {"1": "major", "2": "submajor", "3": "minor", "4": "unit"}
 _LEVEL_CODE_LENGTH = {"major": 1, "submajor": 2, "minor": 3, "unit": 4}
@@ -76,6 +77,22 @@ class NormalizedRow:
     code: str
     parent_code: str
     label: str
+
+
+@dataclass
+class EnrichedRow(NormalizedRow):
+    """Additive, 2026-08-24: same fields as NormalizedRow plus the two
+    free-text columns the original normalizer's own docstring listed as
+    ignored (`Definition`, `Included occupations`). Added after finding
+    that the production embedding_text for every catalogue entry was
+    just `"{code} {title}"` (2-4 words), discarding this real,
+    already-present disambiguating text -- see backend/rag/
+    official_isco08_catalogue.py's ENRICHED_PROFILE for where it's used.
+    A separate dataclass, not new optional fields on NormalizedRow, so
+    every existing caller of parse_workbook()/normalize() that expects
+    plain NormalizedRow instances is completely unaffected."""
+    definition: str = ""
+    included_occupations: str = ""
 
 
 @dataclass
@@ -101,10 +118,20 @@ def _sha256_text(text: str) -> str:
 def parse_workbook(
     xlsx_path: Path,
     sheet_name: str = DEFAULT_SHEET_NAME,
+    capture_enriched: bool = False,
 ) -> tuple[list[NormalizedRow], NormalizationReport]:
     """Parse *xlsx_path* and return (rows, report). Raises
     NormalizationError on any violation; never returns a partial rows
-    list in that case."""
+    list in that case.
+
+    capture_enriched (additive, default False -- every existing caller's
+    behavior is byte-identical to before this parameter existed): when
+    True, returns a list[EnrichedRow] instead of list[NormalizedRow],
+    with the Definition/Included occupations columns captured too. Those
+    two columns are optional in this mode -- a blank value is recorded as
+    "" rather than raising, since they are supplementary text (used only
+    for building richer retrieval embeddings), not identity/structure
+    data the fail-closed checks below are about."""
     if not xlsx_path.exists():
         raise NormalizationError(f"workbook not found: {xlsx_path}")
 
@@ -138,8 +165,10 @@ def parse_workbook(
     level_col = header_index["Level"]
     code_col = header_index["ISCO 08 Code"]
     title_col = header_index["Title EN"]
+    definition_col = header_index.get("Definition") if capture_enriched else None
+    included_col = header_index.get("Included occupations") if capture_enriched else None
 
-    rows: list[NormalizedRow] = []
+    rows: list = []
     seen_codes_by_level: dict[str, set] = {lv: set() for lv in _LEVEL_NAME_BY_DIGIT.values()}
     n_by_level: dict[str, int] = {lv: 0 for lv in _LEVEL_NAME_BY_DIGIT.values()}
 
@@ -190,7 +219,13 @@ def parse_workbook(
 
         seen_codes_by_level[level].add(code)
         n_by_level[level] += 1
-        rows.append(NormalizedRow(level=level, code=code, parent_code=parent_code, label=title))
+        if capture_enriched:
+            definition = str(raw_row[definition_col]).strip() if definition_col is not None and definition_col < len(raw_row) and raw_row[definition_col] is not None else ""
+            included = str(raw_row[included_col]).strip() if included_col is not None and included_col < len(raw_row) and raw_row[included_col] is not None else ""
+            rows.append(EnrichedRow(level=level, code=code, parent_code=parent_code, label=title,
+                                     definition=definition, included_occupations=included))
+        else:
+            rows.append(NormalizedRow(level=level, code=code, parent_code=parent_code, label=title))
 
     report = NormalizationReport(
         source_path=str(xlsx_path),
@@ -251,6 +286,38 @@ def normalize(
     return report, report_dict
 
 
+def write_enriched_csv(rows: list[EnrichedRow], out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["level", "code", "parent_code", "label", "definition", "included_occupations"])
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(asdict(r))
+
+
+def normalize_enriched(
+    xlsx_path: Path,
+    out_csv_path: Path,
+    sheet_name: str = DEFAULT_SHEET_NAME,
+    expected_counts: Optional[dict[str, int]] = DEFAULT_EXPECTED_COUNTS,
+) -> NormalizationReport:
+    """Additive, 2026-08-24 sibling of normalize() that also captures
+    Definition/Included occupations. Writes a completely separate CSV
+    (6 columns, not 4) -- never touches or overwrites the original
+    normalize()'s hash-verified 4-column output, which every existing
+    piece of code (catalogue_importer.py, official_isco08_catalogue.py's
+    default profile, eval/verified_catalogue_counts.yaml's recorded hash)
+    depends on staying byte-identical."""
+    rows, report = parse_workbook(xlsx_path, sheet_name=sheet_name, capture_enriched=True)
+    if expected_counts is not None:
+        validate_expected_counts(report.n_rows_by_level, expected_counts)
+    write_enriched_csv(rows, out_csv_path)
+    report_dict = asdict(report)
+    report_dict["normalized_csv_path"] = str(out_csv_path)
+    report_dict["normalized_csv_sha256"] = _sha256_file(out_csv_path)
+    return report, report_dict
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--xlsx", required=True, type=Path, help="Path to the official ILO ISCO-08 EN structure workbook")
@@ -258,6 +325,9 @@ def main() -> None:
     parser.add_argument("--sheet-name", default=DEFAULT_SHEET_NAME)
     parser.add_argument("--report-out", type=Path, default=None, help="Optional path to write a JSON normalization report")
     parser.add_argument("--skip-count-check", action="store_true", help="Skip the 10/43/130/436 expected-count validation")
+    parser.add_argument("--out-csv-enriched", type=Path, default=None,
+                         help="Additive, 2026-08-24: also write a 6-column CSV (level,code,parent_code,label,definition,included_occupations) "
+                              "to this path. Does not affect --out-csv's output in any way.")
     args = parser.parse_args()
 
     expected = None if args.skip_count_check else DEFAULT_EXPECTED_COUNTS
@@ -274,6 +344,14 @@ def main() -> None:
         args.report_out.parent.mkdir(parents=True, exist_ok=True)
         args.report_out.write_text(json.dumps(report_dict, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"Wrote normalization report to {args.report_out}")
+
+    if args.out_csv_enriched:
+        try:
+            enriched_report, _ = normalize_enriched(args.xlsx, args.out_csv_enriched, sheet_name=args.sheet_name, expected_counts=expected)
+        except NormalizationError as exc:
+            print(f"ENRICHED NORMALIZATION FAILURE: {exc}")
+            raise SystemExit(1) from exc
+        print(f"Wrote enriched normalized CSV to {args.out_csv_enriched} ({enriched_report.total_rows} rows)")
 
 
 if __name__ == "__main__":

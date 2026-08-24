@@ -159,6 +159,64 @@ runs; correctly routed to `dev_selection/`, not `raw_runs/`, since a
 validation-split result is never a citable confirmed result per this
 project's own dev/validation-selects, heldout-confirms discipline).
 
+**The biggest single accuracy finding in this project, same day, prompted
+directly by "why isn't ISCO-08 accuracy better — go find the real
+issue."** Root-caused rather than assumed: every one of the 436 official
+catalogue entries' `embedding_text` was just `"{code} {2-4 word title}"`
+(`backend/rag/official_isco08_catalogue.py:282`, e.g. `"6122 Poultry
+Producers"`) — while the official ILO source workbook this project
+already has on disk (`ISCO-08_EN_Structure_and_definitions.xlsx`) carries
+full `Definition`, `Tasks include`, and `Included occupations` (real
+example job titles) columns for every entry, silently discarded by
+`eval/normalize_ilo_isco08_catalogue.py` at the very first processing
+step. Measured a real "magnet" effect this caused: several thin-text
+codes (e.g. `5165` "Driving Instructors") were predicted 15–55× more
+often than their true frequency in the WISCO heldout set. **Validated
+the fix against the real embedding model before building anything**: 19
+of 20 real wrongly-matched queries showed reduced similarity to the
+wrong "magnet" code once enriched; 4 of 5 real cases flipped from wrong
+to correct when both the wrong and true codes were enriched (e.g. "Piano
+tutor (private tuition)" correctly favored `2354` Other Music Teachers —
+whose official ILO example list literally contains "Piano teacher
+(private tuition)" — over `5165`, once both carried real text).
+
+Built additively, same discipline as `E5LARGE_PROFILE`: `eval/normalize_
+ilo_isco08_catalogue.py` gained an opt-in `normalize_enriched()` (the
+original 4-column output's SHA-256 is unchanged, verified byte-for-byte
+identical — the existing hash-locked pipeline is completely untouched);
+`backend/rag/official_isco08_catalogue.py` gained `ENRICHED_PROFILE`
+(`"official_ilo2021_v1_enriched"`) and a separate `load_enriched_
+catalogue()` with its own hash check; `backend/rag/
+build_official_isco08_collections_enriched.py` (new, mirrors the
+e5-large build script) built and verified all 5 collections (619 + 436
+points). Same `intfloat/multilingual-e5-small` model as the default
+profile — only the input text changed, not the model.
+
+**Full 18,747-case heldout result (identical cases/config as the
+canonical 21.19% baseline)**: **32.55% (6,102/18,747) vs. 21.19%
+(3,973/18,747) — +11.36pp, McNemar p ≈ 2.19×10⁻²⁷⁴.** Larger than the
+e5-large gain (+8.50pp) and markedly cheaper — same model, same
+inference speed, zero extra compute. Per-language, and unlike e5-large
+this genuinely helps every language including English (which e5-large
+left flat): Arabic 14.62%→25.15% (+10.53pp), English 37.98%→**54.85%**
+(**+16.87pp**, the largest gain of any language), Hindi 23.07%→33.80%
+(+10.73pp), Tagalog 14.47%→23.13% (+8.66pp), Urdu 15.33%→25.19%
+(+9.87pp). Magnet effect confirmed resolved on the same codes: `6122`
+468→24 predictions, `5165` 276→31, `6114` 208→6, `8153` 203→7 — all now
+close to their true frequency instead of vacuuming up unrelated queries.
+Real artifacts: `eval/results/dev_selection/enriched_catalogue_
+validation_check/` (642-case first check, +14.33pp, McNemar
+p=2.65×10⁻¹⁷), `eval/results/raw_runs/enriched_catalogue_
+heldout_20260824/` (the full, citable 18,747-case confirmation).
+
+**Not yet done, a real and obvious next question**: does this combine
+with e5-large? Both interventions plausibly work via different
+mechanisms (embedding-model capacity vs. input-text richness) and could
+be additive or synergistic — untested. **Not yet switched to production
+default** — same category of decision as the e5-large question, now with
+an even stronger case, and this one is cheaper to adopt (no larger model,
+no slower inference).
+
 Real, currently-pinned dependency versions. **Correction, 2026-08-24**:
 this section previously claimed `requirements.txt` "pins nothing, all
 bare package names, verified across this project's entire git history"
