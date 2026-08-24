@@ -228,7 +228,7 @@ Two distinct, deliberately different contracts exist side by side:
 
 ```mermaid
 flowchart TD
-    FE[Next.js Frontend<br/>chat / report / supervisor_review pages] -->|REST, 17 routes| API[FastAPI Backend]
+    FE[Next.js Frontend<br/>chat / report / supervisor_review pages] -->|REST, 20 routes| API[FastAPI Backend]
     API --> PG[(PostgreSQL<br/>11 tables)]
     API --> RD[(Redis<br/>session cache)]
     API --> QD[(Qdrant<br/>vector search)]
@@ -515,11 +515,15 @@ hierarchical retrieval as outperforming flat, and never cite row 12's
 `agent_decision_logs`, `quality_reviews`, `hitl_queue`,
 `person_register`, `survey_report_records`.
 
-**API**: FastAPI, 17 routes covering auth (OTP request/verify by
+**API**: FastAPI, 20 routes (corrected 2026-08-24 from a previously-
+stated 17 — undercounted against `CLAUDE.md`'s own already-listed
+20-line route table; re-verified directly against the live route
+decorators in `backend/api/`) covering auth (OTP request/verify by
 email/SMS), survey session CRUD, message exchange, response
-retrieval/correction, report generation, and the HITL queue/review
-endpoints. Full route list and request/response shapes: interactive
-Swagger UI at `/docs` on a running instance.
+retrieval/correction, report generation, the HITL queue/review
+endpoints, and health/readiness/debug utility routes. Full route list
+and request/response shapes: interactive Swagger UI at `/docs` on a
+running instance.
 
 ## 14. Security & privacy implementation
 
@@ -540,7 +544,42 @@ eval/ -q`), covering agent logic, the RAG retrieval engine, database
 models, API routes, and the evaluation harness itself. Tests are
 hermetic — no live Qdrant/Ollama/network dependency in the default
 suite; live-service behavior is verified separately via direct,
-documented smoke tests against a running instance.
+documented smoke tests against a running instance. **Re-verified live
+2026-08-24 against a fresh `pytest --collect-only` run** (as part of a
+documentation-completeness audit prompted by a direct question — "is
+everything properly documented" — not routine maintenance): this 2,376
+figure is confirmed correct — originally 1,535 `backend/tests` + 841
+`eval/`, 98 files; after the same-day reorganization in §15.1 below moved
+one 16-test file, now **1,519 `backend/tests` + 857 `eval/`**, grand
+total unchanged. `CLAUDE.md`'s own Testing section had drifted to a
+stale 2,282 (dated 2026-08-21, before the corrective-retry port and
+3-way split work added new tests) and has been corrected to match.
+
+### 15.1 `backend/evaluation/` was found undocumented, then moved to `eval/legacy_thesis_ch6/`
+
+Everything above (and everywhere else in this document) describes the
+`eval/` harness at the repo root. A separate, real, importable module
+used to live at `backend/evaluation/evaluate.py` ("Thesis Chapter 6"
+framework — BM25 / flat-vector / hierarchical-RAG comparison over a
+100-item **synthetic** corpus, predates `eval/`) — found completely
+undocumented in both this file and `CLAUDE.md` during the 2026-08-24
+audit that prompted this subsection. Rather than just documenting the
+split, it was resolved the same day: `grep` confirmed **zero real
+production coupling** (only one test file imported it, nothing in
+`backend/agents/`, `backend/api/`, or `backend/rag/` did), so the whole
+module — `evaluate.py`, `run_comparison.py`, `semantic_demo.py`, the
+`wisco/` WISCO-parsing pipeline, and its test file — moved to
+**`eval/legacy_thesis_ch6/`**, alongside every other evaluation-only
+module. The dozen `eval/*.py` scripts that used to write their output
+JSON/CSV into `backend/evaluation/` now write to
+**`eval/results/legacy_thesis_ch6/`** instead, matching `eval/results/`'s
+existing convention. Verified via a real `pytest --collect-only` (all
+imports resolve, same 2,376 total) and a real, non-collect-only run of
+the directly affected tests (45 passed). The authoritative "which
+subsystem's numbers to cite" rule is unaffected by the move and remains
+in `Documentation/Conference_I_Reviewer_2/EVALUATION_PROTOCOL.md`: every
+number in this document comes from `eval/`'s main harness, never from
+`eval/legacy_thesis_ch6/evaluate.py`'s synthetic-corpus comparison.
 
 ---
 

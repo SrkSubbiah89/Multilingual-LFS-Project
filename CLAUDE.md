@@ -55,11 +55,11 @@ header and should not be used to navigate or modify current code.
 | `sentence-transformers` version | `3.0` | **`5.2.3`** |
 | Arabic dialect normalization | `camel-tools==1.5` | **Not a dependency at all** — hand-built 79-rule dict (`_GULF_NORMALISE` in `language_processor.py`), no external library |
 | SRE file name | `semantic_relation_engine.py` | **`semantic_relation.py`** |
-| Agent count | "13-agent CrewAI system" | **11-12 modules** construct a `crewai.Agent` (count depends on exact grep pattern; never 13). **Zero** use of CrewAI hierarchical delegation anywhere — no `Process.hierarchical`, no `manager_agent`. "SurveyOrchestrator — CrewAI hierarchical process" does not match the real architecture. |
+| Agent count | "13-agent CrewAI system" | **11-12 modules** construct a `crewai.Agent` (count depends on exact grep pattern; never 13) *as of 2026-08-12, when this comparison was made* — **now stale: a real 13th agent-constructing module was added 2026-08-24, see "Real, current agent modules" below.* **Zero** use of CrewAI hierarchical delegation anywhere — no `Process.hierarchical`, no `manager_agent`. "SurveyOrchestrator — CrewAI hierarchical process" does not match the real architecture. |
 | WISCO DOI | `10.5281/zenodo.7598568` | **`10.5281/zenodo.8262593`** — `7598568` is the old, superseded version (this exact error was already found and corrected once before, in a different draft) |
 | ISCO-08 "441 = 436 official + 5 supplementary (ILO Geneva 2012 guidance)" | Stated as an already-correct, deliberate design choice | **Not what was found.** Real, root-caused audit: 19 non-standard codes, 14 missing official codes — no "5 supplementary, ILO-sanctioned" explanation exists in any source checked. **Fully resolved 2026-08-12** via a direct primary-source ILO cross-check — see "Knowledge base construction" below. |
 | `backend/tests/` file count | 18 files | **44 files** (88 combined with `eval/`'s 44) |
-| API surface | "All survey interaction goes through one endpoint" | **17 distinct routes** (counted from the live OpenAPI spec) — session CRUD, responses, HITL queue/review, reports, auth, health/debug, etc. |
+| API surface | "All survey interaction goes through one endpoint" | **20 distinct routes** (counted from the live OpenAPI spec — corrected from a previously-stated 17, which undercounted against this document's own already-listed 20-line route table below; found during the 2026-08-24 documentation-completeness audit) — session CRUD, responses, HITL queue/review, reports, auth, health/debug, etc. |
 | ISIC coverage | "100+ of 419" | **134 of 419** — real, checked directly |
 | ISCED-F coverage | "30+ of ~80 detailed fields" | **63 of ~80** — real, checked directly (the draft undercounted; this was already at 63 before this document was written) |
 
@@ -80,9 +80,9 @@ docker compose -f docker/docker-compose.yml up --build
 | Frontend (Next.js 14) | http://localhost:3000 | 4 pages: `/`, `/chat`, `/report`, `/supervisor_review` — all confirmed loading |
 | Backend (FastAPI) | http://localhost:8000 | `/docs` (Swagger), `/ready`, `/health`, `/debug/isco/{job_title}` — all confirmed responding |
 | PostgreSQL 15 | internal :5432 | 11 tables (see below), Alembic migrations, confirmed at head as of 2026-08-12 |
-| Qdrant | http://localhost:6333 | 10 live collections (legacy + official-profile ISCO-08, both hierarchical and flat) |
+| Qdrant | http://localhost:6333 | **22 live collections** (corrected 2026-08-24 from a stale "10" — that number was never updated as ISIC/ISCED-F and the e5-large profile were added later in this same document; re-counted directly via a live `GET /collections` call): 5 legacy ISCO-08 (`isco_occupations` + major/submajor/minor/unit), 5 `official_ilo2021_v1` (major/submajor/minor/unit + flat-unit), 5 `official_ilo2021_v1_e5large` (same 5, e5-large embeddings), 4 `isic_rev4_*` (sections/divisions/groups/classes), 3 `iscedf2013_*` (broad/narrow/detailed fields) |
 | Redis 7 | internal :6379 | confirmed healthy |
-| Ollama | http://localhost:11434 | confirmed healthy; models present: `llama3.2:1b`, `llama3.2:latest`, `gemma3:4b` |
+| Ollama | http://localhost:11434 | confirmed healthy; **7 models present** (corrected 2026-08-24, re-checked live via `GET /api/tags` — the prior 3-model list was missing `qwen2.5:3b`, which Module J's own findings elsewhere in this document actively depend on, plus 3 more): `llama3.2:1b`, `llama3.2:latest`, `gemma3:4b`, `qwen2.5:3b`, `aya:latest`, `hf.co/CohereLabs/tiny-aya-global-GGUF:Q4_K_M`, `hf.co/CohereLabs/tiny-aya-fire-GGUF:Q4_K_M` |
 
 First-boot note: the embedding model actually in use **by default** is
 `intfloat/multilingual-e5-small` (not `-large` as some older documents
@@ -139,10 +139,25 @@ artifact: `eval/local_runs/e5large_full_heldout_20260824/results.csv`.
 Still not switched to production default — same open decision as above,
 now backed by full-scale rather than sampled evidence.
 
-Real, currently-pinned dependency versions (from `requirements-dev.txt`,
-the file that actually pins exact versions — `requirements.txt` itself
-pins nothing, all bare package names, verified across this project's
-entire git history):
+Real, currently-pinned dependency versions. **Correction, 2026-08-24**:
+this section previously claimed `requirements.txt` "pins nothing, all
+bare package names, verified across this project's entire git history"
+— checked directly against the live file and that claim is false, and
+has been since commit `c5aad9c` ("Pin requirements.txt to real,
+pip-freeze-verified versions (28 packages)"), well before this document's
+prior verification passes. `requirements.txt` is the real, full,
+pip-freeze-verified application dependency file (28 packages, `==`
+pins throughout) — it is the primary source, not `requirements-dev.txt`.
+`requirements-dev.txt` is a deliberately narrower, separately-pinned
+subset (10 packages) covering only what the B2 non-inference test suite
+imports (see its own header comment for the exact test list); where the
+two files list the same package, their versions agree (`crewai`,
+`qdrant-client`, `sentence-transformers`, `pytest`, `pytest-asyncio`,
+`python-dotenv`, `rank-bm25` all match). A third, separately-scoped file,
+`backend/evaluation/wisco/requirements.lock.txt`, pins only what Module
+A's WISCO scripts add on top (`openpyxl`, `et_xmlfile`) — self-documented
+in its own header, not a duplicate of either file above. Versions below
+are from `requirements.txt` directly:
 
 ```
 crewai==1.9.3
@@ -191,7 +206,7 @@ fix already applied earlier to the identical pattern in
 `backend/api/survey_routes.py`'s `semantic_coherence_out` (that fix did
 not get propagated to this second, separate occurrence at the time).
 
-## API (17 routes, from the live OpenAPI spec)
+## API (20 routes, from the live OpenAPI spec)
 
 ```
 POST   /auth/request-otp
@@ -235,34 +250,81 @@ Not all of these construct a `crewai.Agent` — confirmed which do:
 | `hitl_quality_manager.py` | Yes |
 | `isco_classifier.py` | Yes |
 | `isic_classifier.py` | Yes |
+| `isced_classifier.py` | **Yes — changed 2026-08-24** (see below) |
 | `language_processor.py` | Yes |
 | `rag_expert.py` | Yes |
 | `report_generator.py` | Yes |
 | `semantic_relation.py` | Yes |
 | `validation_agent.py` | Yes |
-| `isced_classifier.py` | No — keyword/rule-based, no LLM |
 | `nationality_classifier.py` | No |
 | `person_register.py` | No — deterministic |
 | `isco_reranker_strict.py` | No |
 | `classifier_methods.py` | Not an agent — shared constants |
 | `method_registry.py` | Not an agent — registry/introspection utility |
 
-All 12 that do construct an `Agent` set `allow_delegation=False`
-consistently (checked directly). There is no CrewAI hierarchical
-manager-delegation process anywhere in this codebase.
+**Correction, 2026-08-24** (found during a documentation-completeness
+audit — this table had gone stale and nobody had re-checked it against
+the code since): `isced_classifier.py` used to be correctly "No" here,
+but the same-day corrective-RAG-retry port (see "Knowledge base
+construction" below) added a real `Agent(...)` construction at two call
+sites (`backend/agents/isced_classifier.py:749` and `:846`, the LLM
+rerank and corrective-retry-reformulation paths) — this table was never
+updated when that code shipped. **13 modules now construct a
+`crewai.Agent`, not 12** — this also makes the "11-12 modules... never
+13" claim in the corrections table near the top of this document
+(under "Agent count") stale; that row is left as written since it
+describes a comparison against the externally-supplied draft made on
+2026-08-12, before this change existed, but should not be read as a
+current fact. All 13 that do construct an `Agent` set
+`allow_delegation=False` consistently (checked directly, including both
+of `isced_classifier.py`'s new call sites). There is still no CrewAI
+hierarchical manager-delegation process anywhere in this codebase.
 
 ## Semantic Relation Engine — verified formula
 
-Confirmed present in `backend/agents/semantic_relation.py` (lines
-358-377):
+**Corrected 2026-08-24** — re-checked directly against the live file
+during the documentation-completeness audit; the previous version of
+this section had drifted on three counts: stale line numbers, renamed
+variables (`score_isic`/`score_isced` → `score_parts[0]`/`score_parts[1]`
+at some point after this was first written), and — more substantively —
+it omitted a real partial-credit step entirely, and conflated two
+genuinely different scoring mechanisms (the confidence-adjustment bands
+vs. the violation-severity bands) as if they were one. Confirmed present
+in `backend/agents/semantic_relation.py`, inside `analyse()`
+(method starts line 340):
 
 ```python
-raw_score = 0.55 * score_isic + 0.45 * score_isced
-is_coherent = raw_score >= 0.70
-# score >= 0.90 -> NONE / highest coherence band
-# additional bands down to HIGH severity below 0.50 (LOW severity now
-# genuinely emitted -- see below, this was previously a documented gap)
+# Lines 392-406 — weighted coherence score, with graceful degradation
+# when only one cross-standard dimension is available:
+if isic_section and isced_level is not None:
+    raw_score = 0.55 * score_parts[0] + 0.45 * score_parts[1]
+elif isic_section:
+    raw_score = float(score_parts[0])
+elif isced_level is not None:
+    raw_score = float(score_parts[1])
+else:
+    raw_score = 0.80   # no cross-standard data -> assume plausible
+
+# Partial credit: MODERATE-severity violations soften the penalty --
+# this step was previously undocumented here entirely.
+moderate_violations = sum(1 for v in violations if v.severity == "MODERATE")
+raw_score = max(0.0, raw_score + 0.15 * moderate_violations * (1 - raw_score))
+
+score = round(min(raw_score, 1.0), 4)
+is_coherent = score >= 0.70
+
+# Lines 408-416 — confidence adjustment bands (affect the CALLER's
+# confidence, not violation severity): >=0.90 -> +0.10, >=0.70 -> +0.05,
+# >=0.50 -> -0.05, else -0.20.
 ```
+
+**Violation severity (LOW/MODERATE/HIGH) is a separate, gap-based
+mechanism** (lines 551-564 of `_check_isco_isced`, not the score bands
+above) — how many ISCED levels the respondent's level falls outside the
+expected `[min_l, max_l]` range: `gap<=1` → LOW, `gap==2` → MODERATE,
+`gap>2` → HIGH. LOW is a real, genuinely-emitted third tier (`rule_id`s
+`SR-ISCO-ISCED-01/02/03`), confirmed by reading the actual severity
+assignment, not inferred from the comment claiming it.
 
 The sub-major strict rules (Health Professionals → ISIC Q + ISCED≥7, ICT
 Professionals → ISIC J, Chief Executives → ISCED≥6) are **confirmed
@@ -428,19 +490,87 @@ Canonical source of these numbers, character-for-character:
 local-model (Ollama `llama3.2:latest`) fallback result exists (17.19% on
 the 2,013-case dev split) but must never be cited as a Claude result.
 
+## Evaluation code layout — everything now lives under `eval/`
+
+**2026-08-24, two-part correction.** First pass: this section was added
+after finding `backend/evaluation/` completely undocumented in this file
+and in `Documentation/PROJECT_FLOW_AND_STATUS.md` — a real gap, since an
+AI without repo access reading only those two documents would have had
+no way to know it existed. Second pass, same day: rather than just
+documenting the split, it was actually resolved. `backend/evaluation/`
+had **zero real production coupling** — grep-confirmed only one file
+(`backend/tests/test_evaluation.py`) ever imported it, nothing under
+`backend/agents/`, `backend/api/`, `backend/rag/`, `backend/database/`,
+`backend/llm/`, or `backend/auth/` did — so it was moved out of the
+application package entirely:
+
+- **`backend/evaluation/evaluate.py`, `run_comparison.py`,
+  `semantic_demo.py`, `wisco/`** → **`eval/legacy_thesis_ch6/`** (same
+  names, new home). This is the separate, pre-existing **"Thesis Chapter
+  6"** framework (BM25 / flat-vector / hierarchical-RAG comparison over a
+  100-item **synthetic** corpus, predates the main `eval/` harness — not
+  dead code, still reused by `eval/run_eval.py`'s `BM25Baseline` import
+  and `eval/wisco_subsample_3system_comparison.py`'s full 3-system
+  comparison). `wisco/` (Module A's real WISCO-parsing pipeline, its own
+  `requirements.lock.txt`, and its `data/raw|interim|processed/`) moved
+  with it as one self-contained unit.
+- **`backend/tests/test_evaluation.py`** → **`eval/legacy_thesis_ch6/test_evaluate.py`**
+  — moved alongside the code it tests, matching the
+  `eval/legacy824/`-style convention below. Still collected by the same
+  documented `pytest backend/tests eval/ -q` command; only its folder
+  changed. (This is also why `backend/tests` dropped from 1,535 to 1,519
+  tests and `eval/` rose from 841 to 857 in the Testing section below —
+  the 16-test file moved, the grand total of 2,376 did not change.)
+- **The ~12 `eval/*.py` scripts that used to write their JSON/CSV output
+  into `backend/evaluation/`** (e.g. `embedding_timing_benchmark.py`,
+  `sre_expanded_validation.py`, `qdrant_collection_memory_audit.py`, the
+  NER/warmed-comparison runners) now default to
+  **`eval/results/legacy_thesis_ch6/`** instead, consistent with
+  `eval/results/`'s existing convention (`raw_runs/`, `dev_selection/`)
+  for run output. Every script's `--out` default was updated and the move
+  re-verified via a real `pytest --collect-only` + a scoped real test run
+  (45 passed) — see the Testing section below for the full-suite result.
+- **Full "which one to cite" rules** (unchanged by the move, still the
+  authoritative source):
+  `Documentation/Conference_I_Reviewer_2/EVALUATION_PROTOCOL.md` — every
+  manuscript number comes from `eval/`'s main harness (real data, Wilson
+  CIs, reproducibility manifests); `eval/legacy_thesis_ch6/evaluate.py`'s
+  synthetic-corpus numbers are never cited as "the" evaluation result
+  without saying so explicitly.
+- **`eval/legacy824/`, `eval/legacy_decision_policy41/`,
+  `eval/legacy_runtime40/`, `eval/legacy_runtime40_1/`**: real,
+  intentional historical-reconstruction modules, unaffected by the move
+  above — each pins itself to a specific historical git commit (e.g.
+  `legacy824` to commit `824fcf2`, "Add two-stage ISCO-08 classifier
+  agent") and reproduces that exact historical classifier's behavior
+  against WISCO for methodological comparison, never modifying or
+  guessing at the historical source. Not dead code or clutter; each has
+  its own module docstring plus a fuller writeup in
+  `Documentation/AI_HANDOFF/` (search for the matching task number, e.g.
+  `CLAUDE_TASK_39_*`, `CLAUDE_TASK_40_*`, `CLAUDE_TASK_41_*`).
+
 ## Testing
 
 ```bash
 pytest backend/tests eval/ -q
 ```
-→ **2,282 passed, 0 failed** (2026-08-21, count only — not a full
-document re-verification; 1,450 in `backend/tests` + 832 in `eval/`, 89
-files total). The count dropped from a prior 2,363 because
-`backend/agents/survey_orchestrator.py` — confirmed dead code, never
-imported by the live API, see the API-surface note below — was removed
-from the codebase along with its dedicated 65-test file and the
-orchestrator-dependent tests in `test_hitl_and_e2e_extended.py`. No
-standing known failures.
+→ **2,376 collected, 1 deselected** (re-verified live 2026-08-24 via
+`pytest --collect-only`, during the same documentation-completeness audit
+that fixed the agent-count and requirements.txt errors above — the prior
+"2,282" here was stale and did not match `Documentation/
+PROJECT_FLOW_AND_STATUS.md`'s own count, which turned out to be the
+correct one: originally 1,535 in `backend/tests` + 841 in `eval/`; after
+the same-day `backend/evaluation/` → `eval/legacy_thesis_ch6/` move
+above relocated its 16-test file, now **1,519 in `backend/tests` + 857
+in `eval/`, 98 test files total (51 + 47)** — not 89, and the grand
+total of 2,376 unchanged by the move. This is a real collection count, not a full
+green-run re-confirmation of every test this pass (that was last done
+2026-08-24 immediately after the corrective-retry port, with zero
+regressions — see "Knowledge base construction" below); no reason to
+believe any have since started failing, but this Testing section's own
+job is to state what was actually checked, not assume. The 1 deselected
+test is `backend/tests/load_test.py` (`@pytest.mark.slow`). No standing
+known failures.
 
 ## Citation policy — unchanged, still correct
 

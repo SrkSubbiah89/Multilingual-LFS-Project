@@ -191,7 +191,7 @@ Stricter rules apply for specific sub-major groups, e.g.:
 ### Demo (10 test cases)
 
 ```bash
-python -m backend.evaluation.semantic_demo
+python -m eval.legacy_thesis_ch6.semantic_demo
 ```
 
 Output shows colour-coded results: green = coherent, yellow = moderate mismatch, red = high violation.
@@ -953,30 +953,40 @@ pytest backend/tests/load_test.py -m slow -v
 
 ### Evaluation Framework
 
+> **Moved 2026-08-24** from `backend/evaluation/` to `eval/legacy_thesis_ch6/`
+> — a documentation-completeness audit found this module had zero real
+> production coupling (only one test file imported it), so it was
+> relocated out of the application package and alongside every other
+> evaluation-only module under `eval/`. This is the "Thesis Chapter 6"
+> framework specifically — see `eval/` for the current, primary
+> evaluation harness (`run_eval.py`, `ablation_runner.py`) that all
+> published accuracy numbers actually come from.
+
 ```bash
 # Compare BM25 / Flat vector / Hierarchical RAG on 100 synthetic test cases
-python -m backend.evaluation.evaluate --system all --top-k 3
+python -m eval.legacy_thesis_ch6.evaluate --system all --top-k 3
 
 # Arabic test cases
-python -m backend.evaluation.evaluate --system all --arabic
+python -m eval.legacy_thesis_ch6.evaluate --system all --arabic
 
 # Semantic Relation Engine demo (10 cases, colour output)
-python -m backend.evaluation.semantic_demo
+python -m eval.legacy_thesis_ch6.semantic_demo
 ```
 
-Results are written to `backend/evaluation/results.csv`, `results_arabic.csv`, `results_approach.csv`.
+Results are written to `eval/results/legacy_thesis_ch6/results.csv`,
+`results_arabic.csv`, `results_approach.csv`.
 
 ### External Validation Dataset — WISCO (Phase II)
 
-`backend/evaluation/wisco/` parses the [WISCO](https://doi.org/10.5281/zenodo.8262593)
+`eval/legacy_thesis_ch6/wisco/` parses the [WISCO](https://doi.org/10.5281/zenodo.8262593)
 (World database of ISCO Occupations) dataset for external ISCO-08 classifier validation across
 the system's 5 target languages. See `Documentation/Phase_2/Week_1/` for full provenance,
 structure inspection, and integrity-check documentation.
 
 ```bash
-python backend/evaluation/wisco/inspect_wisco.py   # structural report
-python backend/evaluation/wisco/analyze_wisco.py   # language/code/industry analysis
-python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.json
+python eval/legacy_thesis_ch6/wisco/inspect_wisco.py   # structural report
+python eval/legacy_thesis_ch6/wisco/analyze_wisco.py   # language/code/industry analysis
+python eval/legacy_thesis_ch6/wisco/parse_wisco.py     # produces wisco_raw_parsed.json
 ```
 
 **Attribution (CC-BY-4.0, both required):**
@@ -1045,18 +1055,9 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │   │   │                       # 4-digit format ("0110" etc.) instead of ISCO-08's own bare
 │   │   │                       # 3-digit convention — a coordinated project-wide decision,
 │   │   │                       # not fixed unilaterally.
-│   ├── evaluation/
-│   │   ├── evaluate.py         # BM25 / Flat / Hierarchical 3-system comparison (100 synthetic cases)
-│   │   ├── run_comparison.py   # Batch runner for all three systems
-│   │   ├── semantic_demo.py    # 10-case three-way crosswalk demo (colour output)
-│   │   ├── results.csv         # English evaluation results
-│   │   ├── results_arabic.csv  # Arabic evaluation results
-│   │   ├── results_approach.csv # Per-approach comparison summary
-│   │   └── wisco/              # Phase II Module A: WISCO external validation dataset pipeline
-│   │       ├── inspect_wisco.py / analyze_wisco.py / parse_wisco.py
-│   │       ├── requirements.lock.txt
-│   │       └── data/raw|interim|processed/
-│   └── tests/                  # 44 test files (+ conftest + slow-marked load_test), 1,450 tests here (2,282 combined with eval/'s 45 files/832 tests), zero live infra required
+│   └── tests/                  # 51 test files (+ conftest + slow-marked load_test), 1,519 tests here
+│       │                       # (2,376 combined with eval/'s 47 files/857 tests), zero live infra required.
+│       │                       # Illustrative subset below, not exhaustive — see the folder itself for all 51.
 │       ├── conftest.py              # Shared fixtures: in-memory DB, auth client, rate limiter reset
 │       ├── test_auth_routes.py
 │       ├── test_auth_and_api_extended.py
@@ -1079,9 +1080,7 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │       ├── test_emotional_intelligence.py
 │       ├── test_rag_expert.py
 │       ├── test_vector_store.py
-│       ├── test_survey_orchestrator.py
 │       ├── test_report_generator.py
-│       ├── test_evaluation.py
 │       └── load_test.py             # @pytest.mark.slow — excluded by default
 │
 ├── frontend/
@@ -1102,16 +1101,24 @@ python backend/evaluation/wisco/parse_wisco.py     # produces wisco_raw_parsed.j
 │   └── docker-compose.yml      # 5 services: backend, frontend, postgres, qdrant, redis
 │
 └── Documentation/
-    ├── CLAUDE.md               # Archived — original project-kickoff prompt, superseded by this README
-    ├── Test_Suite_Report.md    # Full per-test breakdown, regenerated from live pytest runs
-    ├── Phase_1_Summary/        # Phase 1 (this system) status snapshot + doc audit
-    ├── Phase_2/                # Phase II (thesis pilot study) — one folder per week
-    │   └── Week_1/             # Module A (WISCO) + Module E (ethics) artefacts
-    ├── Implementation/         # Gap-analysis docx versions
+    ├── PROJECT_FLOW_AND_STATUS.md  # Living business + technical status doc — read this for current state
+    ├── AI_HANDOFF/                 # 52 dated engineering task logs — historical evidence, not a status source (see its README)
+    ├── Conference_I_Reviewer_2/    # Reviewer #2 response evidence trail — audits, schemas, generated reports
+    ├── Phase_2/                    # Phase II (thesis pilot study) — FINAL_RESULTS_PACKAGE.md + one folder per week
+    │   └── Week_1/                 # Module A (WISCO) + Module E (ethics) artefacts
+    ├── Archive/                    # Superseded docs kept for history (old CLAUDE.md, old Phase 1 snapshot, etc.)
+    ├── Implementation/             # Gap-analysis docx versions
     └── Questionaries/
         ├── UAE_LFS_Questionnaire_Complete.docx
         └── questionnaire_text.txt
 ```
+
+Two repo-root files also matter for orientation but live above this tree:
+`CLAUDE.md` (technical ground truth for AI coding sessions — exact
+versions, file paths, verified status) and this `README.md` itself
+(setup/run instructions). A former third root file,
+`AI_HANDOFF_PROJECT_STATE.md`, was archived 2026-08-24 — its job is now
+covered by `CLAUDE.md` and `Documentation/PROJECT_FLOW_AND_STATUS.md`.
 
 ---
 
@@ -1174,7 +1181,7 @@ All thesis requirements fully implemented as of June 2026:
 | **Semantic Relation Engine** | **Done** | ISCO↔ISIC↔ISCED three-way crosswalk; SemanticCoherence score; confidence adjustment ±5–20%; HITL on HIGH violations |
 | Cross-Standard Coherence API | Done | `semantic_coherence` field in every `/survey/sessions/{id}/message` response |
 | Coherence Report Panel | Done | Score bar, ISIC/ISCED compatibility flags, violation list (EN+AR) on report page |
-| Semantic Demo Script | Done | `python -m backend.evaluation.semantic_demo` — 10 cases, colour output for presentation |
+| Semantic Demo Script | Done | `python -m eval.legacy_thesis_ch6.semantic_demo` — 10 cases, colour output for presentation |
 | **Rate Limiting** | **Done** | Sliding-window per-IP (OTP request) + per-email (OTP verify), in-process; plus `slowapi` 30 req/min per-IP limiter on `/message` |
 | **OTP Brute-force Lockout** | **Done** | Locks OTP after 5 consecutive wrong codes; prevents credential stuffing |
 | **Security Headers Middleware** | **Done** | CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy on every response |

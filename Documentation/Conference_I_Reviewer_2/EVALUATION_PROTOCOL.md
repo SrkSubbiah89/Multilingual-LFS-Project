@@ -9,7 +9,14 @@ There are genuinely two separate evaluation subsystems in this codebase.
 The manuscript must not cite them interchangeably without saying which one
 produced a given number.
 
-| | `backend/evaluation/evaluate.py` | `eval/` (this work extends it) |
+> **Path update, 2026-08-24**: this framework used to live at
+> `backend/evaluation/evaluate.py`. A documentation-completeness audit
+> found it had zero real production coupling (only one test file
+> imported it), so it moved to **`eval/legacy_thesis_ch6/evaluate.py`** —
+> alongside every other evaluation-only module, out of the application
+> package. Nothing about the guidance below changed, only the path.
+
+| | `eval/legacy_thesis_ch6/evaluate.py` | `eval/` main harness (this work extends it) |
 |---|---|---|
 | Origin | Thesis Chapter 6 evaluation framework | B0–B2 hardening work + this Reviewer #2 pass |
 | Test data | 100-item **synthetic** occupation-description corpus | `eval/test_set_full130.csv` / `test_set_smoke20.csv` (existing, real curated cases) + any future dev/held-out sets |
@@ -17,12 +24,13 @@ produced a given number.
 | Metrics | top-1/top-3 accuracy, Cohen's kappa, HITL rate, mean latency | Wilson-CI accuracy at every ISCO digit level, ISIC/ISCED accuracy (where gold labels exist), full experiment-run manifests (hardware, cost, latency percentiles, HITL escalation rate) |
 | Reproducibility | Not manifest-tracked | Every run produces an `ExperimentRunManifest` (git commit, dataset hash, hardware, dependency versions) |
 
-**For any number going into the manuscript, use the `eval/` harness** — it
-is the one with reproducibility manifests, real (not synthetic) test data,
-and Wilson confidence intervals. `backend/evaluation/evaluate.py` predates
-this work and is left untouched; do not delete it (a future analysis may
-still want the synthetic-corpus comparison), but don't cite its numbers as
-"the" evaluation without saying which subsystem and corpus produced them.
+**For any number going into the manuscript, use the `eval/` main harness**
+— it is the one with reproducibility manifests, real (not synthetic) test
+data, and Wilson confidence intervals. `eval/legacy_thesis_ch6/evaluate.py`
+predates this work and is left in place and importable (a future analysis
+may still want the synthetic-corpus comparison), but don't cite its
+numbers as "the" evaluation without saying which subsystem and corpus
+produced them.
 
 ## Dev-selects-params / held-out-eval-only discipline
 
