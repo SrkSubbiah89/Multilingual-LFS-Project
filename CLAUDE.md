@@ -139,6 +139,26 @@ artifact: `eval/local_runs/e5large_full_heldout_20260824/results.csv`.
 Still not switched to production default — same open decision as above,
 now backed by full-scale rather than sampled evidence.
 
+**Fourth reranking check, later the same day** — the first of the four
+to show any non-zero effect at all. Run against the real, previously-
+unused **validation split** (642 cases, built 2026-08-23 — see the
+3-way dev/validation/heldout split note below) on the *production-
+default* profile (e5-small) rather than e5-large, covering a combination
+the three checks above hadn't: **18.22%→18.69% (+0.47pp), 638/642
+predictions byte-identical, McNemar exact p=0.25 on the 4 that
+differed — not significant.** Investigated the 4 differences rather than
+stopping at the aggregate number: **all 4 are the same occupation, "Air
+force captain," gold code `0110`** — the already-disclosed Armed Forces
+4-digit-vs-3-digit catalogue quirk (see "Knowledge base construction"
+below). 3 of 4 flipped wrong→right under reranking. Read honestly: a
+narrow, single-occupation effect plausibly tied to one known catalogue
+oddity, not evidence that reranking generally helps — the three prior
+confirmations' conclusion stands. Real artifacts:
+`eval/results/dev_selection/validation_reranking_check/*.csv` (both
+runs; correctly routed to `dev_selection/`, not `raw_runs/`, since a
+validation-split result is never a citable confirmed result per this
+project's own dev/validation-selects, heldout-confirms discipline).
+
 Real, currently-pinned dependency versions. **Correction, 2026-08-24**:
 this section previously claimed `requirements.txt` "pins nothing, all
 bare package names, verified across this project's entire git history"
@@ -717,3 +737,10 @@ the actual committed evidence directly, not by trusting the prior text.
   from any planning document (including earlier versions of this one)
   without checking them against the running repo first — this document's
   own corrections table above is the demonstration of why.
+- Do not cite the validation-split reranking check (18.69% vs. 18.22%,
+  the "fourth reranking check" above) as a confirmed result, and do not
+  cite it as evidence that reranking generally helps — it's non-
+  significant (McNemar p=0.25), from the validation split specifically
+  (never a citable split, per this project's own dev/validation-selects,
+  heldout-confirms discipline), and the 3 real corrections it contains
+  are all the same already-disclosed Armed Forces catalogue quirk.

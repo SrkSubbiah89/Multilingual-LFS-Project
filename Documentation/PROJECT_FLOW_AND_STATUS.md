@@ -457,6 +457,7 @@ and nothing invalid is presented as if it were usable evidence:
 | 10 | Flat + e5-large embeddings, no reranking (preliminary 500-case sample) | 500 | 29.20% | Valid, **superseded in scale by row 4** — the 500-case estimate (+8.6pp) held up almost exactly at full scale (+8.50pp) |
 | 11 | Flat + e5-large + reranker: `groq/gpt-oss-120b` | 500 | 29.20% | Valid — **byte-identical to row 10**, 499/500 predictions matched exactly, reranker fired on 100% of cases and changed nothing |
 | 12 | Flat + e5-large + corrective retry + gap-aware confidence, reranker: Gemini | 300 | 21.00% | **Invalid** — Gemini's free-tier daily quota (20 requests/day) was exhausted after ~20 cases; the remaining ~280 silently fell back to unreranked retrieval, so this number is not a real reranked measurement |
+| 13 | Flat + e5-small (production default) + reranker: `groq/gpt-oss-120b`, on the **validation split** (real, previously-unused) | 642 | 18.69% vs. 18.22% no-rerank | Valid, but **not from the heldout split — not citable as a confirmed result**, only as a real check using the validation split for its intended purpose (§11.1). See note below the table — this is the first of 4 independent reranking checks to show *any* non-zero effect. |
 
 **Per-language, row 4 vs. row 2 (full 18,747 heldout, exact per-case pairing)** —
 the real story is sharper than the aggregate number:
@@ -493,6 +494,28 @@ contribution — not the raw accuracy number itself. **Never describe
 hierarchical retrieval as outperforming flat, and never cite row 12's
 21.00% as a valid reranked-e5-large result — both are explicit
 "do not cite" items.**
+
+**Row 13, 2026-08-24 — the first non-zero reranking effect in 4
+independent checks, and it doesn't change the conclusion above.** Run on
+the real, previously-unused **validation split** (642 cases, real
+purpose per §11.1 — parameter/config checking, never a citable
+confirmed result), on the current *production-default* profile
+(`official_ilo2021_v1`, e5-small) rather than e5-large this time, to
+cover a combination not tested by rows 5–11. Unlike every prior
+reranking check, this one was **not** byte-identical: 638/642 (99.4%)
+predictions matched exactly, but 4 differed (18.22%→18.69%, +0.47pp).
+McNemar exact p = 0.25 on the 3-vs-0 discordant pairs — not significant,
+consistent with everything above. Investigated rather than just reported:
+**all 4 changed cases were the same underlying occupation — "Air force
+captain," gold code `0110`** — the exact Armed Forces catalogue quirk
+already disclosed elsewhere in this document (major group 0 stored as a
+4-digit code, `"0110"`, instead of ISCO-08's own bare 3-digit
+convention). 3 of the 4 flipped from wrong to right under reranking; the
+narrow, plausible read is that the reranker's LLM step helps specifically
+with this one already-known, already-disclosed catalogue oddity, not
+that reranking generally helps — a single-occupation, non-significant
+effect is not evidence against the conclusion above. Real artifacts:
+`eval/results/dev_selection/validation_reranking_check/` (both CSVs).
 
 ### 12.3 Other validated results
 
@@ -669,11 +692,14 @@ scoped to the field dimension only; level stays deterministic. Default
    hierarchical, e5-small vs. e5-large. Both now have full-scale,
    statistically decisive evidence (§12 rows 2–4); this is purely a
    sign-off, not more measurement.
-3. **Use the new validation split (§11.1) for real.** It's built and
-   verified but nothing has been run against it yet — the next config
-   question (e.g. reranker thresholds, or extending the e5-large upgrade
-   to ISIC/ISCED-F) should use it instead of another ad hoc dev-split
-   sample.
+3. ~~**Use the new validation split (§11.1) for real.**~~ — **done,
+   2026-08-24.** Ran the reranking on/off check (§12 row 13) against it —
+   the first real, non-dry-run use of the split for its intended purpose.
+   Found a real, small, non-significant effect traced to one already-
+   known catalogue quirk (Armed Forces coding), not a general reranking
+   benefit — conclusion from rows 5–11 unchanged. Next genuinely open use
+   of this split: extending the e5-large upgrade question to ISIC/ISCED-F,
+   or a real reranker-threshold sweep, whenever either becomes relevant.
 4. **Evaluate ISIC/ISCED-F accuracy** against a real labelled test set —
    the one major gap in §16's status table. The hierarchical-retrieval
    infrastructure is live; no accuracy number exists yet for it, unlike
