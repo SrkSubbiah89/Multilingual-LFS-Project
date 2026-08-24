@@ -562,21 +562,28 @@ running instance.
 
 ## 15. Testing
 
-2,376 tests pass as of this document's date (`pytest backend/tests
-eval/ -q`), covering agent logic, the RAG retrieval engine, database
-models, API routes, and the evaluation harness itself. Tests are
-hermetic — no live Qdrant/Ollama/network dependency in the default
-suite; live-service behavior is verified separately via direct,
-documented smoke tests against a running instance. **Re-verified live
-2026-08-24 against a fresh `pytest --collect-only` run** (as part of a
-documentation-completeness audit prompted by a direct question — "is
-everything properly documented" — not routine maintenance): this 2,376
-figure is confirmed correct — originally 1,535 `backend/tests` + 841
-`eval/`, 98 files; after the same-day reorganization in §15.1 below moved
-one 16-test file, now **1,519 `backend/tests` + 857 `eval/`**, grand
-total unchanged. `CLAUDE.md`'s own Testing section had drifted to a
-stale 2,282 (dated 2026-08-21, before the corrective-retry port and
-3-way split work added new tests) and has been corrected to match.
+**2,384 tests pass** as of this document's date (`pytest backend/tests
+eval/ -q`, a real full run, not a collection count), covering agent
+logic, the RAG retrieval engine, database models, API routes, and the
+evaluation harness itself. Tests are hermetic — no live Qdrant/Ollama/
+network dependency in the default suite; live-service behavior is
+verified separately via direct, documented smoke tests against a running
+instance.
+
+History of this number, each correction found by actually checking
+rather than trusting the previous value: 2,282 (stale, dated 2026-08-21)
+→ **2,376**, corrected 2026-08-24 via a live `pytest --collect-only`
+during a documentation-completeness audit (1,535 `backend/tests` + 841
+`eval/`, 98 files; `CLAUDE.md` had independently drifted to the same
+stale 2,282 and was corrected to match) → still 2,376 after the same-day
+`backend/evaluation/` reorg relocated a 16-test file (1,519 + 857) →
+**2,384**, the current, real, full-run-confirmed number, after Module H
+added `backend/tests/test_orchestration_correctness.py` (8 tests:
+1,527 `backend/tests` + 857 `eval/`). This last correction was itself
+found late — both this section and `CLAUDE.md`'s still said 2,376 for a
+short while after Module H shipped, caught only by a direct "is
+everything completely implemented" follow-up check, not at the time of
+the Module H commit itself.
 
 ### 15.1 `backend/evaluation/` was found undocumented, then moved to `eval/legacy_thesis_ch6/`
 

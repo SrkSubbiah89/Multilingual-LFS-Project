@@ -574,23 +574,23 @@ application package entirely:
 ```bash
 pytest backend/tests eval/ -q
 ```
-→ **2,376 collected, 1 deselected** (re-verified live 2026-08-24 via
-`pytest --collect-only`, during the same documentation-completeness audit
-that fixed the agent-count and requirements.txt errors above — the prior
-"2,282" here was stale and did not match `Documentation/
-PROJECT_FLOW_AND_STATUS.md`'s own count, which turned out to be the
-correct one: originally 1,535 in `backend/tests` + 841 in `eval/`; after
-the same-day `backend/evaluation/` → `eval/legacy_thesis_ch6/` move
-above relocated its 16-test file, now **1,519 in `backend/tests` + 857
-in `eval/`, 98 test files total (51 + 47)** — not 89, and the grand
-total of 2,376 unchanged by the move. This is a real collection count, not a full
-green-run re-confirmation of every test this pass (that was last done
-2026-08-24 immediately after the corrective-retry port, with zero
-regressions — see "Knowledge base construction" below); no reason to
-believe any have since started failing, but this Testing section's own
-job is to state what was actually checked, not assume. The 1 deselected
-test is `backend/tests/load_test.py` (`@pytest.mark.slow`). No standing
-known failures.
+→ **2,384 passed, 1 deselected** (real, full, non-collect-only run,
+2026-08-24 — corrected from a stale 2,376 that this section still showed
+after Module H added 8 new tests, `backend/tests/test_orchestration_correctness.py`;
+found during a follow-up "is everything completely implemented" check
+run right after Module H shipped, not caught at the time). History
+before that 8-test addition: this section previously said 2,282 (stale,
+dated 2026-08-21), corrected to 2,376 during a documentation-completeness
+audit the same day (1,535 in `backend/tests` + 841 in `eval/`), then the
+`backend/evaluation/` → `eval/legacy_thesis_ch6/` move relocated a
+16-test file (1,519 + 857, still 2,376 total, 98 files not 89), then
+Module H's 8 new tests brought the real total to the current 2,384
+(1,527 in `backend/tests` + 857 in `eval/`). Unlike the prior two
+corrections to this section (which were collection-count checks only),
+this one is a real, full, non-collect-only green run: every test
+actually executed and passed, not just resolved at import time. The 1
+deselected test is `backend/tests/load_test.py` (`@pytest.mark.slow`).
+No standing known failures.
 
 ## Citation policy — unchanged, still correct
 
