@@ -20,3 +20,19 @@ Superseded documents, kept for history rather than deleted.
   here specifically to remove that ambiguity: there is now exactly one file
   named `CLAUDE.md` in the whole repository, at the root, and it is always
   the current one.
+- `AI_HANDOFF_PROJECT_STATE_20260812.md` — the former repo-root
+  `AI_HANDOFF_PROJECT_STATE.md`, moved here 2026-08-24. It was a from-
+  scratch "AI picking up this project cold" snapshot dated 2026-08-12,
+  sitting at the same top-level visibility as `CLAUDE.md` and `README.md`
+  — a second "what's the project's state" document was part of the same
+  file-sprawl confusion that prompted this cleanup pass. Superseded by
+  `CLAUDE.md` (root) and `Documentation/PROJECT_FLOW_AND_STATUS.md`, both
+  of which are kept current going forward; this one is not.
+- `Phase_1_Summary/` — the former `Documentation/Phase_1_Summary/`, moved
+  here 2026-08-24. A 2026-08-02 point-in-time status snapshot that had
+  already declared itself historical in its own text (a 2026-08-10
+  addendum); moving the whole folder makes that explicit structurally,
+  not just in prose. Its `Test_Suite_Report.md` was an exact duplicate of
+  a file that also existed directly under `Documentation/` — that
+  top-level duplicate was removed rather than archived a second time,
+  since this copy already preserves it.

@@ -1,5 +1,12 @@
 # Conference I — Reviewer #2 Response: Evidence & Documentation
 
+> **Evidence trail, not a status source.** For "what's the project's
+> current state," use `CLAUDE.md` (repo root) or
+> `Documentation/PROJECT_FLOW_AND_STATUS.md`. This folder is where those
+> documents point *from* when a claim needs a citable source — read it
+> when you need the underlying evidence for one specific reviewer comment,
+> not as a way to find out what's true right now.
+
 This directory contains the infrastructure, audits, schemas, tests, and
 documentation built to give the authors defensible, non-fabricated evidence
 when responding to Conference I Reviewer #2's feedback and revising the
