@@ -209,6 +209,23 @@ validation_check/` (642-case first check, +14.33pp, McNemar
 p=2.65×10⁻¹⁷), `eval/results/raw_runs/enriched_catalogue_
 heldout_20260824/` (the full, citable 18,747-case confirmation).
 
+**A real caveat, caught by direct user correction, then actually
+tested**: the 32.55% figure above was run with `--use-llm-reranker off`
+— retrieval-only, not real production behavior. `enable_llm=True` is
+production's actual default, and the LLM step only skips via a fast
+path at confidence ≥ 0.92; checked directly against the full heldout
+run's own data — **99.7% of cases (18,692/18,747) are below that
+threshold**, so the LLM step fires for nearly every real query. Genuine
+gap in what was first reported, not a technicality. **Re-tested with the
+reranker actually enabled** (Groq, 642-case validation split,
+`reranker_fired=True` confirmed on 642/642): **32.55%→32.87%, +0.31pp,
+McNemar p=0.5 — not significant**, only 3/642 predictions changed (same
+Armed Forces `0110` edge case as before). **5th independent confirmation**
+that LLM reranking doesn't move ISCO-08 accuracy, now shown on the
+enriched catalogue too. Correct framing going forward: the LLM step
+fires on ~99.7% of real queries, but essentially never changes the
+outcome when it does — state both facts, not just the aggregate number.
+
 **Not yet done, a real and obvious next question**: does this combine
 with e5-large? Both interventions plausibly work via different
 mechanisms (embedding-model capacity vs. input-text richness) and could

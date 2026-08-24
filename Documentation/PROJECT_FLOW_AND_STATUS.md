@@ -585,6 +585,29 @@ Magnet effect confirmed resolved on the same codes: `6122` 468→24
 predictions, `5165` 276→31, `6114` 208→6, `8153` 203→7 — all now close
 to their true frequency.
 
+**A real caveat, caught by direct user correction, then actually
+tested**: the 32.55% headline number above was run with
+`--use-llm-reranker off` — retrieval-only. In real production
+(`enable_llm=True` is the default), the LLM reranking step only skips
+via a fast path when confidence ≥ 0.92; checked directly against the
+full heldout run's own confidence column and **99.7% of cases (18,692 /
+18,747) fall below that threshold**, meaning the LLM step fires for
+nearly every real query. That's a real gap in what was originally
+reported, not a technicality — stated plainly rather than glossed over.
+
+**Re-tested with the reranker actually enabled** (Groq, on the 642-case
+validation split, `reranker_fired=True` confirmed on 642/642 cases):
+**32.55%→32.87%, +0.31pp, McNemar p=0.5 — not significant.** Only 3/642
+predictions changed, the same Armed Forces `0110` edge case seen in the
+earlier reranking check, not a new pattern. This is the **5th
+independent confirmation** that LLM reranking doesn't move ISCO-08
+accuracy — now shown on the enriched catalogue too, not just the
+original thin-text one. Honest framing: the LLM step fires on ~99.7% of
+real queries, but essentially never changes the outcome when it does —
+both facts are true and both needed stating, not just the aggregate
+number. Real artifact: `eval/results/dev_selection/
+enriched_catalogue_with_rerank_check/`.
+
 **Not yet done, the obvious next question**: does this combine with
 e5-large? Both plausibly work via different mechanisms (embedding-model
 capacity vs. input-text richness) and could be additive — untested.
