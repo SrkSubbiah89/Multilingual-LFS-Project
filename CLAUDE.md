@@ -226,13 +226,30 @@ enriched catalogue too. Correct framing going forward: the LLM step
 fires on ~99.7% of real queries, but essentially never changes the
 outcome when it does — state both facts, not just the aggregate number.
 
-**Not yet done, a real and obvious next question**: does this combine
-with e5-large? Both interventions plausibly work via different
-mechanisms (embedding-model capacity vs. input-text richness) and could
-be additive or synergistic — untested. **Not yet switched to production
-default** — same category of decision as the e5-large question, now with
-an even stronger case, and this one is cheaper to adopt (no larger model,
-no slower inference).
+**Combination test, answered at full scale, same day.** Built a third
+profile, `official_ilo2021_v1_enriched_e5large` (new: `backend/rag/
+build_official_isco08_collections_enriched_e5large.py`) — same enriched
+embedding_text as `ENRICHED_PROFILE`, embedded with
+`intfloat/multilingual-e5-large` instead of `-small`. Same additive
+discipline: new collection names, zero changes to anything already
+published. Validation-split preview first (642 cases, +7.32pp over
+enrichment alone, McNemar p=7.3×10⁻⁵), then the full 18,747-case
+heldout: **32.55%→40.95% (+8.40pp over enrichment alone, +19.75pp over
+the original 21.19% baseline). 95% Wilson CI [40.24%, 41.65%]. McNemar
+p≈9.8×10⁻¹⁴³ vs. enrichment alone, p≈0 vs. the original baseline.** The
+two interventions are genuinely additive, not redundant — confirming
+they work via independent mechanisms (embedding-model capacity vs.
+input-text richness). Per-language, every language gained substantially
+over the original baseline: Arabic 14.62%→37.77% (+23.15pp), English
+37.98%→56.91% (+18.94pp), Hindi 23.07%→40.89% (+17.82pp), Tagalog
+14.47%→33.17% (+18.69pp), Urdu 15.33%→35.53% (+20.21pp). **This is now
+the headline ISCO-08 accuracy result for the thesis — nearly double the
+original canonical baseline.** Real artifacts: `eval/results/
+dev_selection/enriched_e5large_validation_check/` (642-case preview),
+`eval/results/raw_runs/enriched_e5large_heldout_20260824/` (the full,
+citable confirmation). **Not yet switched to production default** — same
+category of decision as before, now resting on the strongest evidence in
+the project.
 
 Real, currently-pinned dependency versions. **Correction, 2026-08-24**:
 this section previously claimed `requirements.txt` "pins nothing, all

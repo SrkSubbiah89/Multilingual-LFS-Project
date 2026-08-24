@@ -448,7 +448,7 @@ and nothing invalid is presented as if it were usable evidence:
 | 1 | BM25 (keyword-only baseline) | 63 | 3.17% | Valid — 0% on 3 of 5 languages, not viable for multilingual use alone |
 | 2 | **Flat retrieval, no reranking, e5-small** (canonical) | **18,747** | **21.19%** | Valid — the original headline, published result |
 | 3 | **Strict hierarchical retrieval, no reranking** (canonical) | **18,747** | **10.35%** | Valid — 10.84pp worse than #2, McNemar p≈1.86×10⁻³⁰¹ |
-| 4 | **Flat retrieval, no reranking, e5-large** (full-scale confirmation) | **18,747** | **29.70%** | Valid — **+8.50pp over row 2 on the identical 18,747 cases**, McNemar p≈7.34×10⁻¹⁶⁷, 95% CI [29.05%,30.35%] non-overlapping with row 2's [20.61%,21.78%]. This is now the headline retrieval-quality result. |
+| 4 | Flat retrieval, no reranking, e5-large (full-scale confirmation) | 18,747 | 29.70% | Valid — +8.50pp over row 2, McNemar p≈7.34×10⁻¹⁶⁷, 95% CI [29.05%,30.35%] non-overlapping with row 2's [20.61%,21.78%]. Superseded as the headline result by row 17, which combines this with catalogue enrichment. |
 | 5 | Flat retrieval, no reranking (small subsample, e5-small) | 63 | 20.63% | Valid — same method as row 2, smaller sample; baseline for rows 6–8 below |
 | 6 | Flat + reranker: local `llama3.2` | 63 | 20.63% | Valid — **identical right/wrong set to row 5** (no rerank at all) |
 | 7 | Flat + reranker: `gemini-3.6-flash` (cloud) | 63 | 20.63% | Valid — **identical right/wrong set to rows 5 and 6**, 13/63 correct in all three, case for case |
@@ -459,7 +459,9 @@ and nothing invalid is presented as if it were usable evidence:
 | 12 | Flat + e5-large + corrective retry + gap-aware confidence, reranker: Gemini | 300 | 21.00% | **Invalid** — Gemini's free-tier daily quota (20 requests/day) was exhausted after ~20 cases; the remaining ~280 silently fell back to unreranked retrieval, so this number is not a real reranked measurement |
 | 13 | Flat + e5-small (production default) + reranker: `groq/gpt-oss-120b`, on the **validation split** (real, previously-unused) | 642 | 18.69% vs. 18.22% no-rerank | Valid, but **not from the heldout split — not citable as a confirmed result**, only as a real check using the validation split for its intended purpose (§11.1). See note below the table — this is the first of 4 independent reranking checks to show *any* non-zero effect. |
 | 14 | Flat + e5-small + **enriched catalogue text** (validation-split preview) | 642 | 32.55% vs. 18.22% baseline | Valid, **superseded in scale by row 15** — preview run on the validation split (+14.33pp, McNemar p=2.65×10⁻¹⁷) before committing to the full heldout run |
-| 15 | **Flat retrieval, no reranking, e5-small + enriched catalogue text** (full-scale confirmation) | **18,747** | **32.55%** | Valid — **+11.36pp over row 2 on the identical 18,747 cases**, McNemar p≈2.19×10⁻²⁷⁴. **The single largest accuracy gain found in this project — bigger than row 4's e5-large result (+8.50pp), same embedding model, zero extra inference cost.** See §12.4 below. |
+| 15 | Flat retrieval, no reranking, e5-small + enriched catalogue text (full-scale confirmation) | 18,747 | 32.55% | Valid — +11.36pp over row 2, McNemar p≈2.19×10⁻²⁷⁴. Larger than row 4's e5-large result alone, same embedding model, zero extra inference cost — but **superseded as the headline result by row 17 below**, which combines this with e5-large. See §12.4. |
+| 16 | Flat retrieval, no reranking, e5-large + enriched catalogue text (**combined**, validation-split preview) | 642 | 39.88% | Valid, superseded in scale by row 17 — +7.32pp over row 15's config on the same split, McNemar p=7.3×10⁻⁵, run before committing to the full heldout |
+| 17 | **Flat retrieval, no reranking, e5-large + enriched catalogue text (COMBINED, full-scale confirmation)** | **18,747** | **40.95%** | Valid — **+19.75pp over row 2 (the original canonical baseline), +8.40pp over row 15 (enrichment alone). 95% Wilson CI [40.24%, 41.65%]. McNemar p≈9.8×10⁻¹⁴³ vs. row 15, p≈0 vs. row 2.** The two interventions are genuinely additive. **This is now the headline ISCO-08 accuracy result for the thesis** — nearly double the original 21.19% baseline. See §12.4. |
 
 **Per-language, row 4 vs. row 2 (full 18,747 heldout, exact per-case pairing)** —
 the real story is sharper than the aggregate number:
@@ -608,15 +610,38 @@ both facts are true and both needed stating, not just the aggregate
 number. Real artifact: `eval/results/dev_selection/
 enriched_catalogue_with_rerank_check/`.
 
-**Not yet done, the obvious next question**: does this combine with
-e5-large? Both plausibly work via different mechanisms (embedding-model
-capacity vs. input-text richness) and could be additive — untested.
+**The combination question, answered at full scale, same day.** Built a
+third profile, `official_ilo2021_v1_enriched_e5large` — the same
+enriched embedding_text (Definition + Included occupations) as
+`ENRICHED_PROFILE`, embedded with `intfloat/multilingual-e5-large`
+instead of `-small`. Same additive discipline as every other profile:
+new collection names, new build script
+(`backend/rag/build_official_isco08_collections_enriched_e5large.py`),
+zero changes to anything already published. Validation-split preview
+first (642 cases, +7.32pp over enrichment alone, McNemar p=7.3×10⁻⁵),
+then the full 18,747-case heldout for the definitive number:
+
+**32.55% → 40.95% (+8.40pp over enrichment alone, +19.75pp over the
+original 21.19% baseline). 95% Wilson CI [40.24%, 41.65%] —
+non-overlapping with every prior configuration. McNemar p≈9.8×10⁻¹⁴³
+vs. enrichment alone, p≈0 vs. the original baseline.** The two
+interventions are genuinely additive, not redundant — confirming what
+the mechanism suggested: embedding-model capacity (e5-large) and
+input-text richness (enrichment) are independent levers, and pulling
+both moves accuracy further than either alone. Per-language, every
+language gained substantially over the original baseline: Arabic
+14.62%→37.77% (+23.15pp), English 37.98%→56.91% (+18.94pp), Hindi
+23.07%→40.89% (+17.82pp), Tagalog 14.47%→33.17% (+18.69pp), Urdu
+15.33%→35.53% (+20.21pp). **This is now the headline ISCO-08 accuracy
+result for the thesis — nearly double the original canonical baseline.**
+
 **Not yet switched to production default** — same category of decision
-as e5-large, now with an even stronger case, and cheaper to adopt (no
-larger model, no slower inference). Real artifacts: `eval/results/
-dev_selection/enriched_catalogue_validation_check/` (642-case preview),
-`eval/results/raw_runs/enriched_catalogue_heldout_20260824/` (the full,
-citable confirmation).
+as before, now resting on the strongest evidence in the project: full
+18,747-case scale, statistically decisive, confirmed additive. Real
+artifacts: `eval/results/dev_selection/enriched_catalogue_validation_check/`
+and `enriched_e5large_validation_check/` (642-case previews),
+`eval/results/raw_runs/enriched_catalogue_heldout_20260824/` and
+`enriched_e5large_heldout_20260824/` (the full, citable confirmations).
 
 ## 13. Data model & API surface
 

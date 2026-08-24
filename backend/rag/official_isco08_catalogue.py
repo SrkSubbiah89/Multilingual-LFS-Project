@@ -44,6 +44,7 @@ import yaml
 DEFAULT_PROFILE = "official_ilo2021_v1"
 E5LARGE_PROFILE = "official_ilo2021_v1_e5large"
 ENRICHED_PROFILE = "official_ilo2021_v1_enriched"
+ENRICHED_E5LARGE_PROFILE = "official_ilo2021_v1_enriched_e5large"
 DEFAULT_METADATA_PATH = Path(__file__).resolve().parents[2] / "eval" / "verified_catalogue_counts.yaml"
 
 LEVELS = ("major", "submajor", "minor", "unit")
@@ -112,6 +113,23 @@ PROFILE_COLLECTION_NAMES: dict[str, dict[str, str]] = {
         "unit": "isco08_unit_groups_ilo2021_v1_enriched",
         "flat": "isco08_unit_groups_flat_ilo2021_v1_enriched",
     },
+    # 2026-08-24: the combination test -- same enriched embedding_text as
+    # ENRICHED_PROFILE (Definition + Included occupations), but embedded
+    # with intfloat/multilingual-e5-large instead of -small, to check
+    # whether the two independently-confirmed gains (+8.50pp from e5-large
+    # alone, +11.36pp from enrichment alone) stack, since they plausibly
+    # work via different mechanisms (embedding-model capacity vs.
+    # input-text richness). Distinct collection names (required -- 1024-dim
+    # vectors can never reuse the 384-dim -enriched collections) and a
+    # distinct profile identifier, same additive/opt-in reasoning as every
+    # other profile here.
+    ENRICHED_E5LARGE_PROFILE: {
+        "major": "isco08_major_groups_ilo2021_v1_enriched_e5large",
+        "submajor": "isco08_submajor_groups_ilo2021_v1_enriched_e5large",
+        "minor": "isco08_minor_groups_ilo2021_v1_enriched_e5large",
+        "unit": "isco08_unit_groups_ilo2021_v1_enriched_e5large",
+        "flat": "isco08_unit_groups_flat_ilo2021_v1_enriched_e5large",
+    },
 }
 
 # Per-profile embedding identity. Every profile not listed here defaults to
@@ -120,6 +138,7 @@ PROFILE_COLLECTION_NAMES: dict[str, dict[str, str]] = {
 _DEFAULT_EMBEDDING = ("intfloat/multilingual-e5-small", 384)
 PROFILE_EMBEDDING_CONFIG: dict[str, tuple[str, int]] = {
     E5LARGE_PROFILE: ("intfloat/multilingual-e5-large", 1024),
+    ENRICHED_E5LARGE_PROFILE: ("intfloat/multilingual-e5-large", 1024),
 }
 
 
@@ -317,6 +336,7 @@ def load_enriched_catalogue(
     catalogue_path: Path,
     metadata_path: Path = DEFAULT_METADATA_PATH,
     expected_counts: Optional[dict[str, int]] = None,
+    profile: str = ENRICHED_PROFILE,
 ) -> list[OfficialCatalogueRecord]:
     """Additive, 2026-08-24 sibling of load_official_catalogue() for the
     6-column CSV eval/normalize_ilo_isco08_catalogue.py's normalize_
@@ -417,7 +437,7 @@ def load_enriched_catalogue(
             parent_code=row["parent_code"].strip(),
             title_en=title,
             embedding_text=embedding_text,
-            profile=ENRICHED_PROFILE,
+            profile=profile,
             source_catalogue_sha256=actual_hash,
         ))
     return records
