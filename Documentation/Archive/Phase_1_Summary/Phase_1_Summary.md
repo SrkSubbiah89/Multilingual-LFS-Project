@@ -1,4 +1,16 @@
-# Phase 1 Summary — Multilingual LFS Conversational AI
+# Phase 1 Summary — Multilingual LFS Conversational AI (ARCHIVED)
+
+> **Moved here 2026-08-24** from `Documentation/Phase_1_Summary/` as part
+> of a documentation cleanup — this folder (and its sibling
+> `Test_Suite_Report.md`, an exact duplicate of a since-removed top-level
+> copy) already declared itself a point-in-time snapshot below; moving it
+> into `Archive/` makes that explicit at the folder level too, not just in
+> the text. For current status, see `CLAUDE.md` (repo root) and
+> `Documentation/PROJECT_FLOW_AND_STATUS.md`. Body left unedited below,
+> including its own internal references to the old
+> `Documentation/Test_Suite_Report.md` path — those are part of the
+> historical record of what existed on 2026-08-02/2026-08-10, not live
+> links.
 
 **M.Tech Thesis | IIIT Kottayam 2026 | Supervisor: Dr. Goutam Mali**
 **Prepared: 2026-08-02**

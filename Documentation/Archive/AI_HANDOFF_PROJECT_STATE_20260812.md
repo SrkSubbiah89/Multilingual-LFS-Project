@@ -1,4 +1,18 @@
-# Project State — AI Handoff Overview
+# Project State — AI Handoff Overview (ARCHIVED — SUPERSEDED)
+
+> **Archived 2026-08-24.** This used to live at the repo root, next to
+> `README.md` and `CLAUDE.md` — a second "what's the state of the project"
+> document sitting at the same visibility level as the current ones, which
+> is exactly the kind of duplication that caused real confusion (the same
+> failure mode as the two-`CLAUDE.md` problem fixed the same week; see
+> `Documentation/Archive/README.md`). Its job — a from-scratch verified
+> snapshot for an AI picking up the project cold — is now done by root
+> `CLAUDE.md` (technical ground truth) and
+> `Documentation/PROJECT_FLOW_AND_STATUS.md` (business + technical status),
+> both kept current going forward. This file is left unedited below as a
+> point-in-time record of 2026-08-12; do not treat anything below as
+> current without checking it against the repo or those two documents
+> first.
 
 **Purpose of this file**: you are an AI assistant picking up work on this
 repository without the conversation history that produced its current
