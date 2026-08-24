@@ -294,7 +294,8 @@ def build_system(system: str, reranker_model: Optional[str] = None, disable_keyw
                   beam: int = 2, stage1_mode: str = "description",
                   reranker_candidates: int = 5, branch_collapse: bool = False,
                   capture_pool_metadata: bool = False, use_llm_reranker: bool = True,
-                  isco_catalogue_profile: str = LEGACY_PROFILE):
+                  isco_catalogue_profile: str = LEGACY_PROFILE,
+                  enable_corrective_retry: bool = False):
     """Return a classifier object exposing .classify(...) for the requested
     --system value. hierarchical and flat share ISCOClassifier (same class,
     force_flat toggles the retrieval path); bm25 uses the adapter above.
@@ -339,6 +340,7 @@ def build_system(system: str, reranker_model: Optional[str] = None, disable_keyw
         branch_collapse=branch_collapse,
         capture_pool_metadata=capture_pool_metadata,
         isco_catalogue_profile=isco_catalogue_profile,
+        enable_corrective_retry=enable_corrective_retry,
     )
     if system == "hierarchical":
         if use_llm_reranker:
@@ -1103,6 +1105,23 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--use-corrective-retry", choices=["on", "off"], default="off",
+        help=(
+            "2026-08-24: whether ISCOClassifier's corrective-RAG retry fires "
+            "(ISCOClassifier(enable_corrective_retry=...)). A genuinely "
+            "different mechanism from --use-llm-reranker: reranking selects "
+            "among candidates retrieval already found; corrective retry has "
+            "the LLM reformulate the query itself when the initial retrieval "
+            "gap looks weak, then retrieval runs again with the new query -- "
+            "an intervention before/during retrieval, not after it. Only has "
+            "any effect when an LLM is actually constructed (--use-llm-"
+            "reranker on); with reranking off, enable_corrective_retry is "
+            "still passed through but is inert (no LLM exists to reformulate "
+            "with). Default 'off' -- unchanged prior behaviour for every "
+            "existing caller that omits this flag."
+        ),
+    )
+    parser.add_argument(
         "--isco-catalogue-profile", choices=[LEGACY_PROFILE, OFFICIAL_PROFILE_ILO2021_V1, ENRICHED_PROFILE, ENRICHED_E5LARGE_PROFILE], default=LEGACY_PROFILE,
         help=(
             "Task 21: which ISCO-08 catalogue/collection identity --system "
@@ -1326,7 +1345,8 @@ def main() -> None:
                         branch_collapse=args.branch_collapse,
                         capture_pool_metadata=args.capture_pool_metadata,
                         use_llm_reranker=(args.use_llm_reranker == "on"),
-                        isco_catalogue_profile=args.isco_catalogue_profile)
+                        isco_catalogue_profile=args.isco_catalogue_profile,
+                        enable_corrective_retry=(args.use_corrective_retry == "on"))
 
     # Task 21: fail closed BEFORE running any case if an official profile
     # was explicitly requested but its collections are unavailable --

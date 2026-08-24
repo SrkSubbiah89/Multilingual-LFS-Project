@@ -251,6 +251,26 @@ citable confirmation). **Not yet switched to production default** — same
 category of decision as before, now resting on the strongest evidence in
 the project.
 
+**Corrective RAG retry, re-tested on the new best config, same day.**
+The one prior data point (n=63, "within run-to-run noise") predates
+every finding above. `eval/run_eval.py` gained a `--use-corrective-retry
+{on,off}` flag (previously untested by the main harness at all). First
+attempt via Groq — **invalid, same standard as the earlier
+Gemini-quota case**: 425 rate-limit errors, 28 failed reformulation
+calls across 60 cases, Groq's 8000 TPM limit couldn't keep pace with
+corrective retry's doubled LLM-call pattern. Re-ran with a local model
+(`ollama/qwen2.5:3b`, no rate limit) — clean, zero errors: **31/60 =
+51.67% both with and without corrective retry, exactly identical,
+McNemar exact p=1** (2 cases improved, 2 regressed, perfectly
+cancelling). Extends the "generation doesn't move accuracy" finding to
+a genuinely different mechanism — corrective retry reformulates the
+query itself, not just candidate selection like reranking — so this
+wasn't a guaranteed replication, and it held anyway. **6th independent
+confirmation.** n=60 is real and clean but still modest — a solid
+signal, not full-scale certainty. Real artifacts: `eval/results/
+dev_selection/corrective_retry_check_ollama/` and
+`corrective_retry_check_ollama_off/`.
+
 Real, currently-pinned dependency versions. **Correction, 2026-08-24**:
 this section previously claimed `requirements.txt` "pins nothing, all
 bare package names, verified across this project's entire git history"

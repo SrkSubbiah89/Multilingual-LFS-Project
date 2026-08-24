@@ -643,6 +643,30 @@ and `enriched_e5large_validation_check/` (642-case previews),
 `eval/results/raw_runs/enriched_catalogue_heldout_20260824/` and
 `enriched_e5large_heldout_20260824/` (the full, citable confirmations).
 
+**Corrective RAG retry, re-tested on the new best config, same day.**
+The one prior data point (row 8, n=63, "corrective retry... within
+run-to-run noise") predates every finding above — measured against a
+catalogue that no longer represents this project's actual retrieval
+pipeline. Re-tested properly: `eval/run_eval.py` gained a
+`--use-corrective-retry {on,off}` flag (previously untested by the main
+harness at all). First attempt used Groq — **invalid, same standard as
+the earlier Gemini-quota case**: 425 rate-limit errors and 28 failed
+reformulation calls across 60 cases, Groq's 8000 TPM limit couldn't
+keep up with corrective retry's doubled LLM-call pattern. Re-ran with a
+local model (`ollama/qwen2.5:3b`, no rate limit) — clean, zero errors:
+**31/60 = 51.67% both with and without corrective retry, exactly
+identical, McNemar exact p=1** (2 cases improved, 2 regressed,
+perfectly cancelling). Extends the "generation doesn't move accuracy"
+finding to a genuinely different mechanism — corrective retry
+reformulates the query itself, not just candidate selection like
+reranking — so this wasn't a guaranteed replication of the reranking
+result, and it held anyway. **6th independent confirmation** that
+LLM-based intervention on top of good retrieval adds nothing here.
+Honest caveat: n=60 is real and clean but still modest — a solid
+signal, not the statistical certainty of the full-scale retrieval
+results. Real artifacts: `eval/results/dev_selection/
+corrective_retry_check_ollama/` and `corrective_retry_check_ollama_off/`.
+
 ## 13. Data model & API surface
 
 **Database**: PostgreSQL, 11 tables — `users`, `otp_codes`,
