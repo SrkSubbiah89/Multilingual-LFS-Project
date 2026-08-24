@@ -1,7 +1,15 @@
 """
-backend/tests/test_evaluation.py
+eval/legacy_thesis_ch6/test_evaluate.py
 
-16 unit tests for backend/evaluation/evaluate.py.
+Moved 2026-08-24 from backend/tests/test_evaluation.py (a documentation-
+completeness audit found backend/evaluation/ had no real production
+coupling -- only this test file imported it -- so it was relocated
+under eval/ alongside every other evaluation-only module, matching the
+eval/legacy824/-style convention of tests living next to the code they
+cover). Included in `pytest backend/tests eval/ -q`, same as before;
+only its location changed, not the test command.
+
+16 unit tests for eval/legacy_thesis_ch6/evaluate.py.
 Fully offline — no Qdrant, no Ollama, no model loading required.
 
 Stub strategy
@@ -27,7 +35,7 @@ import pytest
 # evaluate.py can be imported safely at collection time — its module-level
 # code only touches rank_bm25 and sklearn, not any backend services.
 # ---------------------------------------------------------------------------
-from backend.evaluation.evaluate import (
+from eval.legacy_thesis_ch6.evaluate import (
     TEST_CASES,
     HITL_THRESHOLD,
     BM25Baseline,

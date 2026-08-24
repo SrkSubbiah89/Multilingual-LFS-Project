@@ -1,5 +1,5 @@
 """
-backend/evaluation/evaluate.py
+eval/legacy_thesis_ch6/evaluate.py
 
 Thesis Chapter 6 — Evaluation Framework
 =========================================
@@ -19,11 +19,11 @@ Metrics reported per system:
 
 Usage
 -----
-    python -m backend.evaluation.evaluate
-    python -m backend.evaluation.evaluate --system bm25
-    python -m backend.evaluation.evaluate --system flat
-    python -m backend.evaluation.evaluate --system hierarchical
-    python -m backend.evaluation.evaluate --output results.json
+    python -m eval.legacy_thesis_ch6.evaluate
+    python -m eval.legacy_thesis_ch6.evaluate --system bm25
+    python -m eval.legacy_thesis_ch6.evaluate --system flat
+    python -m eval.legacy_thesis_ch6.evaluate --system hierarchical
+    python -m eval.legacy_thesis_ch6.evaluate --output results.json
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ _logger = logging.getLogger(__name__)
 
 HITL_THRESHOLD  = 0.70      # matches ISCOClassifier.HITL_THRESHOLD
 _DEFAULT_TOP_K  = 3
-_CSV_DEFAULT    = "backend/evaluation/results.csv"
+_CSV_DEFAULT    = "eval/results/legacy_thesis_ch6/results.csv"
 
 # ---------------------------------------------------------------------------
 # 100-item synthetic test corpus

@@ -96,7 +96,7 @@ def run_model(cm: ConversationManager, model: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", nargs="+", default=["llama3.2", "qwen2.5:3b"])
-    parser.add_argument("--out", default="backend/evaluation/conversation_manager_warmed_comparison.json")
+    parser.add_argument("--out", default="eval/results/legacy_thesis_ch6/conversation_manager_warmed_comparison.json")
     args = parser.parse_args()
 
     cm = ConversationManager()

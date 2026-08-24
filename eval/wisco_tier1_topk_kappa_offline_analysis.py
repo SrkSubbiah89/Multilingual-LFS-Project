@@ -19,7 +19,7 @@ files) -- verified directly, not assumed.
 
 Cohen's kappa: computed at the 1-digit major-group level
 (gold_isco_1digit vs pred_isco_1digit), matching this project's existing
-convention in backend/evaluation/evaluate.py (sklearn.cohen_kappa_score).
+convention in eval/legacy_thesis_ch6/evaluate.py (sklearn.cohen_kappa_score).
 Kappa's CI is bootstrapped (2000 resamples, seeded) since it has no
 closed-form interval the way a proportion does.
 

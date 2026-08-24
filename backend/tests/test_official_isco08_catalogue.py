@@ -257,7 +257,7 @@ def test_loader_source_has_no_wisco_reference():
     # and re-scanning what remains.
     docstring = ast.get_docstring(tree) or ""
     body_without_docstring = source.replace(docstring, "", 1)
-    for token in ("backend.evaluation.wisco", "backend/evaluation/wisco", "local_benchmarks", "wisco_raw_parsed"):
+    for token in ("backend.evaluation.wisco", "backend/evaluation/wisco", "eval.legacy_thesis_ch6.wisco", "eval/legacy_thesis_ch6/wisco", "local_benchmarks", "wisco_raw_parsed"):
         assert token not in body_without_docstring, f"unexpected WISCO reference outside docstring: {token!r}"
 
 

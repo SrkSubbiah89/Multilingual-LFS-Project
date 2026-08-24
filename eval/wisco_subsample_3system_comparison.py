@@ -1,7 +1,7 @@
 """
 eval/wisco_subsample_3system_comparison.py
 
-Runs backend/evaluation/evaluate.py's existing BM25 / flat / hierarchical
+Runs eval/legacy_thesis_ch6/evaluate.py's existing BM25 / flat / hierarchical
 3-system comparison against a real WISCO subsample -- the specific gap
 identified in Phase 0 of the WISCO validation task (BM25 has never been
 run against WISCO at all; the existing flat-vs-hierarchical WISCO result
@@ -14,7 +14,7 @@ reranking_subset_500.json -- seed 42, stratified by language x ISCO
 major group, drawn from the same frozen heldout split as the canonical
 Tier-1 result) rather than constructing a new sample.
 
-IMPORTANT METHODOLOGICAL DISCLOSURE: backend/evaluation/evaluate.py
+IMPORTANT METHODOLOGICAL DISCLOSURE: eval/legacy_thesis_ch6/evaluate.py
 constructs ISCOClassifier() with no isco_catalogue_profile argument,
 i.e. the LEGACY catalogue profile (436 unit groups as of the 2026-08-12
 primary-source fix) -- NOT the official_ilo2021_v1 profile used for the
@@ -28,7 +28,7 @@ anywhere else against WISCO.
 
 Usage
 -----
-    python eval/wisco_subsample_3system_comparison.py --out backend/evaluation/results_wisco.csv
+    python eval/wisco_subsample_3system_comparison.py --out eval/results/legacy_thesis_ch6/results_wisco.csv
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.evaluation.evaluate import run_comparison, print_comparison_table, save_results_csv  # noqa: E402
+from eval.legacy_thesis_ch6.evaluate import run_comparison, print_comparison_table, save_results_csv  # noqa: E402
 
 _SUBSET_PATH = Path(__file__).resolve().parent / "local_benchmarks" / "wisco_isco08_v2_group_split" / "reranking_subset_500.json"
 _RECORDS_PATH = Path(__file__).resolve().parent / "local_benchmarks" / "wisco_isco08_v2_group_split" / "records.json"
@@ -63,7 +63,7 @@ def load_wisco_subsample() -> list[tuple[str, str]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="backend/evaluation/results_wisco.csv")
+    parser.add_argument("--out", default="eval/results/legacy_thesis_ch6/results_wisco.csv")
     parser.add_argument("--top-k", type=int, default=3)
     args = parser.parse_args()
 

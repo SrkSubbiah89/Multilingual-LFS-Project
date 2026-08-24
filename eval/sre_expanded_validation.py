@@ -2,7 +2,7 @@
 eval/sre_expanded_validation.py
 
 Module D: expand Semantic Relation Engine (SRE) validation from the
-existing 10-case backend/evaluation/semantic_demo.py to >=50 cases,
+existing 10-case eval/legacy_thesis_ch6/semantic_demo.py to >=50 cases,
 covering coherent / LOW / MODERATE / HIGH severity, with each case's
 predicted severity computed directly from _ISCO_MAJOR_TO_ISIC /
 _ISCO_SUBMAJOR_TO_ISIC / _ISCO_MAJOR_TO_ISCED / _ISCO_SUBMAJOR_TO_ISCED_MIN
@@ -27,7 +27,7 @@ avoids invoking it at all, not just avoiding changing its logic.
 
 Usage
 -----
-    python eval/sre_expanded_validation.py --out backend/evaluation/sre_expanded_validation.json
+    python eval/sre_expanded_validation.py --out eval/results/legacy_thesis_ch6/sre_expanded_validation.json
 """
 
 from __future__ import annotations
@@ -214,7 +214,7 @@ def build_cases() -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="backend/evaluation/sre_expanded_validation.json")
+    parser.add_argument("--out", default="eval/results/legacy_thesis_ch6/sre_expanded_validation.json")
     args = parser.parse_args()
 
     cases = build_cases()

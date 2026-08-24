@@ -42,7 +42,7 @@ def _pct(lst: list[float], p: int) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=120)
-    parser.add_argument("--out", default="backend/evaluation/embedding_timing_benchmark.json")
+    parser.add_argument("--out", default="eval/results/legacy_thesis_ch6/embedding_timing_benchmark.json")
     args = parser.parse_args()
 
     t_import0 = time.perf_counter()

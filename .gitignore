@@ -55,7 +55,7 @@ eval/local_runs/
 # -- e.g. the WISCO-derived ISCO-08 benchmark built by
 # eval/build_wisco_isco_benchmark.py. Not confidential (WISCO itself is
 # CC-BY-4.0 public reference data, already tracked under
-# backend/evaluation/wisco/), but kept out of Git as a generated/derived
+# eval/legacy_thesis_ch6/wisco/), but kept out of Git as a generated/derived
 # artifact -- regenerate from the tracked source + script rather than
 # committing the output, consistent with every other eval/local_* directory.
 eval/local_benchmarks/

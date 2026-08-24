@@ -25,7 +25,7 @@ title.
 WISCO independence
 --------------------
 This module takes only a catalogue path and a metadata path as input.
-It contains no reference to WISCO, ``backend/evaluation/wisco/``, or
+It contains no reference to WISCO, ``eval/legacy_thesis_ch6/wisco/``, or
 ``eval/local_benchmarks/`` anywhere in its source, and never reads any
 file other than the two explicitly supplied paths.
 """

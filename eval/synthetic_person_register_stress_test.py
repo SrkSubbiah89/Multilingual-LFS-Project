@@ -38,7 +38,7 @@ modules' real data directly, not by hand-copying a list that could drift.
 Usage
 -----
     python eval/synthetic_person_register_stress_test.py \
-        --out backend/evaluation/synthetic_prefill_validation.json
+        --out eval/results/legacy_thesis_ch6/synthetic_prefill_validation.json
 """
 
 from __future__ import annotations
@@ -331,7 +331,7 @@ def stress_test_batch(records: list[dict], edge_case_tags: dict[int, str], batch
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="backend/evaluation/synthetic_prefill_validation.json")
+    parser.add_argument("--out", default="eval/results/legacy_thesis_ch6/synthetic_prefill_validation.json")
     parser.add_argument("--n-users-per-batch", type=int, default=200)
     args = parser.parse_args()
 

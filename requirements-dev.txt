@@ -18,7 +18,8 @@
 # is mocked/monkeypatched -- see each file's own module docstring), but
 # importing the modules under test transitively imports crewai,
 # qdrant-client, sentence-transformers, pydantic, python-dotenv,
-# rank-bm25, and scikit-learn (backend/evaluation/evaluate.py, pulled in
+# rank-bm25, and scikit-learn (eval/legacy_thesis_ch6/evaluate.py, moved
+# here 2026-08-24 from backend/evaluation/evaluate.py -- pulled in
 # via eval/run_eval.py's BM25Baseline import, uses
 # sklearn.metrics.cohen_kappa_score -- a real dependency that was missing
 # from requirements.txt entirely before this file was written; it is

@@ -189,7 +189,7 @@ def main() -> None:
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", type=int, default=3)
-    parser.add_argument("--out", default="backend/evaluation/sre_hitl_enforcement_endpoint_verification.json")
+    parser.add_argument("--out", default="eval/results/legacy_thesis_ch6/sre_hitl_enforcement_endpoint_verification.json")
     args = parser.parse_args()
 
     all_summaries = []

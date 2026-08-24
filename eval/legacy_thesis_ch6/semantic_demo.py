@@ -1,5 +1,5 @@
 """
-backend/evaluation/semantic_demo.py
+eval/legacy_thesis_ch6/semantic_demo.py
 
 Presentation-ready demo of the Semantic Relation (Three-Way Crosswalk) layer.
 
@@ -7,8 +7,8 @@ Shows 10 cases spanning COHERENT, MODERATE, and HIGH-violation scenarios
 in both English and Arabic -- designed for manager / thesis-panel presentation.
 
 Usage:
-    python -m backend.evaluation.semantic_demo
-    python -m backend.evaluation.semantic_demo --arabic
+    python -m eval.legacy_thesis_ch6.semantic_demo
+    python -m eval.legacy_thesis_ch6.semantic_demo --arabic
 """
 
 from __future__ import annotations

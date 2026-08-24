@@ -13,7 +13,7 @@ record's audit trail but is no longer used by any script. See
 Documentation/Phase_2/Week_1/PROVENANCE.md for the full correction note.
 
 Usage:
-    python backend/evaluation/wisco/inspect_wisco.py
+    python eval/legacy_thesis_ch6/wisco/inspect_wisco.py
 """
 import hashlib
 import json

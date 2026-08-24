@@ -69,7 +69,7 @@ Key facts this parser depends on (see wisco_structure_inspection.md):
     captain"). These 8 are quarantined/orphaned, not guessed at.
 
 Usage:
-    python backend/evaluation/wisco/parse_wisco.py
+    python eval/legacy_thesis_ch6/wisco/parse_wisco.py
 """
 import json
 from pathlib import Path

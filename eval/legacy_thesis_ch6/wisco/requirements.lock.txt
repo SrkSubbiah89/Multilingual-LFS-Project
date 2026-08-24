@@ -6,7 +6,7 @@
 # main repo's own dependency management, not duplicated here. This file pins only what Module
 # A adds on top: reading .xlsx files, which is not otherwise a repo dependency.
 #
-# Reproduce with: pip install -r backend/evaluation/wisco/requirements.lock.txt
+# Reproduce with: pip install -r eval/legacy_thesis_ch6/wisco/requirements.lock.txt
 # Verified against: Python 3.11.9
 
 openpyxl==3.1.5

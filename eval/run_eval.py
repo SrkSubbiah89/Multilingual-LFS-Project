@@ -15,7 +15,7 @@ flat          Single-stage dense retrieval, SAME embedding model and SAME
               -- this reuses _classify_flat()'s real reranking call, not a
               separately-reimplemented baseline that could silently drift).
 bm25          Sparse lexical retrieval (rank-bm25), refactored from the
-              existing backend.evaluation.evaluate.BM25Baseline rather than
+              existing eval.legacy_thesis_ch6.evaluate.BM25Baseline rather than
               rewritten -- see the "refactor note" below. No reranking (the
               session brief only requires reranking parity for Flat RAG).
 
@@ -26,7 +26,7 @@ which can happen for hierarchical on a pathological query).
 
 Refactor note (flat RAG)
 --------------------------
-backend/evaluation/evaluate.py already has a FlatVectorBaseline class from
+eval/legacy_thesis_ch6/evaluate.py already has a FlatVectorBaseline class from
 earlier ad hoc runs. It does NOT rerank -- pure top-k dense retrieval, no
 LLM step at all. The session brief requires Flat RAG to use "the same
 reranking rule" as hierarchical, which FlatVectorBaseline does not do. Two
@@ -38,7 +38,7 @@ production (fallback when hierarchical collections aren't populated). The
 harness uses the latter (`--system flat` = force_flat=True) -- zero
 duplicated reranking logic, and genuine behavioural parity, not "close
 enough." FlatVectorBaseline itself is unused by this harness; it's still
-imported by the existing backend/evaluation/evaluate.py script, untouched.
+imported by the existing eval/legacy_thesis_ch6/evaluate.py script, untouched.
 
 This session is instrumentation only. No classification/pipeline logic was
 changed to build this harness -- backend/rag/hierarchical_store.py and
@@ -156,7 +156,7 @@ from backend.agents.isced_classifier import ISCEDClassifier  # noqa: E402
 from backend.agents.semantic_relation import SemanticRelationEngine  # noqa: E402
 from backend.rag.hierarchical_store import MODEL_NAME as EMBEDDING_MODEL_NAME  # noqa: E402
 from backend.rag.hierarchical_store import LEGACY_PROFILE, OFFICIAL_PROFILE_ILO2021_V1  # noqa: E402
-from backend.evaluation.evaluate import BM25Baseline  # noqa: E402
+from eval.legacy_thesis_ch6.evaluate import BM25Baseline  # noqa: E402
 
 try:
     import psutil
@@ -248,7 +248,7 @@ def _max_severity(violations: list) -> str:
 
 
 class _BM25Adapter:
-    """Wraps the existing backend.evaluation.evaluate.BM25Baseline (unmodified,
+    """Wraps the existing eval.legacy_thesis_ch6.evaluate.BM25Baseline (unmodified,
     reused not reimplemented) behind the subset of ISCOClassifier.classify()'s
     interface run_one_case() needs, so the harness doesn't need a separate
     code path per system. No reranking for BM25 -- see module docstring."""

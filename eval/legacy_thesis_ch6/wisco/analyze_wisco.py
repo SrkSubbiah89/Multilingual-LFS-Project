@@ -16,7 +16,7 @@ CANONICAL FILE (corrected 2026-08-02): targets the 2023-08-18 file, not the
 2023-02-02 file originally used. See PROVENANCE.md for why.
 
 Usage:
-    python backend/evaluation/wisco/analyze_wisco.py
+    python eval/legacy_thesis_ch6/wisco/analyze_wisco.py
 """
 import json
 from collections import Counter, defaultdict

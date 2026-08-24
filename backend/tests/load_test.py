@@ -855,7 +855,7 @@ def main() -> None:
     print_results(results, elapsed)
 
     # Save JSON results
-    out_path = "backend/evaluation/load_test_results.json"
+    out_path = "eval/results/legacy_thesis_ch6/load_test_results.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump([{
             "user_id":         r.user_id,

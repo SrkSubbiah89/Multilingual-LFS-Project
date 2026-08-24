@@ -3,7 +3,7 @@ eval/build_wisco_isco_benchmark.py
 
 Conference I Reviewer #2 response, Step 6, Phase D: converts the already-
 tracked, externally-sourced WISCO dataset
-(backend/evaluation/wisco/data/processed/wisco_raw_parsed.json -- see
+(eval/legacy_thesis_ch6/wisco/data/processed/wisco_raw_parsed.json -- see
 Documentation/Phase_2/Week_1/PROVENANCE.md for full provenance: Zenodo
 version DOI 10.5281/zenodo.8262593, CC-BY-4.0, SurveyCodings/WageIndicator
 Foundation) into a controlled_benchmark_schema.BenchmarkRecord package for

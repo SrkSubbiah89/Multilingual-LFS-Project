@@ -3,7 +3,7 @@ Tests for eval/build_wisco_isco_benchmark.py and
 eval/export_benchmark_to_run_eval_csv.py (Conference I Reviewer #2 response,
 Step 6, Phase D/G). Uses small in-memory fixtures -- never reads the real
 WISCO source file, so these tests are fast and don't depend on
-backend/evaluation/wisco/ being present in a stripped-down checkout.
+eval/legacy_thesis_ch6/wisco/ being present in a stripped-down checkout.
 """
 
 from __future__ import annotations

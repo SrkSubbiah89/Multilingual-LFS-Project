@@ -85,7 +85,7 @@ def audit_process_memory(base_url: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://localhost:6333")
-    parser.add_argument("--out", default="backend/evaluation/qdrant_collection_memory_audit.json")
+    parser.add_argument("--out", default="eval/results/legacy_thesis_ch6/qdrant_collection_memory_audit.json")
     args = parser.parse_args()
 
     collections = [audit_collection(args.base_url, name) for name in COLLECTIONS]

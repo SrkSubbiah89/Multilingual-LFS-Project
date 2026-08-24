@@ -1,5 +1,5 @@
 """
-backend/evaluation/run_comparison.py
+eval/legacy_thesis_ch6/run_comparison.py
 
 Approach Comparison — 100 Free-Text Occupation Descriptions
 ============================================================
@@ -11,8 +11,8 @@ Runs four systems and prints a thesis-grade comparison table:
   4. Hierarchical RAG — 4-stage pipeline (thesis method)
 
 Usage:
-    python -m backend.evaluation.run_comparison
-    python -m backend.evaluation.run_comparison --skip-norag
+    python -m eval.legacy_thesis_ch6.run_comparison
+    python -m eval.legacy_thesis_ch6.run_comparison --skip-norag
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.abspath("."))
 # Silence TensorFlow / other noisy warnings
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
-from backend.evaluation.evaluate import (
+from eval.legacy_thesis_ch6.evaluate import (
     TEST_CASES,
     NoRAGBaseline, BM25Baseline, FlatVectorBaseline, HierarchicalRAG,
     evaluate_system, SystemMetrics, _MAJOR_LABELS,
@@ -286,7 +286,7 @@ def main():
         "avg_ms": m.avg_latency_ms, "hallucinations": m.hallucination_count,
         "n": m.n_evaluated,
     } for name, m in metrics.items()}
-    path = "backend/evaluation/approach_comparison.json"
+    path = "eval/results/legacy_thesis_ch6/approach_comparison.json"
     with open(path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"\n  Results saved to {path}")
