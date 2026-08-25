@@ -1,5 +1,48 @@
 {
-  "generated_at_utc": "2026-08-06T21:04:29.022449+00:00",
-  "no_manifests_found": true,
-  "results": []
+  "generated_at_utc": "2026-08-25T02:41:52.824985+00:00",
+  "no_manifests_found": false,
+  "results": [
+    {
+      "run_id": "enriched_catalogue_with_rerank_check_20260824",
+      "classifier_method": "flat_isco08_official_ilo2021_v1_enriched",
+      "split_name": "validation",
+      "dataset_label": "synthetic_or_operationally_realistic",
+      "evaluation_status": "measured",
+      "n_cases": 642,
+      "latency_mean_ms": 536.12,
+      "latency_p95_ms": 769.12,
+      "hitl_escalation_rate": 0.0514,
+      "estimated_cost_usd": 0.0,
+      "git_commit": "48f8df6",
+      "utc_timestamp": "2026-08-25T02:41:22.519861+00:00"
+    },
+    {
+      "run_id": "enriched_catalogue_heldout_20260824",
+      "classifier_method": "flat_isco08_official_ilo2021_v1_enriched",
+      "split_name": "heldout",
+      "dataset_label": "synthetic_or_operationally_realistic",
+      "evaluation_status": "measured",
+      "n_cases": 18747,
+      "latency_mean_ms": 50.66,
+      "latency_p95_ms": 72.52,
+      "hitl_escalation_rate": 0.05,
+      "estimated_cost_usd": 0.0,
+      "git_commit": "48f8df6",
+      "utc_timestamp": "2026-08-25T02:41:21.875139+00:00"
+    },
+    {
+      "run_id": "enriched_e5large_heldout_20260824",
+      "classifier_method": "flat_isco08_official_ilo2021_v1_enriched_e5large",
+      "split_name": "heldout",
+      "dataset_label": "synthetic_or_operationally_realistic",
+      "evaluation_status": "measured",
+      "n_cases": 18747,
+      "latency_mean_ms": 208.12,
+      "latency_p95_ms": 291.13,
+      "hitl_escalation_rate": 0.0501,
+      "estimated_cost_usd": 0.0,
+      "git_commit": "48f8df6",
+      "utc_timestamp": "2026-08-25T02:41:09.994429+00:00"
+    }
+  ]
 }

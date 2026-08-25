@@ -1,1 +1,4 @@
-run_id,classifier_method,n_cases,latency_mean_ms,latency_p50_ms,latency_p95_ms,throughput_cases_per_sec,hardware_cpu_count,hardware_ram_gb,hardware_gpu_model,peak_process_memory_mb,peak_gpu_memory_mb
+run_id,classifier_method,dataset_label,evaluation_status,n_cases,latency_mean_ms,latency_p50_ms,latency_p95_ms,throughput_cases_per_sec,hardware_cpu_count,hardware_ram_gb,hardware_gpu_model,peak_process_memory_mb,peak_gpu_memory_mb
+enriched_catalogue_with_rerank_check_20260824,flat_isco08_official_ilo2021_v1_enriched,synthetic_or_operationally_realistic,measured,642,536.12,555.79,769.12,1.8653,12,7.71,,856.82,
+enriched_catalogue_heldout_20260824,flat_isco08_official_ilo2021_v1_enriched,synthetic_or_operationally_realistic,measured,18747,50.66,46.47,72.52,19.7401,12,7.71,,834.31,
+enriched_e5large_heldout_20260824,flat_isco08_official_ilo2021_v1_enriched_e5large,synthetic_or_operationally_realistic,measured,18747,208.12,194.63,291.13,4.805,12,7.71,,1822.91,

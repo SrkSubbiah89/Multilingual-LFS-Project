@@ -1,5 +1,54 @@
 {
-  "generated_at_utc": "2026-08-06T21:04:29.282988+00:00",
-  "no_manifests_found": true,
-  "results": []
+  "generated_at_utc": "2026-08-25T02:41:53.061402+00:00",
+  "no_manifests_found": false,
+  "results": [
+    {
+      "run_id": "enriched_catalogue_with_rerank_check_20260824",
+      "classifier_method": "flat_isco08_official_ilo2021_v1_enriched",
+      "dataset_label": "synthetic_or_operationally_realistic",
+      "evaluation_status": "measured",
+      "n_cases": 642,
+      "latency_mean_ms": 536.12,
+      "latency_p50_ms": 555.79,
+      "latency_p95_ms": 769.12,
+      "throughput_cases_per_sec": 1.8653,
+      "peak_process_memory_mb": 856.82,
+      "peak_gpu_memory_mb": null,
+      "hardware_cpu_count": 12,
+      "hardware_ram_gb": 7.71,
+      "hardware_gpu_model": null
+    },
+    {
+      "run_id": "enriched_catalogue_heldout_20260824",
+      "classifier_method": "flat_isco08_official_ilo2021_v1_enriched",
+      "dataset_label": "synthetic_or_operationally_realistic",
+      "evaluation_status": "measured",
+      "n_cases": 18747,
+      "latency_mean_ms": 50.66,
+      "latency_p50_ms": 46.47,
+      "latency_p95_ms": 72.52,
+      "throughput_cases_per_sec": 19.7401,
+      "peak_process_memory_mb": 834.31,
+      "peak_gpu_memory_mb": null,
+      "hardware_cpu_count": 12,
+      "hardware_ram_gb": 7.71,
+      "hardware_gpu_model": null
+    },
+    {
+      "run_id": "enriched_e5large_heldout_20260824",
+      "classifier_method": "flat_isco08_official_ilo2021_v1_enriched_e5large",
+      "dataset_label": "synthetic_or_operationally_realistic",
+      "evaluation_status": "measured",
+      "n_cases": 18747,
+      "latency_mean_ms": 208.12,
+      "latency_p50_ms": 194.63,
+      "latency_p95_ms": 291.13,
+      "throughput_cases_per_sec": 4.805,
+      "peak_process_memory_mb": 1822.91,
+      "peak_gpu_memory_mb": null,
+      "hardware_cpu_count": 12,
+      "hardware_ram_gb": 7.71,
+      "hardware_gpu_model": null
+    }
+  ]
 }

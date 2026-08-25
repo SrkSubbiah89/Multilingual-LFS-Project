@@ -245,6 +245,21 @@ deployment-environment measurement (everything above is a local dev
 machine, not a deployed instance) and any real-LFS-data measurement
 (gated on Module E, the pilot, unrelated to any of this).
 
+**Row 7 (figures), same day** — the `evaluation_results`/
+`latency_scalability` exports' `no_manifests_found: true` state is
+resolved, not just re-described: `eval/build_manifests_from_existing_
+runs.py` (new) built real `ExperimentRunManifest` files from the three
+real CSVs above (`build_manifest()`'s own documented supported input —
+rows read back from a previously-written CaseResult CSV, no re-run
+needed), then the two exporters were re-run against them. Both now
+report real data instead of the empty placeholder: 3 real runs,
+including the 18,747-case headline result. `ISIC/ISCED` investigation
+this same day, for completeness: checked whether they had the same
+thin-embedding-text problem ISCO-08 did — they don't (`_ISIC_DATA`/
+`_ISCED_FIELDS` already carry ~15 bilingual keywords per entry, not a
+2-4-word title); the real blocker for those two standards remains no
+labelled test set to diagnose against, unchanged.
+
 **Row 5 (ISIC coverage)** — infrastructure progress only, coverage
 numbers unchanged: ISIC/ISCED-F hierarchical retrieval Qdrant
 collections were built and live-verified 2026-08-23 (previously
