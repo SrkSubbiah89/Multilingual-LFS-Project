@@ -774,6 +774,20 @@ the actual committed evidence directly, not by trusting the prior text.
   data confirmed to have zero dialectal content, the planned dialect-
   normalization A/B test cannot run against it as originally scoped;
   needs a different data source or a redefined experiment.
+  **2026-08-25**: IPUMS was checked directly as one candidate alternative
+  source of genuine, original-language occupation/industry/education
+  free-text — dead end, not a to-do: IPUMS International generally never
+  receives original string variables from providers (only pre-coded
+  data), and its provider agreements preclude redistributing data outside
+  its own extract system even where strings exist; IPUMS USA's original
+  strings are historical-U.S.-census-only (English, transcribed paper
+  forms), irrelevant to this project's 5 target languages. Full
+  correspondence and reasoning:
+  `Documentation/Phase_2/Week_2/ipums_string_variables_correspondence.md`.
+  An IPUMS-internal follow-up was still pending at time of writing;
+  update that file (not this line) if it changes anything. Realistic
+  remaining options unchanged: synthetic Gulf-dialect variants, or real
+  free-text from the Module E pilot once it starts.
 - **Module H (CrewAI architecture evaluation)**: **done, 2026-08-24, not
   "not started"** — rescoped from "delegation correctness" (doesn't apply;
   no CrewAI delegation anywhere, see agent table above) to "orchestration
