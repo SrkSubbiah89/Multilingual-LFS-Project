@@ -529,7 +529,19 @@ effect is not evidence against the conclusion above. Real artifacts:
   byte-identical across runs).
 - **Computational efficiency**: hierarchical RAG 133.9ms mean latency,
   flat 31.1ms; single-instance load test survives 42 concurrent users at
-  100% success, fails at 50.
+  100% success, fails at 50. **Memory, found 2026-08-25**: real
+  psutil-based peak-RSS sampling already exists in `run_eval.py`
+  (`_peak_rss_mb()`) and turns out to already be populated on every real
+  run — just never extracted before. Retrieval-only, current best config
+  (enriched catalogue + e5-large, 18,747 cases): peak RSS 1822.9MB max,
+  1243.3MB mean, end-to-end latency mean 208.1ms/p50 194.6ms/p95
+  291.1ms/p99 386.8ms. Reranked config (enriched catalogue + e5-small +
+  Groq, 642 cases — different embedding model, not a matched pair):
+  peak RSS 856.8MB max, latency mean 536.1ms/p50 556.0ms/p95 769.1ms.
+  This closes the "memory unmeasured" and "reranked-configuration
+  latency unmeasured" gaps the reviewer matrix had open. Still genuinely
+  missing: any production/deployment-environment measurement (everything
+  above is a local dev machine).
 - **LLM tier-routing (which local model to use for conversational
   tasks)**: `qwen2.5:3b` matches or beats `llama3.2` on every tested
   agent, most clearly on Arabic-script NER. Not yet switched in

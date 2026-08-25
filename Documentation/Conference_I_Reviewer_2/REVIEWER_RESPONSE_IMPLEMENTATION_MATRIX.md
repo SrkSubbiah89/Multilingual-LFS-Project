@@ -217,10 +217,33 @@ actually moves it."
 
 **Row 4 (computational analysis)** — e5-large's real latency cost is now
 measured: ~145ms/case vs. e5-small's ~28ms/case (both local, no
-network), a real ~5.2x cost for the +8.6pp accuracy gain. Still missing,
-unchanged from this matrix's original assessment: memory
-(`peak_process_memory_mb`), throughput/scalability under concurrency for
-the reranked configuration, and any real-LFS-data measurement.
+network), a real ~5.2x cost for the +8.6pp accuracy gain.
+
+**Update, 2026-08-25**: two of the four gaps this row still listed were
+already closed by data already sitting in the repo — never extracted
+and reported back to this row. `peak_memory_mb`/`end_to_end_latency_ms`
+turn out to be populated on every real `run_eval.py` run (`eval/
+run_eval.py:1443`'s `_peak_rss_mb()`, a real psutil-based sample, not
+fabricated) — just never pulled out and documented here.
+- **Memory: real, not missing.** Retrieval-only (enriched catalogue +
+  e5-large, the current best config, 18,747 cases): peak RSS 1822.9MB
+  max, 1243.3MB mean. Reranked config (enriched catalogue + e5-small +
+  Groq, 642 cases — a different embedding model, not a matched pair with
+  the figure above): peak RSS 856.8MB max, 625.1MB mean.
+- **Reranked-configuration latency: real, not missing.** Same reranked
+  run: end-to-end latency mean 536.1ms, p50 556.0ms, p95 769.1ms, max
+  2152.7ms. For contrast, the retrieval-only e5-large run: mean 208.1ms,
+  p50 194.6ms, p95 291.1ms, p99 386.8ms.
+- **Throughput/scalability under concurrency: also already closed**, by
+  Module I's real load test (`PROJECT_FLOW_AND_STATUS.md` §12.3) —
+  100% success through 42 concurrent users, fails at 50. This matrix's
+  original row 4 text predates that finding and was never updated to
+  point at it.
+
+**Genuinely still missing, not resolved by anything above**: production/
+deployment-environment measurement (everything above is a local dev
+machine, not a deployed instance) and any real-LFS-data measurement
+(gated on Module E, the pilot, unrelated to any of this).
 
 **Row 5 (ISIC coverage)** — infrastructure progress only, coverage
 numbers unchanged: ISIC/ISCED-F hierarchical retrieval Qdrant

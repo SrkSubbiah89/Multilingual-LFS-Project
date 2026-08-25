@@ -798,12 +798,23 @@ the actual committed evidence directly, not by trusting the prior text.
   module_i_computational_efficiency_report.md`): hierarchical/flat RAG
   latency (133.9ms / 31.1ms mean, from the real 18,747-case Task 36 run),
   embedding compute (19.1ms mean), Qdrant on-disk size (~4.3MB) and RSS
-  (94.9MB), and a real load-test breaking point (100% success through 42
-  concurrent users, fails at 50). Genuinely still unmeasured, disclosed
-  as such: LLM re-rank trigger rate and any real Claude 3.5 Sonnet
-  cost/latency figure (a prior attempt was found to be a 100%-silent-
-  fallback artifact from zero Anthropic credit, not used) — needs the
-  stratified 300-500-case pilot Week 2 already recommends.
+  (94.9MB — Qdrant's own process, not the eval/classification pipeline's),
+  and a real load-test breaking point (100% success through 42
+  concurrent users, fails at 50). **Added 2026-08-25**: the eval
+  pipeline's own peak memory was found already-populated in
+  already-committed run data (`eval/run_eval.py:1443`'s
+  `_peak_rss_mb()`, real psutil sampling, never extracted before) —
+  retrieval-only current best config (enriched + e5-large, 18,747 cases):
+  peak RSS 1822.9MB max, 1243.3MB mean, end-to-end latency mean
+  208.1ms/p50 194.6ms/p95 291.1ms/p99 386.8ms; reranked config (enriched
+  + e5-small + Groq, 642 cases, different embedding model): peak RSS
+  856.8MB max, latency mean 536.1ms/p50 556.0ms/p95 769.1ms. Genuinely
+  still unmeasured, disclosed as such: LLM re-rank trigger rate and any
+  real Claude 3.5 Sonnet cost/latency figure (a prior attempt was found
+  to be a 100%-silent-fallback artifact from zero Anthropic credit, not
+  used), and any production/deployment-environment measurement (all of
+  the above is a local dev machine) — needs the stratified 300-500-case
+  pilot Week 2 already recommends.
 - **Module J (LLM tier-routing ablation)**: **complete, not "unverified"**
   — all 3 GENERAL-tier agents (LanguageProcessor/NER, ConversationManager,
   EmotionalIntelligence) have real, warmed, 3-run comparisons of
