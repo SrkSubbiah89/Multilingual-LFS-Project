@@ -251,9 +251,10 @@ def dry_run_flat(standard_key: str, profile: str = "e5_small") -> dict:
 def execute_run_flat(standard_key: str, recreate: bool, profile: str = "e5_small") -> None:
     """Operator-only, live Qdrant write for the flat collection. Same
     fail-closed-on-existing-without-recreate contract as execute_run()."""
-    from qdrant_client import QdrantClient
     from qdrant_client.models import Distance, PointStruct, VectorParams
     from sentence_transformers import SentenceTransformer
+
+    from backend.rag import make_qdrant_client
 
     spec = _STANDARDS[standard_key]
     model_name, vector_dim = PROFILE_MODEL_CONFIG[profile]
@@ -261,7 +262,7 @@ def execute_run_flat(standard_key: str, recreate: bool, profile: str = "e5_small
     node_list = _flat_leaf_nodes(standard_key, profile)
 
     print(f"Connecting to Qdrant ...")
-    client = QdrantClient(host="localhost", port=6333)
+    client = make_qdrant_client()
     print(f"Loading embedding model: {model_name} ...")
     model = SentenceTransformer(model_name)
 
@@ -304,9 +305,10 @@ def execute_run(standard_key: str, recreate: bool, profile: str = "e5_small") ->
     """Operator-only, live Qdrant write. NOT called by --dry-run, and NOT
     executed anywhere in Task 05's own work. Imports Qdrant/embedding
     dependencies lazily, only on this path."""
-    from qdrant_client import QdrantClient
     from qdrant_client.models import Distance, PointStruct, VectorParams
     from sentence_transformers import SentenceTransformer
+
+    from backend.rag import make_qdrant_client
 
     spec = _STANDARDS[standard_key]
     model_name, vector_dim = PROFILE_MODEL_CONFIG[profile]
@@ -314,7 +316,7 @@ def execute_run(standard_key: str, recreate: bool, profile: str = "e5_small") ->
     nodes_by_level = spec["derive"]()
 
     print(f"Connecting to Qdrant ...")
-    client = QdrantClient(host="localhost", port=6333)
+    client = make_qdrant_client()
     print(f"Loading embedding model: {model_name} ...")
     model = SentenceTransformer(model_name)
 

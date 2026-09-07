@@ -83,6 +83,7 @@ from typing import Optional
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
+from backend.rag import make_qdrant_client
 from backend.rag.hierarchy_engine import EngineCandidate, HierarchyBeamSearchEngine, StageConfig, extract_label_en
 
 _logger = logging.getLogger(__name__)
@@ -293,7 +294,7 @@ class StandardHierarchicalStore:
         else:
             _host = host or os.getenv("QDRANT_HOST", "localhost")
             _port = int(port or os.getenv("QDRANT_PORT", 6333))
-            self._client = QdrantClient(host=_host, port=_port)
+            self._client = make_qdrant_client(host=_host, port=_port)
 
         # Upfront, one-time collection-readiness check -- see module
         # docstring's "Readiness contract" and "Operational resilience".
@@ -562,7 +563,7 @@ class StandardFlatStore:
         else:
             _host = host or os.getenv("QDRANT_HOST", "localhost")
             _port = int(port or os.getenv("QDRANT_PORT", 6333))
-            self._client = QdrantClient(host=_host, port=_port)
+            self._client = make_qdrant_client(host=_host, port=_port)
 
         self._unavailable_reason: str = ""
         try:

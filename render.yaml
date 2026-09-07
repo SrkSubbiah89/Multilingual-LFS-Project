@@ -1,0 +1,68 @@
+services:
+  - type: web
+    name: lfs-survey-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # --- Fixed, non-secret config (same across environments) ---
+      - key: APP_ENV
+        value: production
+      - key: APP_HOST
+        value: 0.0.0.0
+      - key: APP_PORT
+        value: 8000
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 480
+      - key: LFS_FAST_MODE
+        value: true
+      - key: USE_SMS_OTP
+        value: true
+      - key: LLM_FALLBACK_EXCLUDE
+        value: anthropic
+      - key: CORRECTION_LLM_PROVIDER
+        value: groq
+      - key: CORS_ORIGINS
+        value: https://multilingual-lfs-project-6jgu-chi.vercel.app,https://multilingual-lfs-project-git-master-lfs-survey.vercel.app
+      - key: SENDGRID_FROM_EMAIL
+        value: sivaramakrishnansubbiah@gmail.com
+      - key: GMAIL_USER
+        value: sivaramakrishnansubbiah@gmail.com
+
+      # --- Auto-generated (Render creates a strong random value; no local value needed) ---
+      - key: JWT_SECRET
+        generateValue: true
+
+      # --- Real secrets / per-environment values: Render prompts for these once,
+      # during initial Blueprint creation only (sync: false). Paste the values
+      # already gathered this session (Supabase/Upstash/Qdrant Cloud connection
+      # strings) or from .env for the LLM/notification provider keys. ---
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false

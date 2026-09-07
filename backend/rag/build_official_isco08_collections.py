@@ -28,10 +28,12 @@ Qdrant/embedder import or connection. Execution:
 1. re-validates the catalogue via ``load_official_catalogue()`` (same
    fail-closed hash/count/format checks as the dry-run path);
 2. only THEN lazily imports ``qdrant_client``/``sentence_transformers``
-   (see "Lazy dependency boundaries" below) and connects to a
-   **local-only** Qdrant instance (``QDRANT_HOST``/``QDRANT_PORT`` env
-   vars, defaulting to ``localhost``/``6333`` -- no remote URL/token CLI
-   option exists anywhere in this module);
+   (see "Lazy dependency boundaries" below) and connects via
+   ``backend.rag.make_qdrant_client()`` -- a hosted Qdrant Cloud
+   instance when ``QDRANT_URL``/``QDRANT_API_KEY`` are set (added
+   2026-09 for the cloud-hosting migration), otherwise the original
+   local-only ``QDRANT_HOST``/``QDRANT_PORT`` env vars, defaulting to
+   ``localhost``/``6333``;
 3. refuses if ANY of the five target collection names already exists
    (empty or not) -- no auto-replace, delete, recreate, upsert-into-
    existing, alias swap, or overwrite is ever performed;
@@ -104,8 +106,10 @@ _UPSERT_BATCH_SIZE = 64
 
 _PAYLOAD_SCHEMA_VERSION = "official_isco08_v1"
 
-# Local-only Qdrant target. No CLI flag or environment variable in this
-# module accepts a remote URL, API key, or token of any kind.
+# Local Qdrant target, used as a fallback -- these two env vars are only
+# consulted when QDRANT_URL is unset. When QDRANT_URL IS set,
+# make_qdrant_client() (backend/rag/__init__.py) connects to that hosted
+# Qdrant Cloud instance instead, authenticating with QDRANT_API_KEY.
 _QDRANT_HOST_ENV = "QDRANT_HOST"
 _QDRANT_PORT_ENV = "QDRANT_PORT"
 _LOCAL_QDRANT_HOST_DEFAULT = "localhost"
@@ -304,6 +308,15 @@ def _resolve_local_qdrant_target() -> tuple[str, int]:
 
 def _default_qdrant_client_factory(host: str, port: int):
     from qdrant_client import QdrantClient  # lazy: see module docstring
+
+    # 2026-09: hosted Qdrant Cloud path, mirroring backend.rag.make_qdrant_client()
+    # (not called directly -- that would pull in backend.rag's own package
+    # __init__, which eagerly imports sentence_transformers via vector_store.py,
+    # defeating this module's "only these two functions import heavy deps"
+    # discipline stated in the comment above).
+    url = os.getenv("QDRANT_URL")
+    if url:
+        return QdrantClient(url=url, api_key=os.getenv("QDRANT_API_KEY"))
     return QdrantClient(host=host, port=port)
 
 

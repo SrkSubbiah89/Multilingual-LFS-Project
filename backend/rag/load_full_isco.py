@@ -35,6 +35,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
 
+from backend.rag import make_qdrant_client
+
 load_dotenv()
 
 # ---------------------------------------------------------------------------
@@ -1017,8 +1019,9 @@ def _upsert(
 # ---------------------------------------------------------------------------
 
 def main(recreate: bool = False) -> None:
-    print(f"Connecting to Qdrant at {QDRANT_HOST}:{QDRANT_PORT} …")
-    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+    _url = os.getenv("QDRANT_URL")
+    print(f"Connecting to Qdrant at {_url} …" if _url else f"Connecting to Qdrant at {QDRANT_HOST}:{QDRANT_PORT} …")
+    client = make_qdrant_client(host=QDRANT_HOST, port=QDRANT_PORT)
 
     print(f"Loading embedding model: {MODEL_NAME} …")
     model = SentenceTransformer(MODEL_NAME)

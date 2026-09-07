@@ -118,7 +118,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from sentence_transformers import SentenceTransformer
 
-from backend.rag import hierarchy_engine
+from backend.rag import hierarchy_engine, make_qdrant_client
 from backend.rag.hierarchy_engine import HierarchyBeamSearchEngine, SeedSpec, StageConfig, StageOverride
 from backend.rag.official_isco08_catalogue import PROFILE_COLLECTION_NAMES, embedding_config_for_profile
 
@@ -402,8 +402,8 @@ class _QdrantClientDeadlinePool:
             self._order.remove(key)
             self._order.append(key)
             return self._pool[key]
-        client = QdrantClient(
-            host=self._host, port=self._port, timeout=key, check_compatibility=False,
+        client = make_qdrant_client(
+            host=self._host, port=self._port, client_cls=QdrantClient, timeout=key, check_compatibility=False,
         )
         self._pool[key] = client
         self._order.append(key)
@@ -567,7 +567,7 @@ class HierarchicalISCOStore:
         _port = int(port or os.getenv("QDRANT_PORT", 6333))
         _timeout = timeout_seconds if timeout_seconds is not None else _resolve_qdrant_timeout_seconds()
 
-        self._client = QdrantClient(host=_host, port=_port, timeout=_timeout)
+        self._client = make_qdrant_client(host=_host, port=_port, client_cls=QdrantClient, timeout=_timeout)
         # 2026-08-24: per-profile embedding identity (additive). Every
         # profile that existed before this date is absent from
         # PROFILE_EMBEDDING_CONFIG and so resolves to the unchanged

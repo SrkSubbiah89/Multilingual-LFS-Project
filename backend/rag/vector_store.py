@@ -615,8 +615,23 @@ _ISCO_DATA: list[dict] = [
 # ---------------------------------------------------------------------------
 
 def _probe_qdrant(host: str, port: int) -> None:
-    """Raise ConnectionRefusedError if Qdrant is not reachable."""
+    """Raise ConnectionRefusedError if Qdrant is not reachable.
+
+    Updated 2026-09-04: when QDRANT_URL is set (the Qdrant Cloud path -- see
+    backend/rag/__init__.py's make_qdrant_client), `host`/`port` here no
+    longer come from QDRANT_HOST/QDRANT_PORT at all; they're parsed from
+    that URL instead, so this fail-fast-before-loading-the-heavy-model probe
+    still works correctly against a cloud endpoint rather than always
+    probing "localhost:6333" regardless of where the real client will
+    connect.
+    """
     import socket as _socket
+    url = os.getenv("QDRANT_URL")
+    if url:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        host = parsed.hostname or host
+        port = parsed.port or (443 if parsed.scheme == "https" else port)
     try:
         with _socket.create_connection((host, port), timeout=2):
             pass
@@ -659,7 +674,14 @@ class VectorStore:
         # would block every first request for several minutes to no benefit.
         _probe_qdrant(_host, _port)
 
-        self._client = QdrantClient(host=_host, port=_port)
+        # 2026-09-04: routed through the shared factory (backend/rag/
+        # __init__.py's make_qdrant_client) so this connects correctly to
+        # either a local instance (unchanged host/port behavior) or Qdrant
+        # Cloud (QDRANT_URL + QDRANT_API_KEY) -- see that function's
+        # docstring for why a single shared factory replaced 9 separate
+        # ad-hoc QdrantClient(host=..., port=...) call sites.
+        from backend.rag import make_qdrant_client
+        self._client = make_qdrant_client(host=_host, port=_port, client_cls=QdrantClient)
         self._model  = SentenceTransformer(MODEL_NAME)
 
         self._ensure_collection(recreate=recreate)

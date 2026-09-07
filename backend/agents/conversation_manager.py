@@ -56,6 +56,7 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -4388,11 +4389,24 @@ class ConversationManager:
         # _call_ollama_json and _call_groq_json return the same raw JSON
         # string, so every line of parsing below this point is identical
         # regardless of provider.
+        # Gemini added as a third-tier fallback 2026-09-04 (see
+        # _call_gemini_json's docstring): the Anthropic fallback was found,
+        # not assumed, to be currently non-functional (zero credit), so
+        # without this a Groq rate-limit/outage previously had nowhere real
+        # to fall back to.
         provider = os.getenv("CORRECTION_LLM_PROVIDER", "ollama").strip().lower()
         if provider == "groq":
-            raw = self._call_groq_json(prompt, schema=correction_schema) or self._call_anthropic_json(prompt)
+            raw = (
+                self._call_groq_json(prompt, schema=correction_schema)
+                or self._call_anthropic_json(prompt)
+                or self._call_gemini_json(prompt)
+            )
         else:
-            raw = self._call_ollama_json(prompt, schema=correction_schema) or self._call_anthropic_json(prompt)
+            raw = (
+                self._call_ollama_json(prompt, schema=correction_schema)
+                or self._call_anthropic_json(prompt)
+                or self._call_gemini_json(prompt)
+            )
         if not raw:
             return False
 
@@ -4633,22 +4647,54 @@ class ConversationManager:
             "temperature": 0.0,
             "response_format": groq_schema if groq_schema is not None else {"type": "json_object"},
         }).encode()
-        try:
-            req = urllib.request.Request(
-                "https://api.groq.com/openai/v1/chat/completions",
-                data=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}",
-                },
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=self._CORRECTION_TIMEOUT) as resp:
-                body = json.loads(resp.read())
-                return body["choices"][0]["message"]["content"]
-        except Exception as exc:
-            _logger.debug("Groq correction call failed: %s", exc)
-            return None
+
+        # Retry-with-backoff on 429, added 2026-09-04: real, reproduced
+        # during this session's own verification -- 8 rapid consecutive
+        # correction calls (testing, not real usage) hit Groq's per-minute
+        # token limit (~8000 TPM per this project's own documented Groq
+        # history) starting on the 6th call, confirmed directly via
+        # HTTPError 429 in the logs. A real, human-paced respondent making
+        # occasional corrections is very unlikely to hit this -- but a
+        # brief, bounded retry costs nothing on the common (non-429) path
+        # and turns a transient burst into a short wait instead of an
+        # outright failed correction.
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                req = urllib.request.Request(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}",
+                        # Real, reproduced bug (2026-09-04): Groq's API is
+                        # fronted by Cloudflare, which blocks requests carrying
+                        # Python urllib's default User-Agent ("Python-urllib/3.x")
+                        # with a bare 403 (Cloudflare error 1010 -- a WAF/bot
+                        # block, not a Groq API error; confirmed by reading the
+                        # raw response body, which is Cloudflare's own error
+                        # page, not JSON). A normal-looking User-Agent header
+                        # resolves it -- confirmed directly, same request
+                        # succeeds with this header and fails without it.
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LFS-Backend/1.0",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=self._CORRECTION_TIMEOUT) as resp:
+                    body = json.loads(resp.read())
+                    return body["choices"][0]["message"]["content"]
+            except urllib.error.HTTPError as exc:
+                if exc.code == 429 and attempt < max_attempts - 1:
+                    wait_s = 2 ** attempt  # 1s, 2s
+                    _logger.info("Groq 429 rate-limited, retrying in %ss (attempt %s/%s)", wait_s, attempt + 1, max_attempts)
+                    time.sleep(wait_s)
+                    continue
+                _logger.debug("Groq correction call failed: %s", exc)
+                return None
+            except Exception as exc:
+                _logger.debug("Groq correction call failed: %s", exc)
+                return None
+        return None
 
     def _call_anthropic_json(self, prompt: str) -> str | None:
         """Call Anthropic Claude as fallback for correction extraction. Returns raw text or None."""
@@ -4669,6 +4715,16 @@ class ConversationManager:
                     "Content-Type": "application/json",
                     "x-api-key": api_key,
                     "anthropic-version": "2023-06-01",
+                    # Preventative, added 2026-09-04 alongside the same real
+                    # fix for _call_groq_json: that call was blocked outright
+                    # by Cloudflare's WAF (error 1010) for using Python
+                    # urllib's default User-Agent. This endpoint hasn't been
+                    # reproduced failing the same way (it's untested at zero
+                    # Anthropic credit), but it's the identical raw-urllib
+                    # pattern behind the same class of edge/WAF, so the same
+                    # header is added here too rather than waiting to
+                    # rediscover the same bug later.
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LFS-Backend/1.0",
                 },
                 method="POST",
             )
@@ -4678,6 +4734,81 @@ class ConversationManager:
         except Exception as exc:
             _logger.debug("Anthropic correction fallback failed: %s", exc)
             return None
+
+    def _call_gemini_json(self, prompt: str) -> str | None:
+        """Call Google AI Studio's Gemini as a third fallback for correction
+        extraction. Returns raw text or None.
+
+        Added 2026-09-04 alongside the cloud-hosting migration: verifying
+        the Groq path surfaced that the existing Anthropic fallback is
+        currently non-functional in this deployment (confirmed directly --
+        HTTPError 400, consistent with this project's own already-documented
+        zero Anthropic credit), meaning a Groq outage or rate-limit
+        previously had no real fallback at all. GEMINI_API_KEY is already a
+        real, present credential in this project's .env (used elsewhere via
+        the general TaskType routing chain in llm_client.py), and Google AI
+        Studio's free tier is real and already relied on by this project.
+
+        Deliberately uses Gemini's basic JSON mode (responseMimeType, no
+        responseSchema/structured-output constraint) rather than replicating
+        the full grammar-constrained schema built for Groq/Ollama -- the
+        `valid_fields`/`f_key not in valid_fields` check and
+        `_sanity_check_correction_value` in the caller already apply
+        regardless of which provider answered, so provider-side schema
+        enforcement is a defense-in-depth layer, not the only one; a
+        fallback-of-a-fallback doesn't need to duplicate every layer to stay
+        safe.
+        """
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return None
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"},
+        }).encode()
+        # Model, fixed 2026-09-04: gemini-1.5-flash (this project's own
+        # pre-existing convention elsewhere, e.g. llm_client.py's docstrings)
+        # returns a live 404 "not found for API version v1beta" as of this
+        # date -- confirmed directly via GET /v1beta/models against the real
+        # API, not assumed; Google has moved through several model
+        # generations since that convention was written. Using the
+        # "-latest" alias instead of a pinned version number specifically so
+        # this fallback-of-a-fallback doesn't go stale the same way again
+        # when Google's next generation ships.
+        _gemini_model = "gemini-flash-latest"
+
+        # Retry-with-backoff on 429/503, added 2026-09-04: confirmed live --
+        # a real request against gemini-flash-latest returned a genuine
+        # 503 "This model is currently experiencing high demand... usually
+        # temporary" from Google's own API, the exact class of transient
+        # error the retry already added for Groq's 429 targets.
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                req = urllib.request.Request(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{_gemini_model}:generateContent?key={api_key}",
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LFS-Backend/1.0",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=self._CORRECTION_TIMEOUT) as resp:
+                    body = json.loads(resp.read())
+                    return body["candidates"][0]["content"]["parts"][0]["text"]
+            except urllib.error.HTTPError as exc:
+                if exc.code in (429, 503) and attempt < max_attempts - 1:
+                    wait_s = 2 ** attempt
+                    _logger.info("Gemini %s, retrying in %ss (attempt %s/%s)", exc.code, wait_s, attempt + 1, max_attempts)
+                    time.sleep(wait_s)
+                    continue
+                _logger.debug("Gemini correction fallback failed: %s", exc)
+                return None
+            except Exception as exc:
+                _logger.debug("Gemini correction fallback failed: %s", exc)
+                return None
+        return None
 
     @staticmethod
     def _canonicalize_correction_value(field: str, raw: str) -> str:

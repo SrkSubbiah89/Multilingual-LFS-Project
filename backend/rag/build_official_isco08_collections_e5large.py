@@ -22,8 +22,10 @@ Guarded live execution
 -----------------------
 --execute requires --allow-local-qdrant-mutation. Refuses if any of the
 five target collections already exists (no overwrite/replace ever).
-Local-only Qdrant target (QDRANT_HOST/QDRANT_PORT env vars, default
-localhost:6333) -- no remote URL/token option exists in this script.
+Connects via backend.rag.make_qdrant_client() -- a hosted Qdrant Cloud
+instance when QDRANT_URL/QDRANT_API_KEY are set (added 2026-09 for the
+cloud-hosting migration), otherwise the original local-only
+QDRANT_HOST/QDRANT_PORT env vars, default localhost:6333.
 """
 
 from __future__ import annotations
@@ -117,6 +119,14 @@ def _resolve_local_qdrant_target() -> tuple[str, int]:
 
 def _default_qdrant_client_factory(host: str, port: int):
     from qdrant_client import QdrantClient
+
+    # 2026-09: hosted Qdrant Cloud path, mirroring backend.rag.make_qdrant_client()
+    # (not called directly -- that would pull in backend.rag's own package
+    # __init__, which eagerly imports sentence_transformers via vector_store.py,
+    # defeating this module's own lazy-import discipline).
+    url = os.getenv("QDRANT_URL")
+    if url:
+        return QdrantClient(url=url, api_key=os.getenv("QDRANT_API_KEY"))
     return QdrantClient(host=host, port=port)
 
 
