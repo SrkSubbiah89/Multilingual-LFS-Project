@@ -1,0 +1,370 @@
+\chapter{Related Work and Literature Review}
+\label{chap:relatedwork}
+
+This chapter surveys research across four intersecting areas directly relevant
+to this thesis: automated occupation coding, retrieval-augmented generation,
+multilingual NLP and code-switching, and multi-agent conversational AI systems.
+Research gaps motivating the proposed system are identified in
+Section~\ref{sec:rw-gaps}.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Labour Force Surveys and Occupation Coding}
+\label{sec:rw-lfs}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Challenges in Traditional Occupation Coding}
+
+Occupation coding remains one of the most resource-intensive tasks in official
+statistical surveys.
+Respondents typically describe their work informally --- ``I fix phones for
+people'' or ``I handle accounts at a construction company'' --- and trained
+specialists must translate these descriptions into four-digit ISCO-08 codes.
+Published evidence shows specialists agree on the same code in only 75--85\%
+of cases~\cite{iea2024occupationcoding}, and coding errors measurably bias
+published wage-gap statistics.
+The ILO's ISCO-08 classification~\cite{ilo2012isco_v1,ilo2012isco_v2} organises
+441 unit groups at four hierarchical levels (major $\to$ sub-major $\to$ minor
+$\to$ unit group), a structure whose taxonomic depth creates both the challenge
+and the opportunity for hierarchical retrieval.
+
+\subsection{Automated Occupation Coding: 2024--2026 Advances}
+
+Recent work has made substantial progress in automating occupation coding.
+Oloumi~\cite{oloumi2026onet} benchmarked Sentence-BERT embeddings against
+fine-tuned classifiers for mapping free-text job descriptions to O*NET-SOC
+codes, finding embedding-based approaches superior for unseen job titles.
+However, that work is monolingual (English) and lacks any conversational
+probing interface.
+
+The IEA study~\cite{iea2024occupationcoding} applied multilingual BERT to
+ESCO--O*NET crosswalk classification across 13 countries, achieving useful
+accuracy at the two-digit level but reporting significant degradation at
+four-digit ISCO precision --- the target level for this thesis.
+Critically, that system operates in batch post-collection mode, not within
+the survey interview itself.
+
+\noindent Kochar et al.~\cite{kochar2025socbot} developed SOCbot, an
+LLM-integrated questionnaire that performs real-time occupation coding during
+interviews through adaptive probing --- the closest prior work to our
+conversational coding design.
+Their field experiment against human coders on the Verian Public Voice panel
+demonstrated that real-time LLM coding is feasible operationally.
+However, SOCbot is English-only, uses a single-agent architecture, and
+applies no RAG-based retrieval of ISCO taxonomy documents.
+
+The LLM4Jobs system~\cite{anon2025llm4jobs} employs an unsupervised LLM
+pipeline benchmarked at multiple ISCO granularities on both synthetic and
+real-world datasets, demonstrating strong performance without labelled
+training data.
+Its limitation is that it requires English input and provides no conversational
+dialogue for respondent clarification.
+
+\noindent Rony et al.~\cite{rony2025socclassifier} proposed an ensemble of
+BERT, DistilBERT, RoBERTa, DeBERTa, and a neural network for occupation
+classification on UK SOC 2010/2020 and O*NET datasets.
+Their approach demonstrates that classifier diversity improves robustness, but
+the system operates in batch mode only, is monolingual, and the 512-token
+BERT limit restricts handling of longer job descriptions.
+
+Klein Teeselink and Carey~\cite{teeselink2026automation} take a different
+angle, matching granular occupational codes to task-level AI exposure measures
+using CPS microdata --- useful for understanding labour market impacts but not
+applicable to real-time survey coding.
+Santana and Kim~\cite{santana2026ethics} analyse the semantic homogenisation
+of occupational ethics corpora, providing insight into how occupational language
+evolves but without a coding or retrieval pipeline.
+
+\begin{table}[htbp]
+\centering
+\caption{Comparison of recent automated occupation coding systems.}
+\label{tab:ch2-coding}
+\footnotesize\renewcommand{\arraystretch}{1.3}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{3.0cm}
+                >{\raggedright}p{3.5cm}
+                >{\centering}p{1.6cm}
+                >{\raggedright\arraybackslash}p{4.0cm}}
+\toprule
+\textbf{Reference} & \textbf{Approach} & \textbf{Best\_Acc.} & \textbf{Key\_Gap} \\
+\midrule
+IEA~\cite{iea2024occupationcoding} & Multilingual BERT crosswalk & $\sim$72\% & Batch; drops at 4-digit \\
+SOCbot~\cite{kochar2025socbot} & LLM in-questionnaire & $\sim$78\% & English-only; single-agent \\
+LLM4Jobs~\cite{anon2025llm4jobs} & Unsupervised LLM & $\sim$76\% & English; no RAG \\
+Rony et al.~\cite{rony2025socclassifier} & Ensemble BERT models & $\sim$75\% & Batch; monolingual \\
+\textbf{This thesis} & Hierarchical Agentic RAG & \textbf{$\geq$85\%} & Addresses all gaps \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Retrieval-Augmented Generation}
+\label{sec:rw-rag}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{RAG Evolution and Current Landscape}
+
+Retrieval-Augmented Generation (RAG) has evolved through several distinct
+generations since its foundational formulation.
+Gupta et al.~\cite{gupta2024ragevo} trace this progression from Na\"{i}ve RAG
+(simple retrieve-then-generate) through Advanced RAG (query rewriting, reranking)
+to Modular RAG (composable pipeline components), finding that retrieval strategy
+dominates downstream task quality.
+Gao et al.~\cite{gao2024ragsurvey} provide a complementary taxonomy emphasising
+that context window management and relevance filtering are the dominant bottlenecks
+in production RAG systems.
+
+The most comprehensive architectural survey is by Chaita et al.~\cite{chaita2025ragsurvey},
+who organise the design space into retriever-centric, generator-centric, and
+hybrid designs, and analyse query reformulation, context filtering, and
+decoding control as orthogonal design axes.
+Their conclusion that trade-offs between retrieval precision and generation
+flexibility remain open directly motivates the confidence-weighted hierarchical
+retrieval in this thesis: the four-level ISCO-08 tree provides a precision
+scaffold that constrains the generation search space at each stage.
+
+A systematic PRISMA review by multiple authors~\cite{multiauth2025ragreview}
+covering 2020--2025 confirms that adaptive retrieval and multimodal RAG are
+maturing, but that domain-specific RAG for labour market and official statistics
+applications remains unexplored --- a gap directly addressed here.
+
+\subsection{Agentic RAG: The Dominant 2025 Paradigm}
+
+The most significant RAG development through 2025 is the emergence of Agentic
+RAG, where autonomous agents are embedded into the retrieval pipeline to decide
+dynamically \textit{how}, \textit{when}, and \textit{what} to retrieve.
+Singh et al.~\cite{singh2025agentic} present the definitive survey of this
+paradigm, documenting a four-stage taxonomy --- na\"{i}ve $\to$ advanced $\to$
+modular $\to$ agentic --- where the agentic tier exploits reflection, planning,
+tool use, and multi-agent collaboration for dynamic multi-step retrieval.
+Their taxonomy maps directly onto this thesis's hierarchical ISCO-08 RAG design.
+
+Du et al.~\cite{arag2026hierarchical} extend this with A-RAG, which exposes
+keyword search, semantic search, and chunk-read as hierarchical tool interfaces
+directly accessible to the agent, enabling adaptive multi-granularity retrieval.
+The A-RAG evaluation demonstrates that hierarchical tool exposure outperforms
+flat retrieval by a significant margin on multi-hop questions --- a finding that
+directly validates the four-stage major $\to$ sub-major $\to$ minor $\to$
+unit-group retrieval cascade in this system's ISCO-08 RAG Agent.
+
+Nguyen et al.~\cite{nguyen2025marag} propose MA-RAG, a multi-agent RAG
+architecture where a Planner, Step Definer, Extractor, and QA agent collaborate
+through chain-of-thought reasoning.
+Their design validates the separation of retrieval planning from retrieval
+execution, which this thesis implements through the distinct orchestration roles
+of the SurveyOrchestrator (Agent~13) and the Multi-Classification RAG Expert
+(Agent~5).
+
+Reinforcement learning has also been applied to RAG by Huang et
+al.~\cite{huang2025ragrl}, who train an agent to generate answers with citations
+using curriculum learning (easy $\to$ hard examples).
+Their citation-learning mechanism is relevant to this thesis's ISCO coding
+justification outputs, which must trace each classification to a specific
+retrieved ISCO-08 definition document for auditability.
+
+\subsection{RAG for Classification and Survey Domains}
+
+Bach et al.~\cite{bach2025rag} apply RAG directly to occupation coding on
+German labour force data, demonstrating that vector-based retrieval of ISCO
+taxonomy entries substantially improves coding consistency over keyword-based
+baselines.
+Their evaluation on real LFS data provides the closest empirical benchmark to
+this thesis, and their finding that flat RAG reaches approximately 80\% top-1
+accuracy on German data directly motivates the hierarchical extension evaluated
+here.
+The critical gap in Bach et al.\ is the absence of multilingual support and
+hierarchical retrieval structure.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Multilingual NLP and Code-Switching}
+\label{sec:rw-multilingual}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Multilingual Large Language Models}
+
+The multilingual LLM landscape has been comprehensively surveyed by Liu et
+al.~\cite{liu2025mllmsurvey} in \textit{Patterns} (Cell Press), who present
+a systematic taxonomy of alignment strategies and evaluate systems on xDial-Eval,
+Multi3WOZ, and DIALIGHT dialogue benchmarks.
+Their finding that a dialect gap persists across all current multilingual models
+for regional Arabic varieties is directly relevant: this thesis targets Gulf
+Colloquial Arabic, which is among the dialect varieties most poorly served by
+current multilingual models.
+
+Mao et al.~\cite{mao2025multilingual} survey pre-training, SFT, and RLHF
+strategies for LLMs across 100+ languages, documenting that imbalanced training
+data distributions cause systematic performance degradation for lower-resource
+languages.
+This motivates the use of \texttt{intfloat/multilingual-e5-large} embeddings
+in this system --- a model specifically trained with balanced multilingual data
+--- rather than English-centric embedding models.
+
+\subsection{Code-Switching: 2025--2026 State of the Art}
+
+Multiple authors~\cite{multiauth2026cswnlp} provide the most comprehensive
+recent survey of code-switched NLP in the LLM era, covering Language
+Identification, POS tagging, NER, Sentiment Analysis, MT, dialogue, and speech
+across benchmarks including SwitchLingua, MEGAVERSE, and CS-FLEURS.
+Their finding that large-scale naturalistic conversational code-switching datasets
+are critically lacking directly motivates our use of simulated respondent data
+with synthetic code-switching patterns for evaluation.
+
+Yoo et al.~\cite{yoo2025cscl} demonstrate that curriculum learning on
+code-switched training data improves multilingual model performance, training
+on progressively harder code-switching patterns using Qwen-2 models.
+Their curriculum approach --- easy monolingual examples first, then increasing
+code-switching density --- informs the data augmentation strategy used to
+generate evaluation scenarios in this system.
+
+\noindent For Arabic specifically, Alzubaidi et al.~\cite{alzubaidi2025arabic}
+survey 40+ Arabic LLM benchmarks including RAG-specific evaluation (ALRAGE)
+and code-switching tasks, finding that dialectal Arabic code-switching with
+English in survey or interview contexts remains systematically underrepresented
+in all current benchmarks.
+This gap is precisely the target of this thesis's multilingual survey component.
+
+Multilingual prompt engineering is surveyed by multiple authors~\cite{multiauth2025mlprompt},
+who analyse 39 prompting techniques across 30 NLP tasks.
+Their taxonomy of En-Basic, Native-Basic, Chain-of-Thought, and Human-in-the-Loop
+prompting strategies informs the prompt design for Agent~3 (Multilingual Language
+Processor), which routes between English and Arabic prompting depending on the
+detected input language.
+
+The NLI-based code-switching evaluation by anonymous authors~\cite{anon2024cswnli}
+demonstrates that code-switching does not uniformly degrade LLM performance ---
+in some language pairs, mixed-language inputs actually improve alignment.
+However, their evaluation does not cover survey-domain code-switching with
+occupational terminology, which involves specialised vocabulary not present
+in general NLI benchmarks.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Multi-Agent Systems and Conversational AI}
+\label{sec:rw-multiagent}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Multi-Agent LLM Frameworks}
+
+The theoretical landscape of multi-agent LLM systems is surveyed by Liu et
+al.~\cite{liu2025agenticai}, who classify frameworks including CrewAI, AutoGen,
+and LangChain as neural paradigm LLM orchestration --- distinct from classical
+symbolic multi-agent systems --- where agency emerges from prompt-driven
+orchestration rather than internal symbolic logic.
+Guo et al.~\cite{guo2024multiagent} complement this with a focus on the
+five capability dimensions of LLM-based multi-agent systems: perception,
+memory, reasoning, decision-making, and action.
+Tran et al.~\cite{tran2025multiagent} characterise agent collaboration across
+actors, types (cooperation, competition, coopetition), structures (peer-to-peer,
+centralised, distributed), strategies (role-based, model-based), and coordination
+protocols --- a taxonomy this thesis uses to classify the 13-agent architecture's
+internal coordination design.
+
+\subsection{CrewAI in Practice}
+
+The CrewAI framework~\cite{crewai2024} supports role-based agent orchestration,
+memory, caching, and rate limiting within a hierarchical process model.
+Eyolfson et al.~\cite{eyolfson2026mas} conduct the first large-scale empirical
+study of CrewAI in production, analysing over 4,700 resolved issues and finding
+that perfective commits (feature enhancement) constitute 40.8\% of development
+activity, with agent coordination as the dominant challenge.
+Their finding that inter-agent communication errors are the primary failure mode
+directly informs the defensive design of the SurveyOrchestrator (Agent~13),
+which validates all inter-agent payloads before forwarding.
+
+\subsection{Data Integrity and Privacy in Conversational AI}
+
+Khanna et al.~\cite{khanna2025knowledge} provide a knowledge integrity taxonomy
+covering knowledge distillation, semantic integrity, and provenance tracking ---
+dimensions directly applicable to ISCO-08 coding, where every classification
+must be provably grounded in official taxonomy documentation.
+Zhang et al.~\cite{zhang2025hallucination} survey hallucination in LLMs,
+identifying factuality, faithfulness, and consistency failures as the three
+primary modes; in official statistics, any such failure produces systematic
+bias in published employment indicators.
+Serenari et al.~\cite{serenari2025lopsided} address PII protection with
+semantically-aware pseudonymisation, achieving a 5$\times$ reduction in
+semantic utility errors versus baseline anonymisation --- the approach adopted
+by Agent~1 (Authentication and Privacy Manager) in this system.
+Gupta~\cite{gupta2025civ} provides cryptographic token-level integrity
+verification achieving 0\% prompt-injection attack success, reinforcing the
+signed session token design of Agent~1.
+
+\subsection{Evaluation of Conversational AI Systems}
+
+Reimann et al.~\cite{reimann2025conveval} establish five evaluation dimensions
+for conversational AI --- coherence, accuracy, clarity, relevance, and efficiency
+--- applied here to assess the survey interview quality of the AI-administered
+arm in the planned pilot study.
+Liu et al.~\cite{liu2025agenteval} provide a taxonomy for LLM agent evaluation
+covering output quality, planning, tool use, and safety at KDD 2025, with
+the key insight that execution-based evaluation (running actual tool calls)
+is more comprehensive than syntax-level proxy metrics.
+Chen et al.~\cite{chen2025srl} survey Semantic Role Labeling, documenting
+that LLM-based SRL achieves state-of-the-art performance on occupational
+information extraction --- supporting Agent~3's design for extracting agent,
+action, and theme from informal job descriptions.
+Stump et al.~\cite{stump2025embedding} demonstrate scalable few-shot
+classification of survey responses using transformer embeddings, establishing
+that contextual embeddings capture semantic proximity between occupation
+descriptions regardless of surface lexical overlap.
+
+Synthetic data generation for survey validation is addressed by Zhang et
+al.~\cite{zhang2025synthetic}, who evaluate CTGAN, TVAE, and REaLDTabFormer
+for generating statistically representative administrative records.
+Their three-metric framework --- fidelity, utility, privacy --- is adopted
+as the validation quality standard for the simulated person register data
+used in this system's proof-of-concept evaluation.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Research Gaps}
+\label{sec:rw-gaps}
+%─────────────────────────────────────────────────────────────────────────────
+
+The literature review across all four areas reveals the following critical gaps
+that this thesis directly addresses:
+
+\begin{enumerate}[label=\textbf{G\arabic*.}, leftmargin=2.5em]
+  \item \textbf{No prior system combines real-time conversational occupation
+  coding with multilingual code-switching support.}
+  SOCbot~\cite{kochar2025socbot} provides real-time coding but is English-only.
+  All multilingual systems~\cite{iea2024occupationcoding,anon2025llm4jobs}
+  operate in batch mode.
+
+  \item \textbf{Hierarchical Agentic RAG has not been applied to ISCO-08's
+  four-level taxonomy.}
+  Bach et al.~\cite{bach2025rag} use flat RAG.
+  A-RAG~\cite{arag2026hierarchical} and Singh et al.~\cite{singh2025agentic}
+  establish the agentic paradigm but do not evaluate on ISCO or labour survey
+  domains.
+
+  \item \textbf{No prior system integrates ISCO-08 + ISIC Rev.~4 + ISCED~2011
+  classification within a single survey session.}
+  All prior coding systems target a single classification standard.
+
+  \item \textbf{Dialectal Arabic code-switching in survey interviews is
+  unevaluated.}
+  Alzubaidi et al.~\cite{alzubaidi2025arabic} and the CSW survey~\cite{multiauth2026cswnlp}
+  both identify this as a critical gap in current benchmarks.
+
+  \item \textbf{Multi-agent CrewAI systems have not been applied to official
+  statistics data collection.}
+  Eyolfson et al.~\cite{eyolfson2026mas} study CrewAI at scale but not in
+  government survey contexts. Liu et al.~\cite{liu2025agenticai} classify the
+  framework but do not evaluate survey administration tasks.
+
+  \item \textbf{Data integrity mechanisms specific to official statistics AI
+  (provenance, PII, hallucination mitigation) have not been integrated into
+  a single survey pipeline.}
+  Khanna et al.~\cite{khanna2025knowledge}, Serenari et al.~\cite{serenari2025lopsided},
+  and Zhang et al.~\cite{zhang2025hallucination} address these challenges
+  separately in general AI contexts.
+
+  \item \textbf{Verified synthetic register data for pilot validation of
+  conversational survey systems has not been demonstrated.}
+  Zhang et al.~\cite{zhang2025synthetic} establish the methodology for
+  health surveys; application to LFS contexts is novel.
+\end{enumerate}
+
+\noindent This thesis addresses all seven gaps through a 13-agent CrewAI
+system with hierarchical Agentic RAG, multilingual code-switching support,
+cross-standard classification, and integrated data integrity mechanisms ---
+evaluated against a planned randomised pilot study comparing AI-administered
+and traditional LFS administration.

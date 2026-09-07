@@ -1,0 +1,372 @@
+% ============================================================
+%  APPENDICES
+%  Corrected 2026-08-28 -- see VERIFICATION_NOTES.md.
+% ============================================================
+
+% ─── APPENDIX A — LFS QUESTIONNAIRE FIELDS (VERIFIED) ────────────────────
+\chapter{LFS Questionnaire Fields}
+\label{app:questionnaire}
+
+\textbf{Field names, codes, labels, and accepted values below are confirmed
+directly} against \texttt{backend/agents/conversation\_manager.py}'s own
+module docstring and its live \texttt{\_CORRECTION\_FIELD\_SCHEMA} dict ---
+a real, sourced listing, not the original draft's illustrative Section~C
+excerpt with invented question phrasing.
+%% VERIFY AGAINST CODE: the "real label / accepted values" column reflects
+%% the LLM-correction-prompt schema, confirmed real -- but the exact
+%% spoken/typed QUESTION phrasing a respondent actually sees turn-by-turn
+%% (as opposed to the field's label and accepted values) was not
+%% independently re-verified against a separate prompts source in this
+%% pass.
+
+\begingroup
+\setlength{\tabcolsep}{3pt}
+\footnotesize
+\renewcommand{\arraystretch}{1.5}
+\emergencystretch=6em
+\begin{longtable}{>{\centering\bfseries}p{0.6cm}
+                  >{\raggedright}p{3.4cm}
+                  >{\raggedright}p{5.4cm}
+                  >{\raggedright\arraybackslash}p{4.6cm}}
+\caption{LFS fields, real names/codes/labels/accepted-values confirmed
+directly against \texttt{conversation\_manager.py}'s live
+\texttt{\_CORRECTION\_FIELD\_SCHEMA}.}
+\label{tab:app-questionnaire}\\
+\toprule
+\textbf{\#} & \textbf{Field} & \textbf{Real label / accepted values} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\multicolumn{4}{c}{\tablename\ \thetable{} -- \textit{continued}} \\
+\toprule
+\textbf{\#} & \textbf{Field} & \textbf{Real label / accepted values} & \textbf{Notes} \\
+\midrule
+\endhead
+\midrule \multicolumn{4}{r}{\small\itshape Continued\ldots} \\ \endfoot
+\bottomrule \endlastfoot
+C1 & \texttt{employment\_status} &
+  Employment Status: \texttt{employed \textbar\ unemployed \textbar\
+  not\_in\_labour\_force} &
+  All paths \\[2pt]
+C3 & \texttt{employment\_nature} &
+  Employment Nature: \texttt{paid\_employee \textbar\ employer \textbar\
+  self\_employed \textbar\ contributing\_family\_member} &
+  Employed path \\[2pt]
+D7 & \texttt{contract\_type} &
+  Contract Type: \texttt{permanent \textbar\ temporary \textbar\
+  no\_contract} &
+  Employed; gated on \texttt{employment\_nature == paid\_employee} \\[2pt]
+E1 & \texttt{monthly\_wage\_range} &
+  Monthly Salary Range (AED): \texttt{under\_5000 \textbar\
+  5000\_to\_10000 \textbar\ 10000\_to\_20000 \textbar\ 20000\_to\_30000
+  \textbar\ above\_30000} &
+  Employed; \textbf{gated on \texttt{employment\_nature ==
+  paid\_employee}} --- confirmed real, and confirms the currency is AED
+  (UAE dirham), consistent with this being a real UAE LFS \\[2pt]
+F1 & \texttt{job\_search\_active} &
+  Actively Searching for Work: \texttt{yes \textbar\ no} &
+  Unemployed path \\[2pt]
+F3 & \texttt{available\_for\_work} &
+  Available to Start (2 weeks): \texttt{yes \textbar\ no} &
+  Unemployed; \textbf{if F1=no AND F3=no, reclassifies respondent to
+  \texttt{not\_in\_labour\_force}} --- confirmed real (see Chapter~3) \\[2pt]
+C5 & \texttt{job\_title} &
+  Job Title: free text (e.g.\ Software Engineer, Teacher, Nurse, Driver) &
+  Employed; free text $\to$ ISCO-08 \\[2pt]
+C6 & \texttt{industry} &
+  Industry / Economic Activity: free text (e.g.\ Construction, Healthcare,
+  Education, Finance) &
+  Employed; free text $\to$ ISIC Rev.~4 \\[2pt]
+B6 & \texttt{field\_of\_study} &
+  Main Field of Study: free text (e.g.\ Engineering, Medicine, Business,
+  Education) &
+  All paths, gated on \texttt{education\_level >= bachelor}; free text
+  $\to$ ISCED-F --- confirmed real (code corrected from an earlier
+  fabricated ``B5a'' in an intermediate draft of this appendix) \\
+\end{longtable}
+\endgroup
+
+The full field list (all three paths) is given in
+Chapter~\ref{chap:architecture}, Section~\ref{sec:arch-fsm}.
+
+% ─── APPENDIX B — AGENT CONFIGURATION (ILLUSTRATIVE) ────────────────────
+\chapter{Agent Configuration Reference}
+\label{app:crewai}
+
+%% VERIFY AGAINST CODE: this project's CrewAI agents are constructed
+%% directly in Python (Agent(role=..., goal=..., llm=...) calls inside
+%% each backend/agents/*.py module), not loaded from external YAML files.
+%% The blocks below are illustrative summaries of each module's real,
+%% verified configuration values, written in YAML for readability -- they
+%% do not correspond to an actual YAML file in the repository. Do not
+%% present them as literal file contents.
+
+\section*{B.1 --- ISCOClassifier (illustrative summary)}
+\begin{lstlisting}[breaklines=true,caption={ISCOClassifier configuration, verified values.}]
+name: isco_classifier
+approach: >
+  Hierarchical (4-stage, parent-filtered) AND flat (single-collection)
+  retrieval, both implemented and empirically compared -- flat is the
+  better-tested configuration (Chapter 6).
+embeddings: intfloat/multilingual-e5-small (production default)
+            intfloat/multilingual-e5-large (additive, more accurate,
+            not yet default)
+catalogue: 436 unit groups (verified official ILO count)
+confidence_weights (hierarchical only): [0.10, 0.20, 0.20, 0.50]
+hitl_threshold: 0.70
+skip_rerank_threshold: 0.92   # verified: 99.7% of real cases fall BELOW
+                               # this on the full heldout set, so the LLM
+                               # step fires on nearly every real query
+llm_rerank: TaskType.CRITICAL (Claude 3.5 Sonnet by design, no fallback) --
+            NOT demonstrated working end-to-end in this project's own
+            evaluation (zero usable Anthropic credit); evaluation
+            reranking checks used Groq/Gemini instead, never Claude
+\end{lstlisting}
+
+\section*{B.2 --- SemanticRelationEngine (illustrative summary)}
+\begin{lstlisting}[breaklines=true,caption={SemanticRelationEngine configuration, verified values.}]
+name: semantic_relation
+approach: >
+  Deterministic, hand-built ISCO<->ISIC and ISCO<->ISCED crosswalk tables.
+  NOT sourced from an official ILO/UNESCO correspondence document -- a
+  real search of the complete ISCO-08 Volume I document found no such
+  table exists.
+weights: {isic: 0.55, isced: 0.45}  # applied only when BOTH available;
+                                      # single-standard and neither-available
+                                      # cases use a different, documented
+                                      # fallback (see Chapter 3)
+partial_credit: +0.15 * n_moderate_violations * (1 - raw_score)
+is_coherent_threshold: 0.70
+severity: gap-based (LOW <=1 level, MODERATE =2, HIGH >2 outside expected
+          range) -- a SEPARATE mechanism from the confidence-adjustment
+          bands below, not derived from them
+confidence_adjustment: {>=0.90: +0.10, >=0.70: +0.05, >=0.50: -0.05, else: -0.20}
+submajor_strict_rules:
+  "22": {isic_required: "Q", isced_min: 7}   # Health Professionals
+  "25": {isic_preferred: "J"}                 # ICT Professionals
+  "11": {isced_min: 6}                        # Chief Executives
+validation: 61-case set, 0 mismatches; HIGH-severity HITL escalation
+            verified 3x, 100%/15 escalated, 0%/46 non-HIGH escalated
+\end{lstlisting}
+
+\section*{B.3 --- ValidationAgent (verified rules)}
+\begin{lstlisting}[breaklines=true,caption={ValidationAgent rules, confirmed directly against the live source.}]
+name: validation_agent
+rules:
+  R01: Required fields (employment_status, industry) must be present
+  R02: hours_per_week must be parseable as a number
+  R03: hours_per_week must be in [1, 168]
+  R04: hours_per_week > 80 -> warning (outlier)
+  R05: Unemployed + non-empty job_title -> contradiction
+  R06: Unemployed + hours_per_week > 0 -> contradiction
+  R07: Not-in-labour-force + non-empty job_title -> contradiction
+  R08: full_time + <20 hours/week -> warning
+  R09: part_time + >=35 hours/week -> warning
+  R10: Employed + 0 hours/week -> error
+\end{lstlisting}
+\textbf{This replaces the original draft's ten rules}, which described a
+different, fabricated set (a wage gate, platform-worker rules, an "F3"
+not-in-labour-force re-routing rule) that does not exist in the real
+\texttt{ValidationAgent}. The ten rules above were confirmed by reading
+\texttt{backend/agents/validation\_agent.py} directly.
+
+% ─── APPENDIX C — SEMANTIC RELATION ENGINE: REAL VALIDATION EVIDENCE ────
+\chapter{Semantic Relation Engine — Validation Evidence}
+\label{app:sre-demo}
+
+%% The original draft's Appendix C showed a "10-case demo output" whose
+%% Arabic explanation field was literal, untranslated placeholder text
+%% ("[AR_TEXT] [AR_TEXT]...") -- itself a sign that content was never
+%% actually filled in, not just a stale number. It has been replaced
+%% entirely with this project's real, verified SRE validation facts.
+
+The Semantic Relation Engine's crosswalk logic was validated on a 61-case
+set with \textbf{zero mismatches} between expected and computed coherence
+classifications. Separately, HIGH-severity escalation to the live HITL
+queue was verified three times against the real
+\texttt{/survey/sessions/\{id\}/message} endpoint:
+
+\begin{lstlisting}[breaklines=true,caption={HIGH-severity HITL escalation, three independent runs against the live endpoint.}]
+Run 1: 15/15 HIGH-severity cases escalated (100%); 0/46 non-HIGH escalated (0%)
+Run 2: 15/15 HIGH-severity cases escalated (100%); 0/46 non-HIGH escalated (0%)
+Run 3: 15/15 HIGH-severity cases escalated (100%); 0/46 non-HIGH escalated (0%)
+\end{lstlisting}
+
+Byte-identical results across all three runs. A worked example of the real
+scoring formula (Chapter~\ref{chap:architecture}), for a case with both
+ISIC and ISCED data available:
+
+\begin{lstlisting}[breaklines=true,caption={Worked example of the real SRE formula.}]
+Occupation: ISCO 2211 (Generalist medical practitioners)
+Industry:   ISIC section Q (Human health and social work)
+Education:  ISCED level 7 (Master's or equivalent)
+
+score_ISIC  = 1.0   (major group 2 compatible with section Q)
+score_ISCED = 1.0   (level 7 within expected [6,8] range for major group 2)
+
+raw_score = 0.55 * 1.0 + 0.45 * 1.0 = 1.00
+moderate_violations = 0  -> no partial-credit adjustment applied
+score = 1.00
+is_coherent = (score >= 0.70) = True
+confidence_adjustment = +0.10   (score >= 0.90 band)
+\end{lstlisting}
+
+The real bilingual explanation text, confirmed directly from
+\texttt{semantic\_relation.py}'s own \texttt{\_build\_explanations()}
+method (not reconstructed or invented), for a coherent (score $\geq 0.90$)
+case:
+
+\begin{lstlisting}[breaklines=true,caption={Real EN+AR explanation text, verbatim from the live source.}]
+EN: "Strong semantic alignment: occupation ({major_label}), industry
+({isic_label}), and education ({isced_label}) are fully consistent
+according to ILO ISCO-ISIC-ISCED crosswalk tables. Classification
+confidence boosted by +{N}0%."
+
+AR: "تطابق دلالي قوي: المهنة والصناعة والتعليم متسقة تماماً وفق جداول
+التقاطع الدولية ILO. تم تعزيز ثقة التصنيف."
+\end{lstlisting}
+
+\textbf{A genuine, newly-noticed discrepancy, disclosed here rather than
+silently left in place}: this real, live explanation string itself says
+``according to ILO ISCO-ISIC-ISCED crosswalk tables,'' which is not
+accurate given Chapter~\ref{chap:architecture}'s own finding that no such
+official ILO table exists and the real crosswalk is hand-built. This is a
+real wording issue in the production system's own generated text, found
+while writing this appendix, not a documentation-only error --- flagged
+here as a concrete, actionable item (correct or remove that phrase in
+\texttt{\_build\_explanations()}) rather than left unmentioned because it
+falls outside this thesis-correction task's original scope.
+
+% ─── APPENDIX D — PARTICIPANT INFORMATION AND STUDY PROTOCOL (PLANNED) ──
+\chapter{Participant Information and Study Protocol (Planned, Not Yet Submitted)}
+\label{app:consent}
+
+\textbf{This appendix was, uniquely among the original draft's chapters,
+already honestly framed} --- it correctly stated that no participant
+recruitment, pilot execution, or data collection had occurred. It is
+retained here with that framing intact, lightly updated for consistency
+with Chapter~\ref{chap:evaluation} and with the fuller draft protocol at
+\texttt{Documentation/Phase\_2/Week\_1/module\_e\_pilot\_protocol\_draft.md}.
+
+\section*{D.1 --- Participant Information (Draft)}
+
+\noindent\textbf{Study title:}
+Evaluation of a Multilingual Conversational AI System for Labour Force
+Survey Administration.
+
+\noindent\textbf{Principal investigator:}
+Sivarama Krishnan Subbiah (2024MCS110007), M.Tech AI \& Data Science,
+IIIT Kottayam.
+
+\noindent\textbf{Supervisor:}
+Dr.\ Goutam Mali, IIIT Kottayam.
+
+\noindent\textbf{Status note:} As of the writing of this thesis, \textbf{no
+participant recruitment, pilot study execution, or data collection has been
+conducted}, and the study had not been submitted for institutional ethics
+approval. The information below represents the planned protocol only.
+
+\begin{itemize}
+  \item \textbf{Purpose:} Evaluating an AI-assisted system for conducting
+  employment surveys in English, Arabic, Urdu, Hindi, and Tagalog.
+  \item \textbf{What participation would involve:} Completing a Labour Force
+  Survey via either the conversational AI interface or a traditional
+  interviewer-administered survey, followed by a brief satisfaction
+  questionnaire.
+  \item \textbf{Voluntary participation:} Participation would be entirely
+  voluntary, with withdrawal possible at any point.
+  \item \textbf{Confidentiality:} Responses would be pseudonymised.
+  \item \textbf{No real-world consequences:} Responses would not be shared
+  with any government agency, employer, or authority, and would not
+  influence any benefit, visa, or employment decision.
+\end{itemize}
+
+\section*{D.2 --- Ethics Compliance Checklist (Planned)}
+
+\begin{table}[htbp]
+\centering
+\caption{Planned ethics compliance checklist -- current real status.}
+\label{tab:app-ethics}
+\small\renewcommand{\arraystretch}{1.35}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{5.8cm}
+                >{\centering}p{2.4cm}
+                >{\raggedright\arraybackslash}p{4.0cm}}
+\toprule
+\textbf{Requirement} &
+\textbf{Status} &
+\textbf{Notes} \\
+\midrule
+Institutional ethics approval & \textbf{Not submitted} &
+  Single most time-critical open item in this project \\
+Participant recruitment & Not started & \\
+Informed consent / PIS forms & Draft only &
+  See module\_e\_pilot\_protocol\_draft.md, Section 8 \\
+Pseudonymisation design & Designed (system) &
+  Real \texttt{person\_register} table structure exists \\
+GDPR-style access-right logging & Implemented (system) &
+  \texttt{data\_access\_logs} table, real and tested \\
+Audit log retention & Implemented (system) &
+  \texttt{audit\_logs} table, real and tested \\
+Pilot study execution & \textbf{Not started} & \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% ─── APPENDIX E — PROJECT STRUCTURE ─────────────────────────────────────────
+\chapter{Project Structure and Repository}
+\label{app:structure}
+
+\begin{lstlisting}[breaklines=true,caption={Project directory structure, corrected against the live repository.}]
+.
+|-- requirements.txt           # 28 packages, pip-freeze-pinned
+|-- alembic.ini
+|
+|-- backend/
+|   |-- agents/                # 13 modules construct a crewai.Agent:
+|   |   |-- language_processor.py
+|   |   |-- conversation_manager.py
+|   |   |-- isco_classifier.py
+|   |   |-- isic_classifier.py
+|   |   |-- isced_classifier.py
+|   |   |-- validation_agent.py
+|   |   |-- hitl_quality_manager.py
+|   |   |-- audit_logger.py
+|   |   |-- emotional_intelligence.py
+|   |   |-- semantic_relation.py
+|   |   |-- report_generator.py
+|   |   |-- context_memory.py
+|   |   `-- rag_expert.py
+|   |   # NOT agent-constructing (real, but no crewai.Agent):
+|   |   # nationality_classifier.py, person_register.py,
+|   |   # isco_reranker_strict.py, classifier_methods.py,
+|   |   # method_registry.py
+|   |   # NOTE: no survey_orchestrator.py exists -- orchestration lives
+|   |   # directly in api/survey_routes.py, with no CrewAI hierarchical
+|   |   # delegation anywhere in this codebase.
+|   |-- api/
+|   |   `-- survey_routes.py   # 20 real routes total (see Chapter 4)
+|   |-- llm/llm_client.py      # TaskType.GENERAL / .CRITICAL factory
+|   `-- rag/
+|       |-- hierarchical_store.py
+|       |-- standard_hierarchical_store.py
+|       |-- official_source_enrichment.py
+|       `-- load_full_isco.py
+|
+|-- frontend/
+|   `-- pages/
+|       |-- index.js
+|       |-- chat.js
+|       |-- report.js
+|       `-- supervisor_review.js
+|
+`-- eval/
+    |-- run_eval.py             # main evaluation harness (WISCO, etc.)
+    |-- generate_synthetic_isic_iscedf_benchmark.py
+    |-- validate_synthetic_benchmark_quality.py
+    `-- legacy_thesis_ch6/      # the pre-existing 100-item synthetic-corpus
+                                  # BM25/Flat/Hierarchical comparison
+                                  # (formerly backend/evaluation/); real,
+                                  # still used, but never the primary
+                                  # citable result for this thesis
+\end{lstlisting}

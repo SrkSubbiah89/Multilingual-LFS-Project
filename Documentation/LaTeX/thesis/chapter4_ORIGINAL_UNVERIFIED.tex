@@ -1,0 +1,254 @@
+% ============================================================
+%  CHAPTER 4 — IMPLEMENTATION
+% ============================================================
+\chapter{Implementation}
+\label{chap:implementation}
+
+This chapter describes the implementation of the complete system across three
+six-week sprints, covering the Docker deployment, database schema, agent
+implementation details, knowledge-base construction, and the bilingual frontend.
+
+% ------------------------------------------------------------
+\section{Development Methodology and Environment}
+\label{sec:impl-method}
+% ------------------------------------------------------------
+
+\textbf{Sprint 1 (Foundation):} Docker Compose environment; PostgreSQL schema
+and Alembic migrations; ISCO-08 knowledge-base ingestion via
+\texttt{rag/load\_full\_isco.py} (441 unit groups across 4 Qdrant collections);
+Email OTP + JWT auth; basic FastAPI endpoints.
+
+\textbf{Sprint 2 (Core Agents):} All 13 CrewAI agents implemented;
+Conversation Manager FSM with 56-field LFS; ISIC Rev.~4 and ISCED dual
+classifiers; Semantic Relation Engine (deterministic tables); Validation Agent
+(R01--R10); HITL queue and Supervisor Review Dashboard; Next.js frontend with
+RTL Arabic and quick-reply pills.
+
+\textbf{Sprint 3 (Evaluation and Pilot):} Three-system evaluation framework
+(\texttt{evaluation/evaluate.py}); Semantic Relation Engine demo
+(\texttt{evaluation/\-semantic\_\-demo.\-py}, 10 cases); bilingual report generator;
+pilot study execution; documentation and open-source release.
+
+\subsection{Development Environment}
+
+\begin{table}[htbp]
+\centering
+\caption{Key library dependencies and versions.}
+\label{tab:ch4-deps}
+\footnotesize\renewcommand{\arraystretch}{1.4}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{3.8cm}
+                >{\centering}p{1.6cm}
+                >{\raggedright\arraybackslash}p{7.0cm}}
+\toprule
+\textbf{Library} &
+\textbf{Version} &
+\textbf{Purpose} \\
+\midrule
+crewai & 0.60 & Multi-agent orchestration \\
+fastapi & 0.110 & Async REST API \\
+sqlalchemy & 2.0 & PostgreSQL ORM with async support \\
+alembic & 1.13 & Database migration management \\
+qdrant-client & 1.9 & Qdrant vector database client \\
+sentence-transformers & 3.0 & multilingual-e5-large embeddings \\
+anthropic & latest & Claude~3.5 Sonnet API (critical tasks) \\
+ollama & latest & Llama~3.2 local inference (general tasks) \\
+langdetect & 1.0.9 & Language detection (primary) \\
+camel-tools & 1.5 & Arabic dialect normalisation + diacritisation \\
+sendgrid & 6.x & Email OTP delivery \\
+python-jose & 3.x & JWT HS256 creation and verification \\
+redis & 5.0 & Redis session state \\
+pytest & 8.0 & 18-file mocked test suite \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% ------------------------------------------------------------
+\section{Docker Deployment (5 Services)}
+\label{sec:impl-docker}
+% ------------------------------------------------------------
+
+The system deploys via a single command:
+\begin{lstlisting}
+docker compose -f docker/docker-compose.yml up --build
+\end{lstlisting}
+
+The five services and their exposed URLs are:
+
+\begin{table}[htbp]
+\centering
+\caption{Docker services and access URLs.}
+\label{tab:ch4-docker}
+\footnotesize\renewcommand{\arraystretch}{1.4}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{2.5cm}
+                >{\raggedright}p{3.5cm}
+                >{\raggedright\arraybackslash}p{6.2cm}}
+\toprule
+\textbf{Service} &
+\textbf{URL} &
+\textbf{Notes} \\
+\midrule
+Frontend (Next.js) & http://localhost:3000 & Chat, report, supervisor review \\
+Backend (FastAPI) & http://localhost:8000 & REST API + Swagger docs at /docs \\
+PostgreSQL 15 & Internal port 5432 & 11 tables; Alembic migrations \\
+Qdrant & http://localhost:6333 & Dashboard + 4 ISCO-08 collections \\
+Redis 7 & Internal port 6379 & Session context TTL 24h \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+First-boot note: \texttt{multilingual-e5-large} ($\sim$2~GB) is downloaded on
+first backend start; subsequent starts use the \texttt{model\_cache} Docker volume.
+
+% ------------------------------------------------------------
+\section{PostgreSQL Schema (11 Tables)}
+\label{sec:impl-schema}
+% ------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{PostgreSQL 11-table schema.}
+\label{tab:ch4-schema}
+\footnotesize\renewcommand{\arraystretch}{1.4}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{3.8cm}
+                >{\raggedright\arraybackslash}p{8.4cm}}
+\toprule
+\textbf{Table} &
+\textbf{Purpose} \\
+\midrule
+\texttt{users} & Registered respondents (email, OTP hash, JWT state) \\
+\texttt{otp\_codes} & Time-limited 6-digit OTP codes (SendGrid delivery) \\
+\texttt{survey\_sessions} & Survey session per user per round; employment path \\
+\texttt{survey\_responses} & 56 individual field answers + ISCO/ISIC/ISCED codes \\
+\texttt{audit\_logs} & Immutable GDPR audit trail (agent decisions, timestamps) \\
+\texttt{data\_access\_logs} & Per-row PII access log (GDPR Art.~15 compliance) \\
+\texttt{agent\_decision\_logs} & Full agent reasoning traces (LLM inputs/outputs) \\
+\texttt{quality\_reviews} & HITLQualityManager automated scoring records \\
+\texttt{hitl\_queue} & Low-confidence ISCO items pending supervisor review;
+  priority-ordered (HIGH first) \\
+\texttt{survey\_report\_records} & Cached bilingual EN+AR employment reports \\
+\texttt{person\_register} & Pre-fill data from previous survey rounds \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% ------------------------------------------------------------
+\section{ISCO-08 Knowledge Base Construction}
+\label{sec:impl-kb}
+% ------------------------------------------------------------
+
+The ISCO-08 knowledge base is ingested via \texttt{rag/load\_full\_isco.py}.
+
+\textbf{Source:} ILO ISCO-08 Volumes~1 and~2~\cite{ilo2012isco_v1,ilo2012isco_v2}.
+\textbf{Coverage:} 441 unit groups across the 4-level taxonomy.
+\textbf{Enrichment:} 50+ unit-group descriptions enriched with synonyms for
+improved recall (e.g.\ ``Software Developer'' enriched with ``programmer'',
+``coder'', ``developer'', ``software engineer'').
+\textbf{Embeddings:} \texttt{intfloat/\-multilingual-e5-large} (1024-dim) with
+\texttt{passage:} prefix; HNSW index (M=32, ef\_construct=256) in Qdrant.
+\textbf{Payload fields:} \texttt{code}, \texttt{title}, \texttt{parent\_code},
+\texttt{definition}, \texttt{tasks}, \texttt{inclusions}, \texttt{exclusions}.
+
+The keyword pre-filter in \texttt{isco\_classifier.py} anchors each query to
+the correct major group before embedding search, preventing semantic drift
+(e.g.\ a query for ``head chef'' anchors to Major Group~5 Service Workers, not
+Major Group~2 Professionals).
+
+% ------------------------------------------------------------
+\section{Language Processing Implementation}
+\label{sec:impl-lang}
+% ------------------------------------------------------------
+
+The LanguageProcessor (\texttt{agents/\-language\_\-processor.\-py}) detects six
+language codes: \texttt{en}, \texttt{ar}, \texttt{ar-dialect}, \texttt{ur},
+\texttt{hi}, \texttt{tl} using:
+\begin{itemize}
+  \item \texttt{langdetect} library as primary detector
+  \item Unicode script analysis as fast-path for Devanagari (Hindi/Urdu disambiguation)
+  \item Arabic+Latin mixing detection for Arabic code-switching
+  \item Devanagari+Latin mixing detection for Hindi/Urdu code-switching
+\end{itemize}
+
+Dialect normalisation applies ~30 dialect-to-MSA token replacements
+before NER and embedding.
+NER extracts four entity types (JOB\_TITLE, INDUSTRY, LOCATION, EDUCATION)
+via a CrewAI agent backed by Ollama/Llama~3.2 with Claude~3.5 Sonnet
+fallback.
+
+% ------------------------------------------------------------
+\section{Validation Agent (ILO ICLS-19 Rules R01--R10)}
+\label{sec:impl-validation}
+% ------------------------------------------------------------
+
+The ValidationAgent (\texttt{agents/\-validation\_\-agent.\-py}) enforces all 10
+ILO ICLS-19 cross-answer consistency rules in real time.
+Representative rules:
+
+\begin{itemize}
+  \item \textbf{R01} Employed respondents must provide a job title and industry
+  \item \textbf{R02} Hours worked must be 0--168 per week
+  \item \textbf{R03} Unemployed respondents (F1=yes) must provide job-search
+  method
+  \item \textbf{R04} University-educated respondents must have ISCED $\geq$6
+  \item \textbf{R05} Self-employed respondents skip wage gate (E1)
+  \item \textbf{R06} Platform workers must specify platform names if primary
+  income
+  \item \textbf{R07} National residents must answer national employment programme question
+  \item \textbf{R08} Income range must match employment nature
+  \item \textbf{R09} Contract type required for paid employees (D7 gate)
+  \item \textbf{R10} F3 re-routing: job\_search\_active=no AND
+  available\_for\_work=no $\Rightarrow$ reclassify to not\_in\_labour\_force
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Frontend Implementation}
+\label{sec:impl-frontend}
+% ------------------------------------------------------------
+
+The Next.js~14 frontend provides three pages:
+
+\textbf{\texttt{pages/index.js} --- Login.}
+Email input $\to$ OTP delivery via SendGrid $\to$ JWT storage.
+Auto-fill mode available in development.
+
+\textbf{\texttt{pages/chat.js} --- Survey Conversation.}
+Full RTL Arabic support via Noto Sans Arabic and \texttt{dir=rtl} attribute.
+Quick-reply pill buttons for 39 categorical fields in 5 languages.
+Language switcher (\texttt{components/\-LanguageToggle.\-js}) for EN/AR/UR/HI/TL.
+Progress indicator showing current section and field count.
+
+\textbf{\texttt{pages/report.js} --- Bilingual Employment Report.}
+Generated by the ReportGenerator agent (Claude~3.5 Sonnet).
+Cross-Standard Coherence panel: SemanticCoherence score bar, ISIC/ISCED
+compatibility flags, violation list in the user's selected language (EN or AR).
+
+\textbf{\texttt{pages/\-supervisor\_\-review.\-js} --- HITL Dashboard.}
+Priority-ordered escalation queue (HIGH violations first).
+Per-case: occupation description, AI prediction, confidence, SRE score,
+approve/correct/reject controls with optional rationale field.
+
+% ------------------------------------------------------------
+\section{Testing}
+\label{sec:impl-testing}
+% ------------------------------------------------------------
+
+The test suite (\texttt{backend/tests/}, 18 files) uses pytest with full mocking
+of external services (Qdrant, Ollama, Claude, PostgreSQL, Redis).
+Tests cover: language detection for all 6 codes, dialect normalisation rules,
+ISCO-08 hierarchical retrieval at all four stages, confidence formula, SRE
+coherence computation for all severity levels, all 10 ILO ICLS-19 validation
+rules, all 11 skip gates, JWT auth, and OTP generation/verification.
+
+The three-system evaluation framework (\texttt{evaluation/evaluate.py})
+compares BM25 sparse retrieval, Flat RAG (single-stage dense), and Hierarchical
+RAG (four-stage) on 100 synthetic cases, reporting top-1 and top-3 accuracy
+at the 4-digit unit-group level.
+
+The Semantic Relation Engine demo (\texttt{evaluation/\-semantic\_\-demo.\-py})
+runs 10 hand-crafted test cases with colour-coded output (green = coherent,
+yellow = moderate mismatch, red = HIGH violation) for use in panel presentations.

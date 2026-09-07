@@ -1,0 +1,196 @@
+% ============================================================
+%  CHAPTER 5 — EVALUATION FRAMEWORK
+%  Fully rewritten 2026-08-28 -- see VERIFICATION_NOTES.md.
+%  The original draft of this chapter presented specific pilot-study
+%  RESULTS (case counts, Cohen's kappa values, coder agreement) for a
+%  pilot that has never run and has not even been submitted for ethics
+%  approval. That content has been removed entirely, not edited down --
+%  it described data that does not exist. This chapter now describes the
+%  real evaluation methodology this project actually used.
+% ============================================================
+\chapter{Evaluation Methodology}
+\label{chap:evaluation}
+
+This chapter describes the evaluation methodology actually used in this
+project. Three real evaluation efforts are reported: an external benchmark
+for ISCO-08 (WISCO), a disclosed synthetic benchmark for ISIC Rev.~4 and
+ISCED-F~2013 (built because no real labelled dataset exists for either), and
+a smaller, secondary synthetic-corpus comparison predating the main
+evaluation harness. A fourth, planned evaluation --- the randomised pilot
+study --- is described as a protocol only: \textbf{it has not been executed,
+no data from it exists, and it had not been submitted for ethics approval as
+of the writing of this thesis.}
+
+% ------------------------------------------------------------
+\section{ISCO-08 Evaluation: The WISCO External Benchmark}
+\label{sec:eval-wisco}
+% ------------------------------------------------------------
+
+WISCO (World database of ISCO Occupations) is a real, external,
+occupation-coding dataset used as this project's primary ISCO-08 evaluation
+source, precisely because it is independent of this project's own catalogue
+construction. The full, official heldout split used for this thesis's
+headline results contains \textbf{18,747 cases}. Two retrieval
+configurations were evaluated on the identical case set: flat retrieval
+(single-collection direct search) and hierarchical retrieval (four-stage,
+parent-filtered beam search) --- see Chapter~\ref{chap:architecture} for
+both pipelines' design. Results are reported exactly as measured in
+Chapter~\ref{chap:results}, including a negative finding (hierarchical
+underperforming flat) that an earlier internal draft of this thesis did not
+report.
+
+Beyond the baseline configuration, several additive experiments were run on
+the same 18,747-case heldout set to isolate the effect of specific changes:
+a larger embedding model (\texttt{multilingual-e5-large} vs.\ the
+production-default \texttt{-e5-small}), real official-text catalogue
+enrichment (replacing thin \texttt{"\{code\} \{title\}"} embedding text with
+the official ILO source document's actual definitions and examples), and
+the combination of both. Each experiment's exact result, including whether
+LLM re-ranking was tested with it, is reported in
+Chapter~\ref{chap:results} --- not summarised here to avoid restating
+numbers in two places that could drift out of sync.
+
+A separate, smaller check evaluated whether LLM-based re-ranking of
+retrieval candidates improves accuracy, repeated independently across
+different retrieval configurations and providers (Groq, and separately a
+local Ollama model, since the project's Anthropic account had zero usable
+credit throughout evaluation --- Claude results were never used to report
+this check, and are not claimed here as having been obtained). The
+consistent finding across repeated, independent checks is reported plainly
+in Chapter~\ref{chap:results}, whatever it turned out to be.
+
+% ------------------------------------------------------------
+\section{ISIC Rev.~4 / ISCED-F 2013 Evaluation: A Disclosed Synthetic Benchmark}
+\label{sec:eval-synthetic}
+% ------------------------------------------------------------
+
+WISCO is occupation-only --- it carries no industry or field-of-study gold
+labels, so it cannot evaluate the ISIC Rev.~4 or ISCED-F~2013 classifiers.
+No other real, labelled, multilingual dataset for these two standards was
+found; the IPUMS International project was contacted directly to ask
+whether it held original-language verbatim occupation/industry/education
+text for its Arabic, Hindi, and Urdu samples specifically, and confirmed in
+writing that it does not have access to, and could not distribute, any such
+data (full correspondence transcript in
+\texttt{Documentation/Phase\_2/Week\_1/ipums\_correspondence\_log.md}).
+
+Given this, a synthetic evaluation dataset was built using a real, standard
+technique: \textbf{taxonomy-grounded LLM paraphrase data augmentation}. An
+LLM is given a classification category's own official definition (sourced
+from the real ILO/UNESCO structure documents, the same data used to build
+this project's catalogue-enrichment work) and instructed to produce a
+casual, first-person sentence a survey respondent might plausibly say,
+explicitly avoiding the official terminology so a keyword-matching
+classifier cannot trivially win by echoing the source text back. The gold
+label is fixed by construction --- it is exactly the category whose
+definition generated the text --- not inferred or scored by a second model.
+
+\textbf{This measures a specific, narrower thing than real-respondent
+evaluation, stated precisely rather than implied to be equivalent:} it
+measures how well a method recovers the class its own generating prompt was
+built from, not how the method would perform on genuine survey responses.
+It is the best available signal in the absence of real data, useful for
+regression testing and directional comparison, but it is never cited in
+this thesis as WISCO-equivalent or pilot-grade evidence.
+
+\textbf{Real, disclosed limitations of this dataset, stated exactly:}
+generation used a commercial LLM API (Groq) subject to a real daily
+token quota; coverage of the full target (all matched ISIC/ISCED-F codes
+$\times$ all 6 language codes) was therefore built up incrementally across
+multiple sessions rather than completed in one pass. The exact coverage
+figure and per-language breakdown achieved is reported in
+Chapter~\ref{chap:results}, together with a real data-quality defect this
+project found and fixed during construction: a small number of generation
+calls returned a plain LLM safety-filter refusal (e.g.\ for a category whose
+official examples include sensitive terms such as escort/dating services)
+which an early version of the generation pipeline did not detect, silently
+storing the refusal text as if it were valid respondent data. An automated,
+independent quality-check script was built specifically to catch this and
+related defects (script contamination, wrong-script generation, verbatim
+title leakage) across every row, not just the affected ones, and the
+affected rows were regenerated and re-verified before being used in any
+reported result.
+
+A companion evaluation used the Gulf-dialect portion of this synthetic
+dataset to test the real, hand-built 79-rule Gulf-Arabic normalisation
+dictionary against genuinely dialectal (not Modern Standard Arabic)
+generated text --- the first time this project had any dialectal Arabic
+data to test that component against at all. The result is reported in
+Chapter~\ref{chap:results}.
+
+% ------------------------------------------------------------
+\section{A Secondary, Pre-Existing Synthetic-Corpus Comparison}
+\label{sec:eval-legacy}
+% ------------------------------------------------------------
+
+A separate, smaller framework (\texttt{eval/legacy\_thesis\_ch6/evaluate.py},
+predating the main evaluation harness above) compares BM25 sparse
+retrieval, flat dense retrieval, and hierarchical dense retrieval on a
+100-item \emph{synthetic} corpus.
+\textbf{The original draft's gold-labelling claim was checked directly and
+is false.} Its ``two ILO-certified coders; adjudicated by senior coder''
+claim does not match the real script: the gold labels are a hardcoded
+Python list, \texttt{TEST\_CASES: list[tuple[str, str]]} (job description,
+true ISCO 4-digit code), 100 English cases plus a separate 30-case Arabic
+set (\texttt{ARABIC\_TEST\_CASES}) --- no evidence of external human coding
+or adjudication exists in the script, and no separate Hindi/Urdu/Tagalog
+case sets were found, contradicting the original draft's claimed
+``equal distribution across the 5 languages.'' This is disclosed plainly:
+this secondary corpus's gold labels are developer-authored, not
+professionally coded.
+This framework is real and still in use (its BM25 baseline class is
+imported by the main evaluation harness), but its numbers are
+\textbf{never} the primary, citable result for this thesis --- the WISCO
+result (Section~\ref{sec:eval-wisco}) is. Where this secondary comparison's
+results are reported at all (Chapter~\ref{chap:results}), they are labelled
+explicitly as synthetic-corpus, non-primary results.
+
+% ------------------------------------------------------------
+\section{Planned Pilot Study --- Protocol Only, Not Executed}
+\label{sec:eval-pilot}
+% ------------------------------------------------------------
+
+\textbf{No pilot data exists. This section describes a plan, not a
+completed evaluation.} A draft protocol
+(\texttt{Documentation/Phase\_2/Week\_1/module\_e\_pilot\_protocol\_draft.md})
+exists, itself marked draft/not-submitted/not-reviewed, built from
+already-decided project parameters and standard human-subjects protocol
+structure, with every institution-specific detail (ethics committee
+calendar, exact recruitment criteria, translated consent materials) left as
+an open item pending the supervisor and the institute's ethics review body.
+
+The intended design, stated as a plan: a parallel-arm randomised comparison
+($n=30$, 15 AI-administered, 15 traditional-interviewer-administered),
+measuring completion time, item nonresponse, internal contradiction rate
+(as flagged by the Semantic Relation Engine or Validation Agent),
+respondent satisfaction, and per-interview cost. Given $n=30$, this is
+explicitly scoped as a feasibility pilot, not a definitively powered
+comparison --- any eventual analysis should state this limitation plainly,
+not present pilot-scale results as conclusive.
+
+\textbf{An earlier internal draft of this thesis stated specific pilot
+results} --- a participant sample description, a count of ISCO-08
+classification events, and a Cohen's $\kappa$ inter-coder-agreement value
+for double-coded pilot data. \textbf{None of this exists.} It has been
+removed from this thesis entirely rather than edited, because it described
+data from a study that has never run, not a stale or approximate figure
+from one that had.
+
+% ------------------------------------------------------------
+\section{Statistical Methods}
+\label{sec:eval-stats}
+% ------------------------------------------------------------
+
+For the real evaluations reported in Chapter~\ref{chap:results}: paired
+accuracy comparisons use McNemar's exact test; proportions are reported
+with Wilson 95\% confidence intervals. Both are computed directly (this
+project's evaluation code has no \texttt{scipy} dependency; these are
+hand-implemented against the standard formulas) rather than taken from an
+external library without verification.
+
+For the pilot study, \emph{if and when it runs}: the planned approach is
+Welch's $t$-test for completion time (with Cohen's $d$), Mann--Whitney $U$
+for CSAT (with rank-biserial $r$), and Fisher's exact test for
+nonresponse/contradiction-rate comparisons --- standard choices for a
+small-$n$, two-arm design, stated here as a plan to be followed, not as
+having already been applied to real data.

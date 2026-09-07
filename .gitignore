@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Demo startup script logs (start_demo_tunnels.ps1)
+.demo_logs/
+
 # Python
 __pycache__/
 *.py[cod]

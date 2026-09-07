@@ -1,0 +1,616 @@
+% ============================================================
+%  Bibliography — Multilingual Conversational AI for LFS
+%
+%  FULLY AUDITED 2026-08-29 via direct web search, one citation at a
+%  time -- see Documentation/LaTeX/thesis/CITATION_AUDIT.md for the full
+%  writeup (search queries used, what each search returned, and the
+%  reasoning behind every correction below). Summary:
+%    - 3 entries (bach2025rag, hamed2025isco, liu2025agenteval) could NOT
+%      be matched to a real paper after extensive searching -- commented
+%      out below, NOT cited anywhere in the corrected chapters, and
+%      disclosed in-text wherever the original draft had relied on them.
+%    - 13 entries were real papers cited with a wrong author, wrong
+%      title, wrong year, or a false "Anonymous" attribution -- corrected
+%      in place below, with the original (wrong) value noted in a comment
+%      so the correction is auditable, not silent.
+%    - The remaining ~23 entries were checked and confirmed accurate as
+%      originally cited (author/title/venue/year all verified).
+%  This header itself replaces an earlier one that claimed "ALL 2024-2026
+%  papers (verified Google Scholar / arXiv)" -- that claim was itself
+%  unverified when written; it is now actually true, per the audit above.
+% ============================================================
+
+% ─── A. AUTOMATED OCCUPATION CODING (from PPT Slide 4) ──────────────────────
+
+@mastersthesis{oloumi2026onet,
+  author      = {Oloumi, S.},
+  title       = {A Comparative Study of Embedding and Classification Techniques
+                 for Mapping Job Descriptions to {O*NET-SOC} Codes},
+  school      = {University of Guelph},
+  year        = {2026},
+  note        = {Sentence-BERT vs.\ fine-tuned classifiers on O*NET-SOC;
+                 monolingual English only; no conversational interface}
+}
+
+@article{santana2026ethics,
+  author      = {Santana, J.J. and Kim, S.},
+  title       = {From Values to Codes: {A} Computational Text Analysis of the
+                 Codification of Occupational Ethics},
+  journal     = {Organization Studies},
+  publisher   = {SAGE Publications},
+  year        = {2026},
+  note        = {Automated semantic analysis of occupational ethics corpora;
+                 no RAG or multi-agent component}
+}
+
+@misc{teeselink2026automation,
+  author      = {Klein Teeselink, B. and Carey, D.},
+  title       = {{AI}, Automation, and Expertise},
+  howpublished = {SSRN Working Paper},
+  year        = {2026},
+  note        = {Granular occupational coding matched to AI exposure measures;
+                 no real-time or multilingual coding pipeline}
+}
+
+@misc{kochar2025socbot,
+  author      = {Sturgis, P. and Robinson, T. and Fung, L. and Roberts, C.},
+  title       = {{SOCbot}: Using Large Language Models to Measure and Classify
+                 Occupations in Surveys},
+  howpublished = {OSF Preprints. \url{https://osf.io/preprints/socarxiv/9ruwe}},
+  month       = aug,
+  year        = {2025},
+  note        = {LLM-in-questionnaire scripting; real-time coding; adaptive
+                 probing; field experiment vs.\ human coders on Verian panel;
+                 English-only; single-agent only}
+}
+
+@article{anon2025llm4jobs,
+  % CORRECTED 2026-08-29: falsely marked {Anonymous} -- the paper has
+  % real, named authors, confirmed directly. Also originally an arXiv
+  % preprint (2309.09708, 2023); the journal version below is 2025.
+  author      = {Li, N. and Kang, B. and De Bie, T.},
+  title       = {{LLM4Jobs}: Unsupervised Occupation Extraction and
+                 Standardization Leveraging Large Language Models},
+  journal     = {Knowledge-Based Systems},
+  volume      = {316},
+  year        = {2025},
+  doi         = {10.1016/j.knosys.2025.113302},
+  note        = {Unsupervised LLM pipeline; benchmarked at multiple ISCO
+                 granularities; English input; no RAG or conversational interface}
+}
+
+@misc{rony2025socclassifier,
+  author      = {Rony, S. and others},
+  title       = {Standard Occupation Classifier --- {A} Natural Language
+                 Processing Approach},
+  howpublished = {arXiv:2511.23057},
+  doi = {10.48550/arXiv.2511.23057},
+  month       = nov,
+  year        = {2025},
+  note        = {Ensemble BERT+DistilBERT+RoBERTa+DeBERTa+NN; UK SOC 2010/2020
+                 and O*NET; batch offline only; monolingual}
+}
+
+@techreport{iea2024occupationcoding,
+  author      = {{IEA / European Commission Research Team}},
+  title       = {Improving Parental Occupation Coding Procedures with {AI}},
+  institution = {IEA},
+  month       = sep,
+  year        = {2024},
+  note        = {Multilingual BERT-based ESCO--O*NET crosswalk; 13-country
+                 evaluation; batch post-collection; accuracy drops at 4-digit}
+}
+
+% ─── B. RETRIEVAL-AUGMENTED GENERATION (from PPT Slide 5) ──────────────────
+
+@misc{arag2026hierarchical,
+  author      = {Du, M. and Xu, B. and Zhu, C. and Wang, S. and Wang, P. and Wang, X. and Mao, Z.},
+  title       = {{A-RAG}: Scaling Agentic Retrieval-Augmented Generation via
+                 Hierarchical Retrieval Interfaces},
+  howpublished = {arXiv:2602.03442},
+  doi = {10.48550/arXiv.2602.03442},
+  month       = feb,
+  year        = {2026},
+  note        = {Hierarchical agentic RAG; autonomous strategy selection;
+                 interleaved tool use; English multi-hop QA benchmarks only}
+}
+
+@misc{singh2025agentic,
+  author      = {Singh, A. and Ehtesham, A. and Kumar, S. and Khoei, T.T. and Vasilakos, A.V.},
+  title       = {Agentic Retrieval-Augmented Generation: {A} Survey on
+                 Agentic {RAG}},
+  howpublished = {arXiv:2501.09136},
+  doi = {10.48550/arXiv.2501.09136},
+  month       = jan,
+  year        = {2025},
+  note        = {Systematic survey; taxonomy of agentic RAG: na\"{i}ve
+                 $\to$ advanced $\to$ modular $\to$ graph $\to$ agentic;
+                 reflection, planning, tool use, multi-agent collaboration}
+}
+
+@misc{nguyen2025marag,
+  author      = {Nguyen, T. and others},
+  title       = {{MA-RAG}: Multi-Agent {RAG} via Collaborative
+                 Chain-of-Thought Reasoning},
+  howpublished = {arXiv:2505.20096},
+  doi = {10.48550/arXiv.2505.20096},
+  month       = may,
+  year        = {2025},
+  note        = {Planner + Step Definer + Extractor + QA agents;
+                 chain-of-thought prompting; NQ, HotpotQA, TriviaQA;
+                 English only; no survey-domain adaptation}
+}
+
+@misc{chaita2025ragsurvey,
+  % CORRECTED 2026-08-29: "Chaita, L." does not exist -- the real,
+  % confirmed sole author is Chaitanya Sharma (an earlier draft appears
+  % to have misread the first name "Chaitanya" as a surname "Chaita").
+  author      = {Sharma, C.},
+  title       = {Retrieval-Augmented Generation: {A} Comprehensive Survey of
+                 Architectures, Enhancements, and Robustness Frontiers},
+  howpublished = {arXiv:2506.00054},
+  doi = {10.48550/arXiv.2506.00054},
+  month       = jun,
+  year        = {2025},
+  note        = {Taxonomy of retriever-centric, generator-centric, hybrid
+                 designs; query reformulation, context filtering; no
+                 multilingual robustness evaluation}
+}
+
+@misc{huang2025ragrl,
+  author      = {Huang, J. and others},
+  title       = {{RAG-RL}: Advancing Retrieval-Augmented Generation via
+                 Reinforcement Learning and Curriculum Learning},
+  howpublished = {arXiv:2503.12759},
+  doi = {10.48550/arXiv.2503.12759},
+  month       = mar,
+  year        = {2025},
+  note        = {RL-based answer generation with citation learning; curriculum
+                 training easy$\to$hard; English corpora assumed}
+}
+
+@misc{multiauth2025ragreview,
+  author      = {Oche, A.J. and Folashade, A.G. and Ghosal, T. and Biswas, A.},
+  title       = {A Systematic Review of Key {RAG} Systems: Progress, Gaps,
+                 and Future Directions},
+  howpublished = {arXiv:2507.18910},
+  month       = jul,
+  year        = {2025},
+  note        = {PRISMA review Jan 2020--May 2025; adaptive retrieval,
+                 multimodal RAG, RAGAS/RAGTruth evaluation; no LFS domain}
+}
+
+@misc{gupta2024ragevo,
+  author      = {Gupta, S. and Ranjan, R. and others},
+  title       = {A Comprehensive Survey of Retrieval-Augmented Generation
+                 ({RAG}): Evolution, Current Landscape and Future Directions},
+  howpublished = {arXiv:2410.12837},
+  doi = {10.48550/arXiv.2410.12837},
+  month       = oct,
+  year        = {2024},
+  note        = {Na\"{i}ve $\to$ Advanced $\to$ Modular RAG evolution;
+                 QA, summarisation, knowledge tasks; no labour survey evaluation}
+}
+
+% ─── C. MULTILINGUAL NLP AND CODE-SWITCHING (from PPT Slide 6) ─────────────
+
+@misc{multiauth2026cswnlp,
+  author      = {Sheth, R. and Sinha, S.R. and Patil, M. and Beniwal, H. and Singh, M.},
+  title       = {Beyond Monolingual Assumptions: {A} Survey on Code-Switched
+                 {NLP} in the Era of {LLMs} across Modalities},
+  howpublished = {arXiv:2510.07037},
+  doi = {10.48550/arXiv.2510.07037},
+  month       = jan,
+  year        = {2026},
+  note        = {Multi-modal survey: LID, POS, NER, SA, MT, dialogue, speech;
+                 RAG+CSW customer support; SwitchLingua, MEGAVERSE, CS-FLEURS}
+}
+
+@article{liu2025mllmsurvey,
+  % CORRECTED 2026-08-29: "Liu, L." is not the real first author -- the
+  % real, confirmed first author is Libo Qin (Qin, Chen, Zhou, Chen, Li,
+  % Liao, Li, Che, and Yu).
+  author      = {Qin, L. and others},
+  title       = {A Survey of Multilingual Large Language Models},
+  journal     = {Patterns},
+  publisher   = {Cell Press},
+  volume      = {6},
+  number      = {1},
+  year        = {2025},
+  note        = {Systematic taxonomy of MLLMs; evaluation on xDial-Eval,
+                 Multi3WOZ, DIALIGHT; dialect gap persists for regional varieties}
+}
+
+@misc{mao2025multilingual,
+  % CORRECTED 2026-08-29: "Mao, R." is not the real first author -- the
+  % real, confirmed first author is Kaiyu Huang (13 authors total).
+  author      = {Huang, K. and others},
+  title       = {A Survey on Large Language Models with Multilingualism:
+                 Recent Advances and New Frontiers},
+  howpublished = {arXiv:2405.10936},
+  doi = {10.48550/arXiv.2405.10936},
+  year        = {2025},
+  note        = {Multilingual pre-training, SFT, RLHF for 100+ languages;
+                 low-resource language performance remains limited}
+}
+
+@inproceedings{yoo2025cscl,
+  author      = {Yoo, J. and others},
+  title       = {Code-Switching Curriculum Learning ({CSCL}) for
+                 Multilingual Models},
+  booktitle   = {Findings of {ACL} 2025},
+  year        = {2025},
+  note        = {Curriculum learning on CS data; Qwen-2 1.5B and 7B;
+                 Korean-English; no Arabic or survey-domain evaluation}
+}
+
+@misc{alzubaidi2025arabic,
+  author      = {Alzubaidi, A. and Alsuwaidi, S. and others},
+  title       = {Evaluating Arabic Large Language Models: {A} Survey of
+                 Benchmarks, Methods, and Gaps},
+  howpublished = {arXiv:2510.13430},
+  doi = {10.48550/arXiv.2510.13430},
+  month       = oct,
+  year        = {2025},
+  note        = {Taxonomy of 40+ Arabic benchmarks; RAG (ALRAGE),
+                 code-switching, cultural reasoning; dialectal CSW with
+                 English in survey contexts underrepresented}
+}
+
+@misc{multiauth2025mlprompt,
+  author      = {Vatsal, S. and Dubey, H. and Singh, A.},
+  title       = {Multilingual Prompt Engineering in Large Language Models:
+                 {A} Survey Across {NLP} Tasks},
+  howpublished = {arXiv:2505.11665},
+  month       = may,
+  year        = {2025},
+  note        = {36 papers; 39 prompting techniques across 30 multilingual
+                 NLP tasks; static prompting focus; no multi-turn dialogue}
+}
+
+@misc{anon2024cswnli,
+  % CORRECTED 2026-08-29: falsely marked Anonymous (real, named authors
+  % confirmed), wrong year (real: 2025, not 2024), and a slightly wrong
+  % title (real title includes "Synthetic", confirmed below).
+  author      = {Abdaljalil, S. and Serpedin, E. and Qaraqe, K. and Kurban, H.},
+  title       = {Evaluating Multilingual and Code-Switched Alignment in
+                 {LLMs} via Synthetic Natural Language Inference},
+  howpublished = {arXiv:2508.14735},
+  year        = {2025},
+  note        = {Synthetic NLI dataset; 6 language pairs incl.\ Arabic,
+                 Hindi; CS does not always degrade NLI; survey-domain untested}
+}
+
+% ─── D. MULTI-AGENT AND CONVERSATIONAL AI ───────────────────────────────────
+
+@misc{eyolfson2026mas,
+  % CORRECTED 2026-08-29: the real title at this arXiv ID is "A
+  % Large-Scale Study on the Development and Issues of Multi-Agent AI
+  % Systems", not the CrewAI/LangChain/AutoGen-specific title below --
+  % confirmed the same paper via matching statistics (4,700+ issues,
+  % 40.8% perfective commits). Author "Eyolfson, J." could not be
+  % independently confirmed in this pass -- kept provisionally, flagged
+  % for a follow-up check rather than guessed at further.
+  author      = {Eyolfson, J. and others},
+  title       = {A Large-Scale Study on the Development and Issues of
+                 Multi-Agent {AI} Systems},
+  howpublished = {arXiv:2601.07136},
+  doi = {10.48550/arXiv.2601.07136},
+  year        = {2026},
+  note        = {First large-scale empirical study; 42K+ commits, 4,700+
+                 resolved issues across eight frameworks incl.\ CrewAI,
+                 LangChain, AutoGen; perfective commits 40.8\% overall}
+}
+
+@misc{liu2025agenticai,
+  % CORRECTED 2026-08-29: "Liu, Y." is wrong -- the real, confirmed
+  % authors (title matches exactly) are Mohamad Abou Ali and Fadi
+  % Dornaika; no "Liu" appears in the real author list at all.
+  author      = {Abou Ali, M. and Dornaika, F.},
+  title       = {Agentic {AI}: {A} Comprehensive Survey of Architectures,
+                 Applications, and Future Directions},
+  howpublished = {arXiv:2510.25445},
+  doi = {10.48550/arXiv.2510.25445},
+  year        = {2025},
+  note        = {Classifies CrewAI as neural paradigm LLM orchestration;
+                 validates architectural choice for this system}
+}
+
+@inproceedings{guo2024multiagent,
+  author      = {Guo, T. and others},
+  title       = {Large Language Model Based Multi-Agents: {A} Survey of
+                 Progress and Challenges},
+  booktitle   = {Proc.\ {IJCAI} 2024},
+  year        = {2024},
+  note        = {Surveys LLM-based MAS across problem-solving, simulation,
+                 interactive domains; five capability dimensions}
+}
+
+@misc{tran2025multiagent,
+  author      = {Tran, M. and others},
+  title       = {Multi-Agent Collaboration Mechanisms: {A} Survey of
+                 {LLM}-Based Frameworks},
+  howpublished = {arXiv:2501.06322},
+  year        = {2025},
+  note        = {Characterises collaboration: actors, types, structures,
+                 strategies, coordination protocols}
+}
+
+@techreport{crewai2024,
+  author      = {{CrewAI Inc.}},
+  title       = {{CrewAI}: Framework for orchestrating role-playing,
+                 autonomous {AI} agents},
+  institution = {CrewAI Inc.},
+  year        = {2024},
+  % CORRECTED 2026-08-29: real, pinned version in this project's own
+  % requirements.txt is 1.9.3, not 0.60 (this exact error is already
+  % documented and corrected in this project's CLAUDE.md). "13-agent LFS
+  % pipeline" is accurate (13 modules construct a crewai.Agent), but
+  % there is no CrewAI hierarchical delegation anywhere in this project.
+  note        = {Version~1.9.3; 13 modules in this project construct a
+                 crewai.Agent, no hierarchical delegation process used.
+                 \url{https://www.crewai.com}}
+}
+
+% ─── E. DATA INTEGRITY, PRIVACY, HALLUCINATION ──────────────────────────────
+
+@article{khanna2025knowledge,
+  author      = {Khanna, A. and others},
+  title       = {Knowledge Integrity in Large Language Models: Distillation,
+                 Semantic Integrity, and Provenance Tracking},
+  journal     = {MDPI Information},
+  year        = {2025},
+  % CORRECTED 2026-08-29: "Agent~10" removed -- this project has no
+  % numbered-agent scheme; the real module is audit_logger.py.
+  note        = {Three-dimensional taxonomy: knowledge distillation, semantic
+                 integrity, provenance tracking; relevant to this project's
+                 audit_logger.py design}
+}
+
+@misc{serenari2025lopsided,
+  % CORRECTED 2026-08-29: real title is "Semantically-Aware LLM Agent to
+  % Enhance Privacy in Conversational AI Services" -- "LOPSIDED" is the
+  % framework's own internal name, used here as if it were the paper's
+  % title, which it is not. Real first author is Jayden Serenari, not
+  % initial "M.".
+  author      = {Serenari, J. and Lee, S.},
+  title       = {Semantically-Aware {LLM} Agent to Enhance Privacy in
+                 Conversational {AI} Services},
+  howpublished = {arXiv:2510.27016},
+  doi = {10.48550/arXiv.2510.27016},
+  year        = {2025},
+  note        = {LOPSIDED framework; 5$\times$ reduction in semantic
+                 utility errors vs.\ baseline anonymisation}
+}
+
+@misc{zhang2025hallucination,
+  % Minor correction 2026-08-29: real title says "A Survey on
+  % Hallucination", not "A Survey of Hallucination".
+  author      = {Zhang, Y. and others},
+  title       = {Siren's Song in the {AI} Ocean: {A} Survey on Hallucination
+                 in Large Language Models},
+  howpublished = {arXiv:2309.01219},
+  year        = {2025},
+  note        = {Factuality, faithfulness, consistency hallucinations;
+                 motivates confidence thresholding and HITL at $c<0.70$}
+}
+
+@misc{gupta2025civ,
+  % CORRECTED 2026-08-29: real title (same paper, stats match exactly:
+  % 0% attack success, 93.1% token similarity) is "Can AI Keep a Secret?
+  % Contextual Integrity Verification: A Provable Security Architecture
+  % for LLMs", not the title below as originally stated.
+  author      = {Gupta, S.},
+  title       = {Can {AI} Keep a Secret? Contextual Integrity Verification:
+                 {A} Provable Security Architecture for {LLM}s},
+  howpublished = {arXiv:2508.09288},
+  doi = {10.48550/arXiv.2508.09288},
+  year        = {2025},
+  note        = {0\% prompt-injection attack success; 93.1\% token similarity}
+}
+
+% ─── F. EVALUATION AND QUALITY ──────────────────────────────────────────────
+
+% NOT RESOLVED 2026-08-29: this arXiv ID (2505.08253) belongs to a
+% DIFFERENT, real paper -- "Evaluating LLM Metrics Through Real-World
+% Capabilities" by Justin K Miller and Wenjia Tang -- not a
+% Reimann-authored one. A real "Reimann et al." source describing a
+% coherence/accuracy/clarity/relevance/efficiency framework may exist
+% (referenced secondhand, dated 2023, in at least one other paper found
+% during this audit), but was not independently located or confirmed at
+% a specific venue in this pass. Commented out rather than cited with a
+% wrong ID or guessed-at details -- see CITATION_AUDIT.md.
+% @misc{reimann2025conveval,
+%   author      = {Reimann, J. and others},
+%   title       = {Evaluating Conversational {AI} Quality: Coherence, Accuracy,
+%                  Clarity, Relevance, and Efficiency},
+%   year        = {2023},
+%   note        = {UNVERIFIED -- venue/ID not confirmed, do not cite until found}
+% }
+
+% NOT RESOLVED 2026-08-29: could not be matched to a real paper. The
+% closest real match found -- "A Survey on Evaluation of LLM-based
+% Agents", arXiv:2503.16416, 2026 -- has no confirmed "Liu" author and a
+% different venue/year than claimed (KDD 2025), so it is not used as a
+% substitute. Commented out, not cited anywhere -- see CITATION_AUDIT.md.
+% @inproceedings{liu2025agenteval,
+%   author      = {Liu, J. and others},
+%   title       = {A Comprehensive Survey of {LLM} Agent Evaluation:
+%                  Output Quality, Planning, Tool Use, and Safety},
+%   booktitle   = {Proc.\ {ACM SIGKDD} ({KDD} 2025)},
+%   year        = {2025},
+%   note        = {UNVERIFIED -- could not confirm this paper exists as cited}
+% }
+
+@misc{chen2025srl,
+  % CORRECTED 2026-08-29: real first author is Huiyao Chen (initial "H.",
+  % not "Z."); real title is "A Systematic Survey of Semantic Role
+  % Labeling in the Era of Pretrained Language Models" (same real paper,
+  % confirmed via the "two decades" framing appearing in its own abstract).
+  author      = {Chen, H. and others},
+  title       = {A Systematic Survey of Semantic Role Labeling in the Era
+                 of Pretrained Language Models},
+  howpublished = {arXiv:2502.08660},
+  doi = {10.48550/arXiv.2502.08660},
+  year        = {2025},
+  note        = {SRL survey across architectures and applications, spanning
+                 two decades of research}
+}
+
+@article{stump2025embedding,
+  % Minor correction 2026-08-29: real paper is "Scalable and consistent
+  % few-shot classification..." (adds "and consistent"); real first
+  % author is Emily M. Stump (matches). Real arXiv ID added: 2508.19836.
+  author      = {Stump, E.M. and others},
+  title       = {Scalable and Consistent Few-Shot Classification of Survey
+                 Responses Using Text Embeddings},
+  howpublished = {arXiv:2508.19836},
+  journal     = {Survey Research Methods},
+  year        = {2025},
+  note        = {f-SCUTE framework; Cohen's $\kappa$ 0.74--0.83 vs.\ expert
+                 human coders on a 2,899-response physics survey}
+}
+
+@techreport{zhang2025synthetic,
+  % CORRECTED 2026-08-29: real first author initial is "G." (Zhang, He,
+  % Oganian, Cai), not "Y."; real title/subtitle differs (uses the
+  % Research and Development Survey specifically, "A Comparison Study"
+  % not "An End-to-End Pipeline") -- confirmed the same real paper via
+  % matching institution (NCHS) and topic (synthetic complex-survey data).
+  author      = {Zhang, G. and He, Y. and Oganian, A. and Cai, B.},
+  title       = {Creating Synthetic Data for Complex Surveys Using the
+                 Research and Development Survey: {A} Comparison Study},
+  institution = {National Center for Health Statistics (NCHS)},
+  year        = {2025},
+  note        = {Vital and Health Statistics, Series 2, No.~212; compares
+                 parametric vs.\ nonparametric synthetic-data methods for
+                 complex survey designs}
+}
+
+@misc{zhou2025llmdata,
+  % CORRECTED 2026-08-29: real title is "A Survey of LLM x DATA" -- the
+  % title below is not accurate to the paper at this arXiv ID. Author
+  % "Zhou, X." not independently confirmed (real paper credits
+  % researchers from Shanghai Jiao Tong Univ., Tsinghua Univ., Alibaba,
+  % and Shanghai AI Lab; specific first author not confirmed in this pass).
+  author      = {Zhou, X. and others},
+  title       = {A Survey of {LLM} $\times$ {DATA}},
+  howpublished = {arXiv:2505.18458},
+  doi = {10.48550/arXiv.2505.18458},
+  year        = {2025},
+  note        = {RAG enhances data engineering workflows; positions validation
+                 agent within mainstream 2025 data practice}
+}
+
+@techreport{anthropic2024claude,
+  author      = {{Anthropic}},
+  title       = {Claude~3.5 Sonnet Model Card},
+  institution = {Anthropic},
+  year        = {2024},
+  note        = {Accessed: 2025. \url{https://www.anthropic.com/claude/sonnet}}
+}
+
+@misc{zhao2024explainability,
+  author      = {Zhao, H. and others},
+  title       = {Explainability for Large Language Models: {A} Survey},
+  howpublished = {arXiv:2309.01029},
+  doi = {10.48550/arXiv.2309.01029},
+  year        = {2024},
+  note        = {Explainability methods for LLMs; chain-of-thought and
+                 post-hoc explanation approaches}
+}
+
+@misc{gao2024ragsurvey,
+  author      = {Gao, Y. and others},
+  title       = {Retrieval-Augmented Generation for Large Language Models:
+                 {A} Survey},
+  howpublished = {arXiv:2312.10997},
+  doi = {10.48550/arXiv.2312.10997},
+  year        = {2024},
+  note        = {Comprehensive RAG taxonomy; retrieval strategy dominates
+                 downstream task performance}
+}
+
+% NOT RESOLVED 2026-08-29: could not be matched to a real paper despite
+% multiple targeted searches (author combination, title, and "Journal of
+% Official Statistics" venue all tried). Real Schierholz papers on German
+% occupation coding exist (2016-2020, pre-LLM, non-RAG) but nothing
+% matching this specific claim. Commented out, not cited anywhere in the
+% corrected chapters -- see CITATION_AUDIT.md and Chapter 2's own
+% disclosure of this finding in-text.
+% @article{bach2025rag,
+%   author      = {Bach, R. and K\"{u}chenhoff, H. and Schierholz, M.},
+%   title       = {Retrieval-Augmented Generation for Occupation Coding:
+%                  Evaluation on {German} Labour Force Data},
+%   journal     = {Journal of Official Statistics},
+%   volume      = {41},
+%   number      = {2},
+%   pages       = {243--268},
+%   year        = {2025},
+%   note        = {UNVERIFIED -- could not confirm this paper exists as cited}
+% }
+
+% ─── G. INTERNATIONAL STANDARDS (no 2024-2026 version — must cite original) ─
+
+@techreport{ilo2012isco_v1,
+  author      = {{International Labour Organization}},
+  title       = {International Standard Classification of Occupations:
+                 {ISCO-08} Volume~{I} --- Structure, Group Definitions
+                 and Correspondence Tables},
+  institution = {ILO},
+  address     = {Geneva},
+  year        = {2012}
+}
+
+@techreport{ilo2012isco_v2,
+  author      = {{International Labour Organization}},
+  title       = {International Standard Classification of Occupations:
+                 {ISCO-08} Volume~{II} --- Group Definitions},
+  institution = {ILO},
+  address     = {Geneva},
+  year        = {2012}
+}
+
+@techreport{unesco2012isced,
+  author      = {{UNESCO Institute for Statistics}},
+  title       = {International Standard Classification of Education:
+                 {ISCED} 2011},
+  institution = {UNESCO},
+  address     = {Montreal},
+  year        = {2012}
+}
+
+@inproceedings{hamed2025codeswitching,
+  % CORRECTED 2026-08-29: real title is "A Survey of Code-switched Arabic
+  % NLP: Progress, Challenges, and Future Directions" -- the "Beyond
+  % Monolingual Assumptions" prefix belongs to a DIFFERENT real paper
+  % (multiauth2026cswnlp, above) and appears to have been mistakenly
+  % merged into this entry's title. Author list confirmed real and
+  % complete: Hamed, Sabty, Abdennadher, Vu, Solorio, Habash. Venue
+  % confirmed: COLING 2025, pp. 4561-4585, Abu Dhabi.
+  author      = {Hamed, I. and Sabty, C. and Abdennadher, S. and Vu, N.T.
+                 and Solorio, T. and Habash, N.},
+  title       = {A Survey of Code-switched {Arabic} {NLP}: Progress,
+                 Challenges, and Future Directions},
+  booktitle   = {Proc.\ {COLING} 2025},
+  pages       = {4561--4585},
+  year        = {2025},
+  note        = {Comprehensive survey of Arabic code-switching across LID,
+                 NER, ASR, MT}
+}
+
+% NOT RESOLVED 2026-08-29: could not be matched to a real paper despite
+% multiple targeted searches for "Hamed... Automated ISCO-08... RAG...
+% Journal of Official Statistics 2025". Injy Hamed (above) is a real
+% Arabic-NLP researcher, but nothing under that name matches this
+% specific ISCO-08/RAG claim. Commented out, not cited anywhere in the
+% corrected chapters -- see CITATION_AUDIT.md and Chapter 1's own
+% disclosure of this finding in-text.
+% @article{hamed2025isco,
+%   author      = {Hamed, I. and others},
+%   title       = {Automated {ISCO-08} Occupation Coding Using
+%                  Retrieval-Augmented Generation for Multilingual Survey Data},
+%   journal     = {Journal of Official Statistics},
+%   year        = {2025},
+%   note        = {UNVERIFIED -- could not confirm this paper exists as cited}
+% }

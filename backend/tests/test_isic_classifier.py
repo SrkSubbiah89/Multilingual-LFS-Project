@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from backend.agents.classifier_methods import (
+    ISIC_FLAT_FALLBACK_KEYWORD,
+    ISIC_FLAT_RETRIEVAL,
     ISIC_HIERARCHICAL_FALLBACK_KEYWORD,
     ISIC_HIERARCHICAL_RETRIEVAL,
 )
@@ -23,6 +25,8 @@ from backend.agents.isic_classifier import (
 from backend.rag.standard_hierarchical_store import (
     HITL_THRESHOLD,
     ISIC_COLLECTIONS,
+    ISIC_FLAT_COLLECTIONS_BY_PROFILE,
+    StandardFlatStore,
     StandardHierarchicalStore,
     isic_stages,
 )
@@ -46,6 +50,31 @@ class _FakeQdrantClient:
             parent_code = query_filter.must[0].match.value
         self.calls.append((collection_name, parent_code, limit))
         rows = self.table.get((collection_name, parent_code), [])
+        points = [
+            SimpleNamespace(score=score, payload={"code": code, "label_en": label_en, "label_ar": label_ar})
+            for code, label_en, label_ar, score in rows[:limit]
+        ]
+        return SimpleNamespace(points=points)
+
+
+class _FakeFlatQdrantClient:
+    """Fake client for StandardFlatStore -- its search() calls
+    query_points(collection_name=, query=, limit=, with_payload=True) with
+    NO query_filter kwarg at all (there is no parent to filter on), unlike
+    the hierarchical engine's _query(). table: dict[collection] ->
+    list[(code, label_en, label_ar, score)]."""
+
+    def __init__(self, table, existing_collections):
+        self.table = table
+        self.existing_collections = set(existing_collections)
+        self.calls = []
+
+    def get_collections(self):
+        return SimpleNamespace(collections=[SimpleNamespace(name=n) for n in self.existing_collections])
+
+    def query_points(self, collection_name, query, limit, with_payload):
+        self.calls.append((collection_name, limit))
+        rows = self.table.get(collection_name, [])
         points = [
             SimpleNamespace(score=score, payload={"code": code, "label_en": label_en, "label_ar": label_ar})
             for code, label_en, label_ar, score in rows[:limit]
@@ -82,6 +111,50 @@ def _patch_isic_store(monkeypatch, table, existing_collections):
         "backend.rag.standard_hierarchical_store.get_isic_hierarchical_store",
         lambda: store,
     )
+    return client
+
+
+_ISIC_FLAT_COLLECTION = ISIC_FLAT_COLLECTIONS_BY_PROFILE["enriched_e5large"]
+_ISIC_FLAT_HIT_TABLE = {
+    _ISIC_FLAT_COLLECTION: [
+        ("0111", "Growing of cereals, leguminous crops and oil seeds", "", 0.82),
+    ],
+}
+
+
+def _patch_isic_flat_store(monkeypatch, table, existing_collections):
+    """Same pattern as _patch_isic_store, for _classify_flat()'s
+    get_isic_flat_store(profile="enriched_e5large") import -- ISICClassifier
+    always requests the enriched_e5large profile for the flat path (see
+    classifier_methods.ISIC_FLAT_RETRIEVAL's docstring for why: this is
+    the specific flat+real-official-text+e5-large recipe that mirrors
+    ISCO-08's own best-tested config, not just any flat profile).
+
+    Real gap found and fixed by code review (2026-08-27): the previous
+    version of this helper used a bare `lambda profile="e5_large": store`
+    that silently accepted and ignored WHATEVER profile string production
+    code passed -- so a regression that changed _classify_flat's
+    hardcoded profile back to "e5_large" (pointing at the wrong,
+    non-enriched collection) would have passed every existing test. This
+    version records every profile it was actually called with, and
+    test_flat_retrieval_requests_the_enriched_e5large_profile below
+    asserts against that record."""
+    client = _FakeFlatQdrantClient(table, existing_collections)
+    store = StandardFlatStore(
+        standard="ISIC Rev.4", collection=_ISIC_FLAT_COLLECTION, hitl_threshold=HITL_THRESHOLD,
+        client=client, embedder=_FakeEmbedder(),
+    )
+    requested_profiles: list[str] = []
+
+    def _fake_get_isic_flat_store(profile):
+        requested_profiles.append(profile)
+        return store
+
+    monkeypatch.setattr(
+        "backend.rag.standard_hierarchical_store.get_isic_flat_store",
+        _fake_get_isic_flat_store,
+    )
+    client.requested_profiles = requested_profiles
     return client
 
 
@@ -331,3 +404,91 @@ def test_hierarchical_fallback_result_is_never_mislabeled():
     default = _C._fallback("")
     assert default.fallback_used is False
     assert default.method != ISIC_HIERARCHICAL_RETRIEVAL
+
+
+# ---------------------------------------------------------------------------
+# Flat retrieval (ISCO-08 best-tested-config parity, added 2026-08-25)
+# ---------------------------------------------------------------------------
+
+def test_flat_retrieval_runs_real_direct_search_and_resolves_full_hierarchy(clf, monkeypatch):
+    """With the flat collection present, method=isic_flat_retrieval must
+    query it directly (single call, no parent filter), and reconstruct the
+    full section/division/group ancestry from _ENTRY_BY_CLASS since the
+    flat store's own hierarchy_path only ever carries the leaf code."""
+    client = _patch_isic_flat_store(monkeypatch, _ISIC_FLAT_HIT_TABLE, {_ISIC_FLAT_COLLECTION})
+
+    result = clf.classify("cereal farming", method=ISIC_FLAT_RETRIEVAL)
+
+    assert isinstance(result, ISICClassification)
+    assert result.method == ISIC_FLAT_RETRIEVAL
+    assert result.fallback_used is False
+    assert result.fallback_reason is None
+    assert result.class_code == "0111"
+    assert result.section == "A"
+    assert result.division_code == "01"
+    assert result.group_code == "011"
+    assert result.hierarchy_path == ["A", "01", "011", "0111"]
+    assert 0.0 < result.confidence <= 1.0
+    # Exactly one direct query against the flat collection -- no parent-chain
+    # traversal like the hierarchical path issues.
+    assert client.calls == [(_ISIC_FLAT_COLLECTION, 5)]
+
+
+def test_flat_retrieval_requests_the_enriched_e5large_profile(clf, monkeypatch):
+    """Real gap found and fixed by code review: no prior test asserted
+    WHICH profile string _classify_flat actually requests from
+    get_isic_flat_store() -- a regression silently reverting it to
+    "e5_large" (the plain, non-enriched flat profile) would have passed
+    every other test unnoticed."""
+    client = _patch_isic_flat_store(monkeypatch, _ISIC_FLAT_HIT_TABLE, {_ISIC_FLAT_COLLECTION})
+    clf.classify("cereal farming", method=ISIC_FLAT_RETRIEVAL)
+    assert client.requested_profiles == ["enriched_e5large"]
+
+
+def test_flat_retrieval_falls_back_when_returned_code_is_not_in_isic_data(clf, monkeypatch):
+    """Real gap found by a second, independent code review pass and fixed
+    2026-08-27: the Qdrant collection and _ISIC_DATA are two separate
+    sources of truth with no version check. A code the collection returns
+    that _ISIC_DATA doesn't have (simulated here with a made-up code no
+    real ISIC class uses) must fall back honestly, never be reported as a
+    successful classification with empty section/division/group and
+    fallback_used=False."""
+    drifted_table = {_ISIC_FLAT_COLLECTION: [("9876", "A code _ISIC_DATA does not have", "", 0.90)]}
+    _patch_isic_flat_store(monkeypatch, drifted_table, {_ISIC_FLAT_COLLECTION})
+
+    result = clf.classify("software developer tech startup app", method=ISIC_FLAT_RETRIEVAL)
+
+    assert result.fallback_used is True
+    assert result.method != ISIC_FLAT_RETRIEVAL
+    assert result.fallback_reason
+    assert "drifted" in result.fallback_reason.lower() or "not present" in result.fallback_reason.lower()
+    # The legacy pipeline still ran for real -- section is populated, not empty.
+    assert result.section != ""
+
+
+def test_flat_retrieval_falls_back_when_collection_missing(clf, monkeypatch):
+    _patch_isic_flat_store(monkeypatch, table={}, existing_collections=set())
+
+    result = clf.classify("software developer tech startup app", method=ISIC_FLAT_RETRIEVAL)
+
+    assert result.method in (ISIC_FLAT_FALLBACK_KEYWORD, "isic_flat_fallback_llm")
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert "missing" in result.fallback_reason.lower()
+    assert result.section != ""
+
+
+def test_flat_retrieval_falls_back_when_search_finds_nothing(clf, monkeypatch):
+    _patch_isic_flat_store(monkeypatch, table={}, existing_collections={_ISIC_FLAT_COLLECTION})
+
+    result = clf.classify("software developer tech startup app", method=ISIC_FLAT_RETRIEVAL)
+
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert "no candidates" in result.fallback_reason.lower()
+    assert result.method != ISIC_FLAT_RETRIEVAL
+
+
+def test_unrelated_method_value_still_ignores_flat_retrieval_too(clf):
+    result = clf.classify("software developer tech startup app", method="some_other_value")
+    assert result.method not in (ISIC_FLAT_RETRIEVAL, ISIC_HIERARCHICAL_RETRIEVAL)

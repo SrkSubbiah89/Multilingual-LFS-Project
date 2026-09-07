@@ -1,0 +1,165 @@
+% ============================================================
+%  CHAPTER 5 — EVALUATION FRAMEWORK
+% ============================================================
+\chapter{Evaluation Framework}
+\label{chap:evaluation}
+
+% ------------------------------------------------------------
+\section{Evaluation Design}
+\label{sec:eval-design}
+% ------------------------------------------------------------
+
+Quality assessment is structured across four sequential stages.
+
+\textbf{Phase 1 --- Component Testing.}
+Each agent is tested independently: LanguageProcessor on 5,000-sentence
+multilingual test set; ISCOClassifier on the 1,200-example Classifier Test Set;
+ISICClassifier on 200 industry descriptions; ISCEDClassifier on 200 education
+descriptions; ValidationAgent on 200 records with known rule violations;
+Semantic Relation Engine on the 10-case demo script.
+
+\textbf{Phase 2 --- Three-System Benchmark.}
+The \texttt{evaluation/evaluate.py} script compares BM25 (sparse retrieval
+baseline), Flat RAG (single-stage dense retrieval), and Hierarchical RAG
+(four-stage, the proposed approach) on 100 synthetic job description cases.
+Cases are stratified across all 10 ISCO-08 major groups and 5 languages.
+
+\textbf{Phase 3 --- Semantic Relation Engine Demo.}
+The \texttt{evaluation/\-semantic\_\-demo.\-py} script exercises 10 hand-crafted
+test cases covering all four severity levels (None, LOW, MODERATE, HIGH),
+all major occupation domains, and both coherent and incoherent classification
+combinations.
+
+\textbf{Phase 4 --- Randomised Controlled Pilot Study.}
+The planned evaluation will use a between-groups randomised experiment
+($n=30$; 15 per condition) pitting the AI-administered system against a
+conventional interviewer-administered survey across six performance dimensions.
+This pilot study is scheduled for the final phase of the thesis (approximately
+6 months from the current pre-final submission).
+
+% ------------------------------------------------------------
+\section{Evaluation Datasets}
+\label{sec:eval-datasets}
+% ------------------------------------------------------------
+
+\subsection{ISCO-08 Classifier Test Set (1,200 examples)}
+
+Candidate descriptions drawn from: ILOSTAT occupation label databases;
+Ministry of Human Resources job-posting archives; ISCO-08 Volume~2 occupational
+definitions; and GPT-4o synthetic descriptions for rare occupations in all five
+target languages.
+Stratification: 10 major groups $\times$ 120 examples; 5 languages
+(EN~40\%, AR~25\%, UR~15\%, HI~10\%, TL~10\%); 20\% code-switched examples.
+Inter-labeller agreement on 200-example sample: $\kappa = 0.89$.
+
+\subsection{Three-System Benchmark Set (100 cases)}
+
+Synthetic set covering: 10 cases per ISCO major group; equal distribution
+across the 5 languages; 30 cases involving Arabic dialect normalisation;
+15 code-switched cases.
+Gold labels assigned by two ILO-certified coders; adjudicated by senior coder.
+
+\subsection{SRE Demo Set (10 cases)}
+
+Ten hand-crafted cases covering: 3 None severity (score $\geq$0.90),
+2 LOW (0.70--0.89), 2 MODERATE (0.50--0.69), and 3 HIGH ($<$0.50), including
+the sub-major-group strict rules (sub-major 22, 25, 11).
+
+\subsection{Pilot Conversation Set ($n = 30$)}
+
+Complete LFS session records (56 fields, 3 employment paths) from the
+planned randomised pilot study.
+390 ISCO-08 classification events (mean 26 per session) double-coded by two
+ILO-trained coders; $\kappa = 0.87$.
+
+% ------------------------------------------------------------
+\section{Pilot Study Design}
+\label{sec:eval-pilot}
+% ------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{Planned pilot study design parameters (to be executed in final phase).}
+\label{tab:ch5-pilot}
+\small\renewcommand{\arraystretch}{1.35}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{3.8cm}
+                >{\raggedright}p{4.2cm}
+                >{\raggedright\arraybackslash}p{4.2cm}}
+\toprule
+\textbf{Parameter} &
+\textbf{Value} &
+\textbf{Rationale} \\
+\midrule
+Design & Between-subjects RCT & Eliminates selection bias \\
+Population & College students 18--25, IIIT Kottayam; $\geq$2 yrs work experience &
+  Accessible; can answer occupation module meaningfully \\
+Sample & $n=30$ (15 per arm) &
+  80\% power to detect 30\% completion-time reduction \\
+Randomisation & Sealed envelope; stratified by language preference &
+  Ensures Arabic-speaking participants balanced \\
+AI arm & Complete LFS (Sections A--K) via conversational AI;
+  5 languages; Person Register pre-fill active &
+  56 fields; ~76 active after pre-fill \\
+TI arm & Full 155-item LFS questionnaire; interviewer-administered &
+  Standard comparator \\
+Gold labels & Double-coded; adjudicated; $\kappa=0.87$ & High-quality reference \\
+CSAT & 5-item post-task questionnaire (5-point Likert) &
+  Captures experience before recall fades \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% ------------------------------------------------------------
+\section{Evaluation Metrics}
+\label{sec:eval-metrics}
+% ------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{Complete evaluation metric specification (15 metrics).}
+\label{tab:ch5-metrics}
+\footnotesize\renewcommand{\arraystretch}{1.4}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{2.2cm}
+                >{\raggedright}p{3.5cm}
+                >{\centering}p{2.0cm}
+                >{\centering\arraybackslash}p{0.8cm}}
+\toprule
+\textbf{Category} &
+\textbf{Metric} &
+\textbf{Target} &
+\textbf{Obj.} \\
+\midrule
+ISCO-08 & Top-1 accuracy (4-digit) & $\geq$85\% & O2 \\
+ISCO-08 & Top-3 accuracy (4-digit) & $\geq$92\% & O2 \\
+ISCO-08 & Cohen's $\kappa$ & $\geq$0.80 & O2 \\
+ISCO-08 & Three-system benchmark $\Delta$ top-1 & Hierarchical $>$ Flat $>$ BM25 & O2 \\
+ISIC Rev.~4 & Top-1 accuracy (4-digit class) & $\geq$80\% & O3 \\
+ISCED & Attainment level accuracy & $\geq$85\% & O4 \\
+ISCED-F & 4-digit field accuracy & $\geq$75\% & O4 \\
+SRE & Coherence score on coherent cases & $\geq$0.90 & O5 \\
+SRE & HIGH violations escalated & 100\% & O5 \\
+Multilingual & Language-ID accuracy & $\geq$98\% & O6 \\
+Multilingual & Code-switching F1 & $\geq$92\% & O6 \\
+Burden & Median completion time & $\leq$17 min & O8 \\
+Burden & Question-count reduction & 40--50\% & O7 \\
+Quality & Item nonresponse rate & $\leq$5\% & O8 \\
+HITL & Escalation rate & 10--15\% & O8 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% ------------------------------------------------------------
+\section{Statistical Analysis Plan}
+\label{sec:eval-stats}
+% ------------------------------------------------------------
+
+All hypothesis tests two-tailed, $\alpha = 0.05$.
+Completion time (primary outcome): Welch's $t$-test; Cohen's $d$ effect size.
+CSAT: Mann-Whitney $U$; rank-biserial $r$.
+Item nonresponse, contradiction rate: Fisher's exact test; odds ratio + 95\% CI.
+ISCO accuracy vs.\ 75\% manual baseline: one-sample proportion test; Cohen's $h$.
+No Bonferroni correction (15 metrics are pre-specified, not exploratory).

@@ -64,6 +64,8 @@ from typing import Optional
 from crewai import Agent, Crew, Task
 
 from backend.agents.classifier_methods import (
+    ISCEDF_FLAT_FALLBACK_KEYWORD,
+    ISCEDF_FLAT_RETRIEVAL,
     ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD,
     ISCEDF_HIERARCHICAL_RETRIEVAL,
 )
@@ -408,6 +410,14 @@ for _fld_entry in _ISCED_FIELDS:
     _BROAD_TITLES.setdefault(_fld_entry["broad_code"], _fld_entry["broad_title"])
     _NARROW_TITLES.setdefault(_fld_entry["narrow_code"], _fld_entry["narrow_title"])
 
+# detailed_code -> full field entry -- used only by the flat-retrieval path
+# (_from_flat_result) to reconstruct broad/narrow ancestry from a
+# hierarchy_path that carries only the single leaf detailed_code (the flat
+# store never traverses a parent chain, unlike the hierarchical path above).
+_ENTRY_BY_DETAILED: dict[str, dict] = {}
+for _fld_entry in _ISCED_FIELDS:
+    _ENTRY_BY_DETAILED.setdefault(_fld_entry["detailed_code"], _fld_entry)
+
 # Default field for generic/pre-tertiary education
 _DEFAULT_FIELD = {
     "broad_code": "00", "broad_title": "Generic programmes and qualifications",
@@ -529,12 +539,41 @@ class ISCEDClassifier:
             but the returned result's ``method`` is set to
             ``ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD`` (never silently
             reported as ``ISCEDF_HIERARCHICAL_RETRIEVAL``), with
-            ``fallback_used=True`` and a non-empty ``fallback_reason``. See
-            Documentation/Conference_I_Reviewer_2/
+            ``fallback_used=True`` and a non-empty ``fallback_reason``.
+            Passing ``ISCEDF_FLAT_RETRIEVAL`` runs a single-collection
+            direct search over the 63 leaf detailed fields (no parent-chain
+            traversal) via ``StandardFlatStore(profile="enriched_e5large")``
+            -- the architecturally-identical counterpart to ISCO-08's own
+            BEST-TESTED configuration: flat retrieval + real official
+            per-field definitions/examples (parsed directly from UNESCO
+            UIS's ISCED-F 2013 "Detailed field descriptions" publication --
+            see ``backend.rag.official_source_enrichment``, added
+            2026-08-25 to close the richness gap between this catalogue's
+            original keyword-only text and ISCO-08's own enriched text) +
+            ``multilingual-e5-large``, since ISCO-08's hierarchical
+            retrieval measurably underperformed its own flat retrieval
+            (see CLAUDE.md). ISCED 2011 attainment LEVEL is still always
+            computed independently either way. Same explicit-fallback
+            contract, reporting ``ISCEDF_FLAT_FALLBACK_KEYWORD`` on
+            fallback. Whether flat or hierarchical retrieval is more
+            accurate FOR ISCED-F specifically is still untested -- no
+            labelled ISCED-F evaluation data exists. 2 of the 63 detailed
+            fields have no match in the official ISCED-F 2013 document (a
+            real, disclosed, pre-existing catalogue issue found while
+            building this -- see
+            ``official_source_enrichment.NON_STANDARD_ISCEDF_CODES``).
+            **Corrected 2026-08-27 (code review)**: those 2 fields are
+            NOT indexed in this collection at all, not indexed with
+            weaker fallback text -- same live-tested magnet-effect
+            rationale as ISIC's equivalent exclusion (see CLAUDE.md).
+            This method can never return one of those 2 detailed-field
+            codes. See Documentation/Conference_I_Reviewer_2/
             ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md.
         """
         if method == ISCEDF_HIERARCHICAL_RETRIEVAL:
             return self._classify_hierarchical(text)
+        if method == ISCEDF_FLAT_RETRIEVAL:
+            return self._classify_flat(text)
         return self._classify_legacy(text)
 
     # ── Legacy keyword/rule pipeline (unchanged behaviour) ──────────────────────
@@ -642,6 +681,95 @@ class ISCEDClassifier:
             method=ISCEDF_HIERARCHICAL_RETRIEVAL,
             raw_text=text,
             hierarchy_path=path,
+            stage_confidences=dict(result.stage_confidences),
+            top_candidates=list(result.top_candidates),
+            hitl_required=result.hitl_required,
+            fallback_used=False,
+            fallback_reason=None,
+        )
+
+    # ── Flat retrieval (ISCO-08 best-tested-config parity), explicit fallback ──
+
+    def _classify_flat(self, text: str) -> ISCEDClassification:
+        """Same explicit-fallback contract as _classify_hierarchical(), but
+        via StandardFlatStore(profile="enriched_e5large") -- single-collection
+        direct search over the 63 leaf detailed fields, no parent-chain
+        traversal. See classifier_methods.ISCEDF_FLAT_RETRIEVAL's docstring
+        for why this specific profile+method combination mirrors ISCO-08's
+        own best-tested configuration. ISCED 2011 attainment LEVEL is still
+        always computed independently, same as _classify_hierarchical()."""
+        from backend.rag.standard_hierarchical_store import get_iscedf_flat_store
+
+        stripped = (text or "").strip()
+        if not stripped:
+            return self._fallback(text)
+
+        level_entry, level_conf = self._score_level(stripped)
+
+        store = get_iscedf_flat_store(profile="enriched_e5large")
+        result = store.search(stripped)
+
+        # Same version-skew guard as ISICClassifier._classify_flat() --
+        # see its comment for the full rationale (code review, 2026-08-27).
+        # The Qdrant collection and _ISCED_FIELDS have no version check
+        # tying them together; a detailed_code the collection returns but
+        # _ENTRY_BY_DETAILED no longer has must not be reported as a
+        # successful, non-fallback classification with empty broad/narrow.
+        drifted = result.ready and not result.unavailable_reason and result.code and result.code not in _ENTRY_BY_DETAILED
+        if result.ready and not result.unavailable_reason and result.code and not drifted:
+            return self._from_flat_result(result, level_entry, level_conf, text)
+
+        field_entry, field_conf = self._score_field(stripped)
+        combined_conf = round(min((level_conf * 0.4 + field_conf * 0.6), 1.0), 4)
+        if drifted:
+            flat_fallback_reason = (
+                f"ISCED-F flat store returned code {result.code!r}, which is not present in "
+                f"_ISCED_FIELDS -- the Qdrant collection and the catalogue have drifted out of sync"
+            )
+        else:
+            flat_fallback_reason = (
+                result.unavailable_reason or "ISCED-F flat store returned no usable result"
+            )
+        return ISCEDClassification(
+            level=level_entry["level"],
+            level_title=level_entry["level_title"],
+            broad_code=field_entry["broad_code"],
+            broad_title=field_entry["broad_title"],
+            narrow_code=field_entry["narrow_code"],
+            narrow_title=field_entry["narrow_title"],
+            detailed_code=field_entry["detailed_code"],
+            detailed_title=field_entry["detailed_title"],
+            confidence=combined_conf,
+            method=ISCEDF_FLAT_FALLBACK_KEYWORD,
+            raw_text=text,
+            fallback_used=True,
+            fallback_reason=flat_fallback_reason,
+        )
+
+    def _from_flat_result(self, result, level_entry: dict, level_conf: float, text: str) -> ISCEDClassification:
+        """Unlike _from_hierarchical_result(), the flat store's
+        hierarchy_path only ever carries the single leaf detailed_code --
+        broad/narrow are resolved from _ENTRY_BY_DETAILED."""
+        detailed = result.code
+        entry = _ENTRY_BY_DETAILED.get(detailed, {})
+        broad = entry.get("broad_code", "")
+        narrow = entry.get("narrow_code", "")
+
+        combined_conf = round(min((level_conf * 0.4 + result.confidence * 0.6), 1.0), 4)
+
+        return ISCEDClassification(
+            level=level_entry["level"],
+            level_title=level_entry["level_title"],
+            broad_code=broad,
+            broad_title=_BROAD_TITLES.get(broad, ""),
+            narrow_code=narrow,
+            narrow_title=_NARROW_TITLES.get(narrow, ""),
+            detailed_code=detailed,
+            detailed_title=result.label_en,
+            confidence=combined_conf,
+            method=ISCEDF_FLAT_RETRIEVAL,
+            raw_text=text,
+            hierarchy_path=[broad, narrow, detailed],
             stage_confidences=dict(result.stage_confidences),
             top_candidates=list(result.top_candidates),
             hitl_required=result.hitl_required,

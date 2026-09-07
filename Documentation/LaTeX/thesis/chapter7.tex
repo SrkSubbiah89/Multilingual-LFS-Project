@@ -1,0 +1,178 @@
+% ============================================================
+%  CHAPTER 7 — CONCLUSION AND FUTURE WORK
+%  Corrected 2026-08-28 -- see VERIFICATION_NOTES.md.
+% ============================================================
+\chapter{Conclusion and Future Work}
+\label{chap:conclusion}
+
+% ------------------------------------------------------------
+\section{Summary}
+\label{sec:conc-summary}
+% ------------------------------------------------------------
+
+This thesis designed, implemented, and evaluated a multilingual
+conversational AI system for administering the Labour Force Survey in five
+languages, using a 13-module CrewAI agent architecture with no hierarchical
+delegation.
+
+The central contribution --- the \textbf{Semantic Relation Engine} ---
+provides a deterministic three-way coherence check between ISCO-08, ISIC
+Rev.~4, and ISCED classifications, producing a calibrated SemanticCoherence
+score that adjusts confidence and triggers HITL escalation on HIGH-severity
+violations, validated on a 61-case set with zero mismatches and verified to
+escalate HIGH-severity cases to the live HITL queue 100\% of the time across
+three independent runs. \textbf{The crosswalk tables underlying this engine
+are hand-built}, not sourced from an official ILO/UNESCO correspondence
+document --- a real search of the complete ISCO-08 Volume~I document found
+no such table exists, and this remains disclosed as open work
+(Section~\ref{sec:conc-future}), not presented as a solved problem.
+
+Both hierarchical and flat ISCO-08 retrieval pipelines were implemented and
+compared on a real, external, 18,747-case benchmark (WISCO). \textbf{The
+central empirical finding is that hierarchical retrieval underperformed
+flat retrieval by 10.84 percentage points} (21.19\% vs.\ 10.35\%), the
+opposite of the original design assumption --- reported here as a genuine
+contribution (a tested, negative result), not smoothed over. Building on
+the better (flat) configuration, two further, additive improvements ---
+a larger embedding model and real official-text catalogue enrichment ---
+together produced this thesis's \textbf{best-tested, headline ISCO-08
+result of 40.95\%}, nearly double the original baseline.
+
+The system also classifies industry (ISIC Rev.~4) and education (ISCED /
+ISCED-F~2013) within the same session. No real, labelled evaluation dataset
+exists for either standard; a disclosed, taxonomy-grounded synthetic
+benchmark produced a real result (82.85\% for flat retrieval vs.\ 13.14\%
+for the legacy keyword pipeline, $n=449$) that is explicitly not equivalent
+to real-respondent validation.
+
+\textbf{The planned randomised pilot study ($n=30$) has not been executed
+and had not been submitted for ethics approval as of the writing of this
+thesis.} No pilot data exists anywhere in this thesis.
+
+% ------------------------------------------------------------
+\section{Contributions}
+\label{sec:conc-contributions}
+% ------------------------------------------------------------
+
+\noindent\textbf{C1 --- Semantic Relation Engine.}
+A deterministic three-way ISCO$\leftrightarrow$ISIC$\leftrightarrow$ISCED
+coherence engine with a calibrated SemanticCoherence score, a genuine
+three-tier severity mechanism (LOW/MODERATE/HIGH, gap-based, distinct from
+the confidence-adjustment bands), and verified HITL escalation on HIGH
+violations. The crosswalk tables are hand-built and disclosed as such, not
+sourced from an official correspondence document.
+
+\noindent\textbf{C2 --- Multilingual LFS conversation flow.}
+A conversation FSM covering the LFS questionnaire in English, Arabic MSA,
+Gulf Arabic dialect, Urdu, Hindi, and Tagalog, enforcing ten deterministic
+response-consistency rules (R01--R10, verified directly against the live
+\texttt{ValidationAgent} implementation).
+
+\noindent\textbf{C3 --- Two ISCO-08 retrieval configurations, honestly
+compared.} Both hierarchical and flat retrieval were built and evaluated on
+a real external benchmark; the result that flat outperforms hierarchical is
+itself a contribution, not an inconvenience to be hidden.
+
+\noindent\textbf{C4 --- Simultaneous multi-standard classification.}
+ISCO-08, ISIC Rev.~4, and ISCED/ISCED-F classification within a single
+conversational session.
+
+\noindent\textbf{C5 --- A tested, deployable system.}
+A Dockerised multi-service stack, an 11-table PostgreSQL schema, audit
+logging, and bilingual report generation, backed by a real, repeatedly-run
+test suite (2,501 tests passing, 1 deselected, at the time of this thesis's
+writing --- not the 18-file figure an earlier internal draft stated).
+
+% ------------------------------------------------------------
+\section{Limitations}
+\label{sec:conc-limitations}
+% ------------------------------------------------------------
+
+\noindent\textbf{L1 --- No pilot data.} The single largest limitation of
+this thesis: every claim about respondent burden, satisfaction, or
+cost-effectiveness versus a traditional interview remains a target, not a
+measured result, because the pilot has not run.
+
+\noindent\textbf{L2 --- ISIC Rev.~4 partial coverage.} 134 of 419 official
+4-digit class entries are live-indexed --- stated exactly, not as ``100+ of
+238'' (an earlier internal draft both overstated coverage and understated
+the true official class count).
+
+\noindent\textbf{L3 --- ISCED-F partial coverage.} 63 of approximately 80
+detailed fields are live-indexed --- not ``30+ of 280+'' as an earlier
+internal draft stated (that class count does not match any UNESCO ISCED-F
+structure this project verified).
+
+\noindent\textbf{L4 --- ISIC/ISCED-F accuracy rests on synthetic data.} The
+82.85\%/13.14\% result (Chapter~\ref{chap:results}) measures recovery of an
+LLM's own generating prompt, not real-respondent performance.
+
+\noindent\textbf{L5 --- The Semantic Relation Engine's crosswalk is
+hand-built.} Not sourced from an official ILO/UNESCO correspondence
+document, because none was found to exist.
+
+\noindent\textbf{L6 --- Critical-tier LLM dependency, unverified in
+production.} The system's \texttt{TaskType.CRITICAL} tier is designed to
+pin Claude~3.5~Sonnet with no fallback; this project's Anthropic account had
+zero usable credit throughout evaluation, so this tier's real production
+behaviour with Claude has not been demonstrated end-to-end.
+
+\noindent\textbf{L7 --- Single development-machine measurement.} All
+computational-efficiency figures (Chapter~\ref{chap:results}) are from one
+local machine; that same machine's memory constraints directly blocked a
+planned larger-scale ISIC/ISCED-F accuracy re-computation.
+
+%% VERIFICATION NEEDED / VERIFY AGAINST CODE: the original draft's L4
+%% ("Tagalog NER limited... lower quality than Arabic and English") was a
+%% specific, plausible-sounding claim not independently verified against
+%% any real measurement in this project's record and has been removed
+%% rather than restated unchecked. If a real Tagalog-NER quality
+%% comparison exists or is run, it belongs here with its real numbers.
+
+% ------------------------------------------------------------
+\section{Future Research Directions}
+\label{sec:conc-future}
+% ------------------------------------------------------------
+
+\noindent\textbf{F1 --- The pilot study.} The single highest-priority next
+step: complete ethics submission, recruit, and run the planned $n=30$
+pilot (Chapter~\ref{chap:evaluation}) --- nothing else in this future-work
+list matters as much to this thesis's central claims.
+
+\noindent\textbf{F2 --- A sourced ISCO$\leftrightarrow$ISIC crosswalk.}
+Since no official ILO document containing this correspondence was found,
+future work should pursue a different sourcing strategy (e.g.\ direct
+correspondence with ILO statisticians, or a systematic expert-elicitation
+protocol) rather than continuing to search for a document that appears not
+to exist.
+
+\noindent\textbf{F3 --- Full ISIC Rev.~4 and ISCED-F coverage.} Extend
+live-indexed coverage from 134/419 and 63/$\sim$80 respectively toward full
+coverage of both standards.
+
+\noindent\textbf{F4 --- Real-respondent ISIC/ISCED-F evaluation.} Pursue a
+genuine labelled dataset --- most plausibly by extending the eventual pilot
+study's data-collection scope to capture industry and field-of-study
+alongside occupation, or by approaching national statistical agencies
+directly for real, anonymised microdata (a path an IPUMS International
+correspondent suggested when confirming IPUMS itself does not hold this
+data --- see Chapter~\ref{chap:evaluation}).
+
+\noindent\textbf{F5 --- Open-weight critical-tier LLM benchmarking.}
+Benchmark open-weight models against Claude~3.5~Sonnet for the
+\texttt{TaskType.CRITICAL} tier, given this project's own repeated finding
+that LLM reranking did not improve ISCO-08 accuracy in six independent
+checks --- a cheaper, sovereign-deployable model may perform equivalently.
+
+\noindent\textbf{F6 --- Production switch decisions.} Two additive
+improvements (the e5-large embedding profile, and official-text catalogue
+enrichment) are built, live-verified, and evaluated as real accuracy
+improvements, but deliberately not yet switched to production default ---
+this is a decision for the author and supervisor, not made unilaterally in
+this thesis.
+
+\noindent\textbf{F7 --- Generalisation to other official surveys.} Apply
+this architecture's pattern --- multi-standard classification with a
+cross-standard coherence check --- to other official survey instruments,
+once the pattern has been validated against real respondents in its
+original LFS context.

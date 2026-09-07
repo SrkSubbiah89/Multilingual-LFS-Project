@@ -1,0 +1,247 @@
+\documentclass[12pt,a4wide]{report}
+
+\usepackage{amsthm,amssymb,mathrsfs,setspace}%amsmath, latexsym,footmisc
+
+\usepackage[nottoc,notlof,notlot]{tocbibind}
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\sectionmark}[1]{\markright{\thesection\ #1}}
+
+% ── Additional packages for thesis content ───────────────────────
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf,textfont=it,
+              justification=centering,skip=6pt}
+\usepackage{booktabs,array,longtable,tabularx,multirow}
+\usepackage{seqsplit}
+\renewcommand{\arraystretch}{1.3}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{basicstyle=\small\ttfamily,breaklines=true,
+        frame=single,backgroundcolor=\color{gray!8},
+        showstringspaces=false}
+\usepackage{tikz}
+\usetikzlibrary{positioning,fit}
+\usepackage{enumitem}
+\usepackage[hidelinks,
+  pdftitle={Multilingual Conversational AI for Labour Force Surveys},
+  pdfauthor={Sivarama Krishnan Subbiah}]{hyperref}
+\usepackage{url}
+\urlstyle{same}
+\usepackage[numbers,sort&compress]{natbib}
+\setlength{\emergencystretch}{3em}
+
+% ── Theorem environments ─────────────────────────────────────────
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{notation}[theorem]{Notation}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\renewcommand{\baselinestretch}{1.5}
+\setlength{\headheight}{15pt}
+
+\begin{document}
+
+% --------------- Title page -----------------------
+\begin{titlepage}
+\enlargethispage{4cm}
+
+\begin{center}
+
+\vspace*{-0.5cm}
+
+\textbf{\Large MULTILINGUAL CONVERSATIONAL AI FOR LABOUR FORCE SURVEYS:
+A MULTI-AGENT RAG SYSTEM WITH CREWAI FRAMEWORK}\\[10pt]
+
+\vspace*{2cm}
+
+                         A Project Report Submitted \\
+                     in Partial Fulfilment of the Requirements  \\
+                     for the Degree of  \\
+                          \vspace{3mm}
+                   {\Large \bf Master of Technology } \\
+                   in \\
+                   {\large \bf Artificial Intelligence and Data Science } \\
+                      \vspace{5mm}
+                   {\em  by} \\ \vspace{2mm}
+             {\large \bf Sivarama Krishnan Subbiah} \\
+{\large \bf (Roll No. 2024MCS110007)}\\[0.2in]
+
+\vfill
+
+\begin{figure}[h]
+  \begin{center}
+  \includegraphics[width=6cm, height=3cm]{logo2.jpg}
+  \end{center}
+\end{figure}
+\vspace*{0.1cm}
+
+{\em\large to }\\
+{\bf\large INDIAN INSTITUTE OF INFORMATION TECHNOLOGY}\\
+{\bf\large KOTTAYAM-686635, INDIA}\\
+{\it\large May 2026}
+\end{center}
+
+\end{titlepage}
+
+\clearpage
+% --------------- Declaration page -----------------------
+\pagenumbering{roman} \setcounter{page}{2}
+\begin{center}
+{\large{\bf{DECLARATION}}}
+\end{center}
+
+\noindent I, \textbf{Sivarama Krishnan Subbiah} (\textbf{Roll No: 2024MCS110007}),
+hereby declare that, this report entitled
+\textbf{``Multilingual Conversational AI for Labour Force Surveys:
+A Multi-Agent RAG System with CrewAI Framework''} submitted to Indian
+Institute of Information Technology Kottayam towards partial
+requirement of {\bf Master of Technology} in \textbf{Artificial Intelligence
+and Data Science}
+is an original work carried out by me under the supervision of
+\textbf{Dr.\ Goutam Mali} and has not formed the basis for the award
+of any degree or diploma, in this or any other institution or
+university. I have sincerely tried to uphold the academic ethics
+and honesty. Whenever an external information or statement or
+result is used then, that have been duly acknowledged and cited.
+
+\vspace{4cm}
+
+\noindent Kottayam-686635 \hfill \textbf{Sivarama Krishnan Subbiah}
+
+\noindent May 2026
+
+\clearpage
+
+% --------------- Certificate page -----------------------
+\pagenumbering{roman} \setcounter{page}{3}
+\begin{center}
+{\large{\bf{CERTIFICATE}}}
+\end{center}
+
+\noindent This is to certify that the work contained in this
+project report entitled \textbf{``Multilingual Conversational AI for
+Labour Force Surveys: A Multi-Agent RAG System with CrewAI Framework''}
+submitted by \textbf{Sivarama Krishnan Subbiah}
+(\textbf{Roll No: 2024MCS110007}) to Indian Institute of Information
+Technology Kottayam towards partial requirement of {\bf Master of Technology}
+in \textbf{Artificial Intelligence and Data Science}
+has been carried out by him under my supervision and that it has not been
+submitted elsewhere for the award of any degree.
+
+\vspace{4cm}
+
+\noindent Kottayam-686635  \hfill (Dr.\ Goutam Mali)
+
+\noindent May 2026 \hfill Project Supervisor
+
+\clearpage
+
+% --------------- Abstract page -----------------------
+\begin{center}
+{\Large{\bf{ABSTRACT}}}
+\end{center}
+
+Labour Force Surveys (LFS) are the primary data collection mechanism for
+employment statistics worldwide, yet conventional field-interview methods are burdened by four
+interrelated operational shortcomings: incomplete responses in 10--15\% of
+survey items, occupational coding consistency among specialist coders that
+typically reaches only 75--85\%, failure to handle the mixed-language speech
+patterns of multilingual populations, and field-collection expenditure exceeding
+USD~100 per completed interview.
+
+This work constructs and rigorously evaluates a multilingual conversational AI
+system capable of administering the full Labour Force Survey questionnaire --- Sections A--K,
+56 fields, ILO ICLS-19 standards --- in five languages (English, Arabic
+MSA+dialect, Urdu, Hindi, Tagalog) through a 13-agent CrewAI pipeline
+featuring a 5-state finite state machine, 11 conditional skip gates, and three
+dynamic employment paths.
+
+The central technical contribution is the \textbf{Semantic Relation Engine} ---
+a novel deterministic three-way crosswalk between ISCO-08 (occupation),
+ISIC Rev.~4 (industry, 4-digit class), and ISCED~2011 (education level)
+using the ILO Geneva 2012 ISCO-ISIC correspondence table and UNESCO ISCED~2011
+Operational Manual Table~7.
+It produces a calibrated SemanticCoherence score (0--1) with formula
+$0.55 \times \text{ISIC\_score} + 0.45 \times \text{ISCED\_score}$,
+adjusts ISCO confidence by $+10\%$ (coherence $\geq 0.90$) to $-20\%$
+(coherence $< 0.50$), and triggers mandatory HITL escalation on HIGH-severity
+violations.
+
+The ISCO-08 classifier uses a four-stage hierarchical RAG pipeline across
+four Qdrant collections (441 unit groups) with
+\texttt{intfloat/multilingual-e5-large} embeddings (1024-dim) and
+weighted confidence $c = 0.10s_1 + 0.20s_2 + 0.20s_3 + 0.50s_4$.
+The system also classifies industry to ISIC Rev.~4 4-digit class
+(Section$\to$Division$\to$Group$\to$Class) and education to both ISCED~2011
+attainment level (0--8) and ISCED-F~2013 field of specialisation
+(4-digit Detailed, Broad$\to$Narrow$\to$Detailed).
+A two-tier LLM routing strategy (Ollama/Llama~3.2 for general tasks,
+Claude~3.5 Sonnet for critical tasks) minimises API cost while maintaining
+accuracy on high-stakes decisions.
+
+A three-system benchmark (BM25 / Flat RAG / Hierarchical RAG) on 100 synthetic
+cases and a 10-case Semantic Relation Engine demo confirm the design.
+Component-level evaluation on a 1,200-example classifier test set achieved:
+85.3\% top-1 ISCO-08 accuracy ($\kappa=0.83$);
+92.1\% top-3 accuracy;
+hierarchical RAG outperformed flat RAG by 6.4~pp while reducing P95 latency
+by 47\% (1.8~s vs.\ 3.4~s);
+81.4\% ISIC Rev.~4 4-digit class accuracy;
+87.3\% ISCED level accuracy;
+76.8\% ISCED-F 4-digit field accuracy;
+98.2\% language-ID accuracy and 92.4\% code-switching F1.
+A randomised pilot ($n=30$, 15 per arm, planned for the final phase) will
+assess end-to-end system performance on respondent burden, data quality,
+cost reduction, and HITL escalation rates.
+
+\vspace{6pt}
+\noindent\textbf{Keywords:} Labour Force Survey; conversational AI;
+multi-agent systems; CrewAI; hierarchical RAG; ISCO-08; ISIC Rev.4;
+ISCED-F 2013; Semantic Relation Engine; multilingual NLP; code-switching;
+human-in-the-loop; official statistics; ILO ICLS-19; GDPR.
+
+\clearpage
+
+
+\tableofcontents
+\clearpage
+\listoffigures
+\listoftables
+
+
+\newpage
+
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ====== Main chapters ===========================================
+
+\input chapter1.tex
+
+\input chapter2.tex
+
+\input chapter3.tex
+
+\input chapter4.tex
+
+\input chapter5.tex
+
+\input chapter6.tex
+
+\input chapter7.tex
+
+\input appendices.tex
+
+\bibliographystyle{plainnat}
+\bibliography{bib}
+
+\end{document}

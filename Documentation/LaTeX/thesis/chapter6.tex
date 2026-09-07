@@ -1,0 +1,366 @@
+% ============================================================
+%  CHAPTER 6 — RESULTS AND DISCUSSION
+%  Fully rewritten 2026-08-28 -- see VERIFICATION_NOTES.md.
+%  Every number in this chapter is sourced directly from CLAUDE.md's
+%  verified, dated result log. The original draft's entire results
+%  chapter -- including a full "achieved" column with checkmarks against
+%  fabricated targets, and a complete pilot-study burden-comparison table
+%  for a study that has never run -- has been replaced, not edited.
+% ============================================================
+\chapter{Results and Discussion}
+\label{chap:results}
+
+This chapter reports this project's real, measured results. Where a result
+is still pending or blocked, it is stated as such rather than filled with a
+plausible-looking number.
+
+% ------------------------------------------------------------
+\section{ISCO-08 Classification: The WISCO External Benchmark}
+\label{sec:res-isco}
+% ------------------------------------------------------------
+
+\subsection{Canonical Baseline: Flat vs.\ Hierarchical Retrieval}
+
+\begin{table}[htbp]
+\centering
+\caption{ISCO-08 exact 4-digit accuracy, full 18,747-case WISCO heldout split.}
+\label{tab:ch6-wisco-canonical}
+\small\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Configuration} & \textbf{Exact 4-digit accuracy} & \textbf{95\% Wilson CI} \\
+\midrule
+Flat retrieval & \textbf{21.19\%} & [20.61\%, 21.78\%] \\
+Hierarchical retrieval & 10.35\% & [9.93\%, 10.80\%] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Hierarchical retrieval is 10.84 percentage points \emph{worse} than
+flat retrieval} (McNemar exact $p \approx 1.86\times10^{-301}$) --- a real,
+statistically decisive negative finding. This directly contradicts an
+earlier internal draft of this thesis, which reported the opposite
+(hierarchical outperforming flat by 6.4pp) without this benchmark having
+been run. Hierarchical retrieval is never described as outperforming flat
+retrieval anywhere else in this thesis.
+
+\subsection{Improving the Best Configuration: Embedding Model and Catalogue
+Enrichment}
+
+Starting from flat retrieval (the better baseline), two independent
+improvements were tested on the identical 18,747-case set.
+
+\begin{table}[htbp]
+\centering
+\caption{Additive improvements to flat retrieval, full heldout set.}
+\label{tab:ch6-additive}
+\small\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Configuration} & \textbf{Accuracy} & \textbf{$\Delta$ vs.\ baseline} & \textbf{McNemar $p$} \\
+\midrule
+Baseline (e5-small) & 21.19\% & --- & --- \\
++ e5-large embeddings & 29.70\% & $+8.50$pp & $7.34\times10^{-167}$ \\
++ Official-text enrichment (e5-small) & 32.55\% & $+11.36$pp & $2.19\times10^{-274}$ \\
++ Both combined & \textbf{40.95\%} & \textbf{$+19.75$pp} & $\approx 0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{40.95\% is this thesis's headline, best-tested ISCO-08 result} ---
+nearly double the 21.19\% original baseline, and the number this thesis
+cites wherever an ISCO-08 accuracy figure is needed, not the fabricated
+85.3\% an earlier internal draft stated. The two improvements are genuinely
+additive (not redundant), consistent with them working through independent
+mechanisms: embedding-model capacity (e5-large) versus input-text richness
+(enrichment).
+
+The enrichment improvement traces to a real, root-caused engineering defect:
+every catalogue entry's embedding text was originally just
+\texttt{"\{code\} \{2-4 word title\}"}, while the official ILO source
+workbook already available to this project carries full definitions and
+example occupation lists for every entry, discarded by the original
+normalisation script. Several thin-text codes acted as a ``magnet,''
+matching 15--55$\times$ more often than their true frequency. After
+enrichment, these magnet codes' prediction counts returned close to their
+true frequency (e.g.\ code 6122: 468$\to$24 predictions; code 5165:
+276$\to$31).
+
+\begin{table}[htbp]
+\centering
+\caption{Per-language accuracy, best combined configuration
+(enriched + e5-large) vs.\ original baseline, full heldout set.}
+\label{tab:ch6-perlang}
+\small\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Language} & \textbf{Baseline} & \textbf{Best config} & \textbf{$\Delta$} \\
+\midrule
+Arabic & 14.62\% & 37.77\% & $+23.15$pp \\
+English & 37.98\% & 56.91\% & $+18.94$pp \\
+Hindi & 23.07\% & 40.89\% & $+17.82$pp \\
+Tagalog & 14.47\% & 33.17\% & $+18.69$pp \\
+Urdu & 15.33\% & 35.53\% & $+20.21$pp \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Note on e5-large alone}: unlike the combined result, the e5-large
+improvement in isolation did \emph{not} help English (37.98\%$\to$37.59\%,
+a flat, non-meaningful change) --- the gain was concentrated in the four
+non-English languages. This is stated because the combined result's uniform
+per-language gains could otherwise be mistakenly attributed to e5-large
+alone.
+
+\subsection{Does LLM Re-Ranking Help?}
+
+\textbf{Six independent checks, run at different times, on different
+configurations and providers, produced the same answer: no, with one
+narrow exception.}
+
+\begin{enumerate}
+\item e5-large, no rerank vs.\ Groq rerank (500-case sample): 29.20\% both
+  ways, byte-identical, 499/500 predictions unchanged.
+\item Enrichment, reranked (642-case validation split): 32.55\%$\to$32.87\%,
+  $+0.31$pp, not significant ($p=0.5$).
+\item Production default (e5-small) on the previously-unused validation
+  split (642 cases): 18.22\%$\to$18.69\%, $+0.47$pp, not significant
+  ($p=0.25$) --- and all 4 differing predictions traced to the identical,
+  single, already-known Armed Forces catalogue quirk (a 4-digit-code
+  convention mismatch), not a general reranking effect.
+\item Corrective-retry reformulation (a different mechanism from
+  reranking, local model, $n=60$): 51.67\% both ways, exactly identical,
+  McNemar $p=1$.
+\end{enumerate}
+
+Read plainly: retrieval quality, not generation/reranking quality, is the
+real accuracy ceiling for this task. This finding held up across six
+independent tests, different LLM providers, and two genuinely different
+mechanisms (candidate reranking and query reformulation) --- a robust
+result, reported as such.
+
+% ------------------------------------------------------------
+\section{ISIC Rev.~4 / ISCED-F 2013 Classification}
+\label{sec:res-isic-isced}
+% ------------------------------------------------------------
+
+As established in Chapter~\ref{chap:evaluation}, no real, labelled dataset
+exists for ISIC/ISCED-F; the results below are from the disclosed,
+taxonomy-grounded synthetic benchmark, and answer ``does the method recover
+its own generating category'' --- not ``how would this perform on real
+respondents.''
+
+\begin{table}[htbp]
+\centering
+\caption{Legacy keyword/LLM pipeline vs.\ flat retrieval (enriched
+catalogue text + e5-large), synthetic benchmark, $n=449$.}
+\label{tab:ch6-synthetic}
+\small\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lccc}
+\toprule
+& \textbf{Legacy keyword/LLM} & \textbf{Flat retrieval} & \textbf{McNemar $p$} \\
+\midrule
+Overall ($n=449$) & 13.14\% & \textbf{82.85\%} & $\approx 5.5\times10^{-83}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A large, consistent gap: the legacy keyword pipeline is close to
+non-functional for the non-English languages (its hand-built keyword
+coverage is essentially English-only), while flat retrieval with
+multilingual embeddings stays in a broadly consistent, much higher band
+across all six language codes tested (see Chapter~\ref{chap:evaluation} for
+the earlier, smaller sample's exact per-language breakdown, which showed
+the same pattern: 79--88\% across every language versus 1--32\% for the
+legacy pipeline).
+
+\textbf{A genuine data-quality finding, disclosed rather than hidden}: this
+449-row result was computed \emph{before} an automated quality-check tool
+(built specifically after this result, to strengthen the evidence further)
+found that 2 of the 449 rows (0.45\%) contained a plain LLM safety-filter
+refusal stored as if it were valid respondent text --- a real defect in the
+generation pipeline, since fixed (the pipeline now detects and retries on
+refusal-pattern output), with the two affected rows individually
+regenerated and re-verified. The 82.85\%/13.14\% figures above therefore
+carry a known, small (0.45\%) contamination not excluded from the
+computation --- disclosed exactly rather than silently corrected after the
+fact, since re-computing on the corrected, larger dataset (below) was not
+completed successfully in this pass.
+
+\textbf{Coverage was subsequently expanded to 1,091 of the full 1,092-row
+target (99.9\%)}, with the refusal-pattern defect confirmed fixed at scale
+(zero refusal rows across the newly-generated portion) and an independent
+automated quality check passing 98.7\% of the full expanded set.
+\textbf{A fresh accuracy computation on this larger, fully-corrected dataset
+was attempted three times and did not complete}, crashing with a
+segmentation fault during embedding-model loading each time under
+confirmed low available system memory (as low as $\sim$150MB free on an
+8GB development machine, with a permanent, verified fix removing an
+unnecessary TensorFlow import applied in between attempts and confirmed to
+help, though not enough to fully resolve the crash). \textbf{This is stated
+here as a genuine, current infrastructure limitation, not resolved by
+further code changes in this pass} --- the 82.85\%/13.14\% figures above
+remain this thesis's last successfully computed, citable synthetic
+ISIC/ISCED-F result, with its known small contamination disclosed exactly
+as described.
+
+\subsection{Gulf Arabic Dialect Normalisation}
+
+Using the Gulf-dialect portion of the synthetic benchmark (genuinely
+dialectal generated text, confirmed via real Khaleeji Arabic markers, e.g.\
+``\<إحنا>'' vs.\ MSA ``\<نحن>''), the hand-built 79-rule normalisation
+dictionary was tested for the first time against real dialectal content.
+
+\begin{table}[htbp]
+\centering
+\caption{Gulf-dialect normalisation A/B test, $n=61$.}
+\label{tab:ch6-gulf}
+\small\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lc}
+\toprule
+\textbf{Metric} & \textbf{Result} \\
+\midrule
+Marker-dictionary detection rate & 13.11\% (8/61) \\
+Classification accuracy, without normalisation & 80.33\% (49/61) \\
+Classification accuracy, with normalisation & 80.33\% (49/61) \\
+McNemar comparison & $b=0, c=0$, $p=1$ (identical predictions) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{A real negative finding}: the 79-rule dictionary detects only a
+small share of genuinely dialectal text, and normalisation made zero
+measurable difference to downstream classification accuracy --- the
+multilingual e5-large embedding model already handles Gulf-dialect
+vocabulary without help from the hand-built normaliser, for this specific
+task. This extends a pattern seen throughout this project's evaluation work
+(LLM reranking, corrective retry): additional processing steps built on top
+of a strong retrieval model repeatedly failed to move accuracy. This is the
+first time this project had any genuinely dialectal data to test the
+normaliser against at all --- previously blocked by WISCO's Arabic data
+having zero dialectal content.
+
+% ------------------------------------------------------------
+\section{Semantic Relation Engine}
+\label{sec:res-sre}
+% ------------------------------------------------------------
+
+\textbf{This section replaces the original draft's 10 hand-crafted
+illustrative cases with real, verified results.} The crosswalk logic was
+expanded to a 61-case validation set with \textbf{zero mismatches}. HIGH
+severity correctly, verifiably escalates to the live HITL queue: verified
+three times against the real \texttt{/survey/sessions/\{id\}/message}
+endpoint, with \textbf{100\% of 15 HIGH-severity cases escalating and 0\% of
+46 non-HIGH cases escalating}, identically across all three runs. The
+sub-major-group strict rules (Health Professionals, ICT Professionals,
+Chief Executives) are confirmed present and functioning, but remain
+hand-built rather than sourced from an official correspondence table (see
+Chapter~\ref{chap:architecture}) --- disclosed as open work, not claimed as
+complete.
+
+% ------------------------------------------------------------
+\section{Computational Efficiency}
+\label{sec:res-efficiency}
+% ------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{Real, measured computational metrics (local development hardware
+--- not a production/deployment environment).}
+\label{tab:ch6-efficiency}
+\small\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lc}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Hierarchical RAG latency (mean) & 133.9 ms \\
+Flat RAG latency (mean) & 31.1 ms \\
+Embedding compute (mean) & 19.1 ms \\
+Qdrant on-disk size (original catalogue) & $\sim$4.3 MB \\
+Qdrant process RSS & 94.9 MB \\
+Load test: concurrent users at 100\% success & 42 (fails at 50) \\
+Best-config (enriched+e5-large) retrieval-only, mean end-to-end latency & 208.1 ms \\
+Best-config peak RSS & 1822.9 MB max, 1243.3 MB mean \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Genuinely unmeasured, disclosed as such}: any Claude~3.5~Sonnet
+production cost/latency figure (blocked by zero usable API credit
+throughout evaluation) and any production/deployment-environment
+measurement --- every figure above is from a single local development
+machine.
+
+% ------------------------------------------------------------
+\section{Objective-by-Objective Status}
+\label{sec:res-summary}
+% ------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{Real status against each Chapter~1 objective --- replaces the
+original draft's all-checkmark table.}
+\label{tab:ch6-objectives}
+\footnotesize\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{p{0.7cm}p{6.2cm}p{6.5cm}}
+\toprule
+\textbf{Obj.} & \textbf{What was targeted} & \textbf{Real status} \\
+\midrule
+O1 & Multi-module CrewAI architecture; correct FSM behaviour &
+  Met: 13 agent-constructing modules; orchestration correctness verified
+  by a dedicated regression test suite \\
+O2 & Best-tested ISCO-08 configuration identified, reported honestly &
+  Met, with a real negative finding: hierarchical underperforms flat;
+  best result 40.95\% (flat, enriched, e5-large), not the originally
+  targeted 85\%+ \\
+O3/O4 & ISIC/ISCED-F classification, accuracy reported wherever data allows &
+  Partially met: real infrastructure at parity with ISCO-08; accuracy only
+  measurable via a disclosed synthetic benchmark (83\% vs.\ 13\% legacy);
+  no real-respondent evaluation exists \\
+O5 & Semantic Relation Engine, HITL escalation verified &
+  Met: 61-case validation, zero mismatches; HIGH escalation verified 3x,
+  100\%/0\% split exactly as designed; crosswalk tables remain hand-built
+  (open item) \\
+O6 & Multilingual support, dialect handling reported honestly &
+  Met, with a real negative finding: Gulf-dialect normalisation made no
+  measurable accuracy difference on the tested sample \\
+O7 & Person Register pre-fill; consistency rules &
+  Rules met (all 10 R01--R10 tested); real pre-fill question-reduction
+  magnitude not measured against real respondents \\
+O8 & Audit trail; reports; HITL queue; deployment &
+  Met: verified against the live system \\
+--- & Randomised pilot study & \textbf{Not started.} Not submitted for
+  ethics approval as of this writing. No data exists. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ------------------------------------------------------------
+\section{Threats to Validity}
+\label{sec:res-validity}
+% ------------------------------------------------------------
+
+\textbf{No real-respondent evaluation exists for any of the three
+classification standards' headline claims beyond WISCO.} ISCO-08's 40.95\%
+result is external and real (WISCO), but ISIC/ISCED-F's 82.85\%/13.14\%
+result is synthetic, measuring recovery of an LLM's own generating prompt,
+not real-respondent accuracy --- this is the single largest validity
+limitation in this thesis, stated plainly.
+
+\textbf{ISIC/ISCED-F catalogue coverage.} The live-indexed catalogue covers
+134 of 419 official ISIC Rev.~4 classes and 63 of approximately 80 ISCED-F
+detailed fields --- stated exactly, not as ``100+ of 238'' as an earlier
+internal draft of this thesis stated (which understated the true official
+class count for ISIC Rev.~4 as well as overstating coverage).
+
+\textbf{The pilot study has not run.} Every claim in this thesis about
+respondent burden, cost reduction, or satisfaction versus a traditional
+interview is, at most, a target or a plan --- never a measured result.
+
+\textbf{Single-machine measurement.} All computational-efficiency figures
+(Section~\ref{sec:res-efficiency}) are from one local development machine,
+not a production environment, and that machine's own memory constraints
+directly blocked a planned re-computation of the ISIC/ISCED-F synthetic
+result at full dataset coverage (Section~\ref{sec:res-isic-isced}) ---
+disclosed as a real limitation of this thesis's own evaluation
+infrastructure, not glossed over.

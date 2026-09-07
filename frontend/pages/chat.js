@@ -427,7 +427,7 @@ const LLM_ROLES = {
   greeting:       "Generating warm multilingual greeting",
   collecting_info:"Extracting entities & routing next question",
   clarifying:     "Resolving ambiguous or conflicting answers",
-  validating:     "Cross-checking responses for ILO ICLS-19",
+  validating:     "Cross-checking responses for consistency",
   completing:     "Generating personalised completion narrative",
 };
 
@@ -440,14 +440,40 @@ const LANG_PILLS = [
 ];
 
 // Field labels for the welcome-back banner
+// Covers all 56 real survey fields (checked against conversation_manager.py's
+// _get_field_order()) so a returning user's prefilled-field pills never fall
+// back to a raw snake_case key — previously only 13 of 56 fields had a label
+// here, so e.g. field_of_study / unemployment_duration rendered as-is.
 const PREFILL_LABELS = {
   employment_status: "Employment Status", education_level: "Education",
+  field_of_study: "Field of Study",
   gender: "Gender", nationality: "Nationality", marital_status: "Marital Status",
   emirate: "Emirate", uae_residence_duration: "UAE Residence",
+  vocational_training: "Vocational Training",
   employment_nature: "Employment Nature", employment_sector: "Sector",
-  job_title: "Job Title", industry: "Industry",
-  hours_per_week: "Weekly Hours", employment_type: "Employment Type",
-  monthly_wage_range: "Monthly Wage",
+  job_title: "Job Title", job_duties: "Job Duties", industry: "Industry",
+  actual_hours_worked: "Hours Worked", hours_per_week: "Weekly Hours",
+  secondary_job: "Secondary Job", secondary_job_hours: "Secondary Job Hours",
+  underemployment: "Hours Preference", employment_type: "Employment Type",
+  contract_type: "Contract Type", remote_work: "Remote Work",
+  monthly_wage_range: "Monthly Wage", salary_allowances: "Salary Allowances",
+  bonuses: "Bonuses", health_insurance: "Health Insurance",
+  pension_scheme: "Pension Scheme", qualification_match: "Qualification Match",
+  job_search_active: "Job Search Active", job_search_methods: "Job Search Methods",
+  available_for_work: "Available for Work", unemployment_duration: "Unemployment Duration",
+  desired_job_type: "Desired Job Type", ever_worked: "Ever Worked",
+  last_job_title: "Last Job Title", last_job_sector: "Last Job Sector",
+  reason_left_job: "Reason Left Job", highest_previous_salary: "Highest Previous Salary",
+  outside_lf_reason: "Reason Not Seeking Work",
+  main_skills: "Main Skills", training_participation: "Training Participation",
+  emiratization_program: "Emiratization Program", labour_market_barriers: "Labour Market Barriers",
+  platform_work: "Platform Work", platform_names: "Platform Names", platform_hours: "Platform Hours",
+  online_business: "Online Business",
+  job_satisfaction: "Job Satisfaction", work_safety: "Work Safety",
+  workplace_issues: "Workplace Issues", work_life_balance: "Work-Life Balance",
+  question_clarity: "Question Clarity", difficulty_answering: "Difficulty Answering",
+  ai_preference: "AI Preference", data_confidence: "Data Confidence",
+  survey_comments: "Survey Comments",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

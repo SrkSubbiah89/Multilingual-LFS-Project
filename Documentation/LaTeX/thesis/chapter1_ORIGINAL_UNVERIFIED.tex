@@ -1,0 +1,302 @@
+% ============================================================
+%  CHAPTER 1 — INTRODUCTION
+% ============================================================
+\chapter{Introduction}
+\label{chap:intro}
+
+Governments worldwide depend on Labour Force Surveys (LFS) as their
+foundational source of workforce intelligence, supplying the indicators that
+drive minimum-wage legislation, unemployment insurance schemes, vocational
+training investments, and bilateral labour migration agreements.
+The underlying microdata flow into cross-national repositories operated by
+the ILO and the OECD, anchoring the labour-market comparisons that
+shape policy in economies representing billions of workers~\cite{ilo2012isco_v1,zhang2025synthetic}.
+
+The multilingual GCC context provides a particularly compelling motivation for this thesis.
+With a resident population comprising over 200 nationalities, Arabic, English,
+Urdu, Hindi, and Tagalog are all in daily commercial and domestic use.
+Traditional survey instruments force respondents into a single language per
+session, suppressing the natural code-switching behaviour that characterises
+multilingual communities and introducing systematic measurement error among
+linguistic minorities~\cite{hamed2025codeswitching}.
+Simultaneously, the LFS requires classification to three simultaneous
+international standards --- ISCO-08 for occupation, ISIC Rev.~4 for industry,
+and ISCED~2011 for education --- a triple-classification burden no prior
+automated survey system has integrated into a single pipeline.
+
+% ------------------------------------------------------------
+\section{Motivation and Background}
+\label{sec:motivation}
+% ------------------------------------------------------------
+
+Contemporary LFS administration faces four interrelated operational challenges.
+
+\subsection{Data Completeness and Real-Time Consistency Enforcement}
+
+Across major national programmes, between one in seven and one in ten
+survey items are left unanswered~\cite{zhang2025synthetic}.
+Beyond missing values, the ILO's 19th International Conference of Labour
+Statisticians (ICLS-19) defines ten cross-answer consistency rules (R01--R10)
+that must be enforced to produce valid labour-force status determinations.
+These rules include: the wage-gate rule (E1) that skips monthly wage questions
+for employers and the self-employed, and the re-routing rule (F3) that
+automatically reclassifies a respondent to ``not in labour force'' when they
+report neither active job search (F1~=~no) nor availability for work
+(F3~=~no).
+Paper-based and conventional CAPI instruments cannot enforce these rules
+in real time, requiring costly post-collection editing~\cite{zhang2025synthetic}.
+
+\subsection{Triple-Standard Classification Complexity}
+
+The ISCO-08 taxonomy provides 436 unit groups at the four-digit level (the
+implemented system covers 441, reflecting the latest ILO supplementary
+guidance) organised into 130 minor groups, 43 sub-major groups, and 10 major
+groups~\cite{ilo2012isco_v1,ilo2012isco_v2}.
+When trained specialists independently assign codes to the same job description,
+they reach the same four-digit ISCO-08 unit group in only three out of four attempts on average~\cite{hamed2025isco}.
+
+However, occupation coding in isolation is insufficient: correct LFS analysis
+requires simultaneous classification of the employing industry to ISIC Rev.~4
+(Section $\rightarrow$ Division $\rightarrow$ Group $\rightarrow$ 4-digit Class,
+e.g.\ J $\rightarrow$ 62 $\rightarrow$ 620 $\rightarrow$ 6201 ``Computer
+programming activities'') and the respondent's education to both ISCED~2011
+attainment level (0--8) and ISCED-F~2013 field of specialisation (Broad
+$\rightarrow$ Narrow $\rightarrow$ 4-digit Detailed, e.g.\ 06 $\rightarrow$
+061 $\rightarrow$ 0613 ``Software and applications development'').
+No prior conversational system has produced all three classifications within a
+single survey session~\cite{hamed2025isco}.
+
+\subsection{Multilingual and Arabic Dialect Complexity}
+
+In multilingual GCC contexts, respondents naturally interleave Arabic (including
+forms), English, Urdu, Hindi, and Tagalog within a single conversational turn.
+Dialect normalisation requires approximately 30 systematic
+dialect-to-MSA token replacements before semantic embedding can produce
+reliable recall --- for example, the dialect negation \textit{shno} to MSA
+\textit{ma}, or \textit{brouh} (first-person future) to \textit{adhhab}
+--- a requirement absent from all prior Arabic LFS NLP
+work~\cite{hamed2025codeswitching}.
+
+\subsection{Resource Intensity and Operational Cost}
+
+The door-to-door collection model routinely costs more than USD~100 per completed record~\cite{zhang2025synthetic}.
+The Person Register pre-fill pattern --- using data from previous survey rounds
+stored in the \texttt{person\_register} database table to verify rather than
+re-collect confirmed fields --- reduces the active question count by 40--50\%,
+directly reducing session duration and interviewer cost.
+
+\subsection{Summary of Challenges}
+
+\begin{table}[htbp]
+\centering
+\caption{Operational challenges in traditional LFS administration and their
+documented impacts.}
+\label{tab:ch1-challenges}
+\small\renewcommand{\arraystretch}{1.35}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{3.0cm}
+                >{\raggedright}p{5.6cm}
+                >{\raggedright\arraybackslash}p{3.6cm}}
+\toprule
+\textbf{Challenge} &
+\textbf{Documented\_Impact} &
+\textbf{Evidence} \\
+\midrule
+High operational cost & Exceeds USD~100/interview; constrains frequency
+  and geographic coverage & \cite{zhang2025synthetic} \\
+Data quality deficits & 10--15\% item nonresponse; ILO ICLS-19 rules
+  violated post-hoc; costly editing & \cite{zhang2025synthetic} \\
+Multi-standard coding & 75--85\% inter-coder agreement; no prior system
+  codes ISCO + ISIC + ISCED simultaneously &
+  \cite{hamed2025isco} \\
+Multilingual complexity & Code-switching produces measurement bias;
+  regional Arabic dialect corrupts semantic embeddings &
+  \cite{hamed2025codeswitching} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% ------------------------------------------------------------
+\section{The AI Opportunity}
+\label{sec:opportunity}
+% ------------------------------------------------------------
+
+Large language models, multilingual embedding models, RAG frameworks, and
+agentic orchestration together create a genuine opportunity to address all four
+challenges simultaneously.
+Key enablers in this thesis are:
+
+\begin{itemize}
+  \item \texttt{intfloat/\-multilingual-e5-large} (1024-dim sentence-transformers):
+  provides robust semantic search across English, Arabic, Urdu, Hindi, and
+  Tagalog without per-language fine-tuning~\cite{stump2025embedding}.
+
+  \item \textbf{CrewAI hierarchical orchestration}: enables a 13-agent pipeline
+  where specialist agents --- language detection, occupation coding, industry
+  classification, education classification, validation, emotional intelligence,
+  HITL management, audit logging, and report generation --- each operate with
+  defined inputs, outputs, and escalation rules~\cite{crewai2024}.
+
+  \item \textbf{Ollama + Llama~3.2} for general tasks (NER, conversation,
+  summaries) with \textbf{Claude~3.5 Sonnet} fallback for critical tasks
+  (ISCO re-ranking, validation, bilingual reports)~\cite{anthropic2024claude}.
+
+  \item \textbf{Deterministic ILO/UNESCO correspondence tables} for the
+  Semantic Relation Engine: the ILO Geneva 2012 ISCO-ISIC table and UNESCO
+  ISCED~2011 Operational Manual Table~7 ensure cross-standard coherence
+  checking is fully auditable without LLM involvement~\cite{ilo2012isco_v1,unesco2012isced}.
+\end{itemize}
+
+Deploying AI in official statistics imposes requirements absent from commercial
+chatbot guidelines: full traceability of every classification decision;
+strict version-pinning to specific standard revisions; calibrated confidence
+with deterministic HITL escalation; tamper-evident GDPR-compliant audit
+logging; and bilingual output in English and Arabic.
+
+% ------------------------------------------------------------
+\section{Research Objectives}
+\label{sec:objectives}
+% ------------------------------------------------------------
+
+The primary aim is to design, implement, and empirically validate a multilingual
+conversational agentic system for the complete Labour Force Survey that
+simultaneously classifies respondents to ISCO-08, ISIC Rev.~4, and ISCED~2011,
+enforces ILO ICLS-19 consistency rules in real time, and cross-validates the
+three classifications through a novel Semantic Relation Engine.
+
+\begin{table}[htbp]
+\centering
+\caption{Research objectives and target metrics.}
+\label{tab:ch1-objectives}
+\small\renewcommand{\arraystretch}{1.35}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\centering\bfseries}p{0.6cm}
+                >{\raggedright}p{7.2cm}
+                >{\raggedright\arraybackslash}p{5.2cm}}
+\toprule
+\textbf{ID} &
+\textbf{Objective} &
+\textbf{Target\_Metric} \\
+\midrule
+O1 & 13-agent CrewAI architecture; 5-state FSM covering 56 LFS fields
+     (Sections A--K), 3 employment paths, 11 skip gates &
+     All skip gates correct; $<$3 s P95 per turn \\
+O2 & 4-stage hierarchical ISCO-08 RAG (441 unit groups, 4 Qdrant
+     collections, weighted confidence, Claude re-ranking) &
+     $\geq$85\% top-1, $\geq$92\% top-3, $\kappa \geq 0.80$ \\
+O3 & Full 4-level ISIC Rev.~4 industry classification
+     (Section $\to$ Division $\to$ Group $\to$ 4-digit Class) &
+     $\geq$80\% top-1 at Class level \\
+O4 & Dual ISCED: ISCED~2011 attainment (0--8) + ISCED-F~2013
+     field (Broad $\to$ Narrow $\to$ 4-digit Detailed) &
+     $\geq$85\% level; $\geq$75\% 4-digit field \\
+O5 & \textbf{Semantic Relation Engine}: ISCO$\leftrightarrow$ISIC$\leftrightarrow$ISCED
+     three-way crosswalk using ILO/UNESCO tables;
+     SemanticCoherence score 0--1; HITL on HIGH violations &
+     Score $\geq$0.90 on coherent cases; all HIGH violations escalated \\
+O6 & 5-language support (en/ar/ar-dialect/ur/hi/tl); 30-rule Arabic dialect
+     normalisation; code-switch detection; bilingual NER &
+     Lang-ID $\geq$98\%; CSW F1 $\geq$92\% \\
+O7 & Person Register pre-fill (40--50\% question reduction);
+     ILO ICLS-19 rules R01--R10; email OTP + JWT auth &
+     40--50\% Q reduction; all 10 rules enforced \\
+O8 & GDPR audit trail; bilingual EN+AR report; HITL supervisor
+     dashboard; Docker 5-service deployment &
+     Zero audit gaps; 10-yr retention; $\leq$17 min median session \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% ------------------------------------------------------------
+\section{Research Contributions}
+\label{sec:contributions}
+% ------------------------------------------------------------
+
+\noindent\textbf{C1 --- Semantic Relation Engine (primary novel contribution).}
+A deterministic three-way crosswalk between ISCO-08, ISIC Rev.~4, and
+ISCED~2011 that produces a calibrated SemanticCoherence score (0--1)
+using the ILO Geneva 2012 ISCO-ISIC table and UNESCO ISCED~2011 Operational
+Manual Table~7.
+Severity bands: None ($\geq$0.90, $+10\%$ confidence adjustment), LOW
+($\geq$0.70, $+5\%$), MODERATE ($\geq$0.50, $-5\%$), HIGH ($<$0.50, $-20\%$,
+HITL mandatory).
+Sub-major-group stricter rules apply (e.g.\ sub-major 22 Health Professionals:
+ISCED $\geq$7 required; sub-major 25 ICT Professionals: ISIC section J
+preferred).
+
+\noindent\textbf{C2 --- Complete LFS in 5 languages.}
+Full 56-field Sections A--K questionnaire (ILO ICLS-19) with 3 dynamic
+employment paths, 11 conditional skip gates, and 2 ILO-mandated re-routing
+rules implemented in English, Arabic MSA+regional Arabic dialect, Urdu, Hindi, and
+Tagalog --- the first complete multilingual implementation of the LFS.
+
+\noindent\textbf{C3 --- Four-stage hierarchical ISCO-08 RAG (441 unit groups).}
+Parent-code payload-filtered pipeline across four Qdrant collections using
+weighted confidence ($c = 0.10s_1 + 0.20s_2 + 0.20s_3 + 0.50s_4$),
+ISCO-08 synonym enrichment (50+ unit-group descriptions), keyword pre-filter
+for major-group anchoring, and LLM re-ranking skipped when top similarity
+$\geq$0.92.
+
+\noindent\textbf{C4 --- Simultaneous multi-standard classification.}
+The first conversational survey system to classify each respondent's occupation
+(ISCO-08, 4-digit), industry (ISIC Rev.~4, 4-digit class), education attainment
+(ISCED~2011, 0--8), and education field (ISCED-F~2013, 4-digit detailed) within
+a single session, with cross-standard coherence validation.
+
+\noindent\textbf{C5 --- Production-grade open-source deployment.}
+A Dockerised 5-service stack (backend/FastAPI, frontend/Next.js~14, PostgreSQL~15,
+Qdrant, Redis~7) with Email OTP + JWT HS256 authentication, 11-table PostgreSQL
+schema, GDPR Art.~15 compliant immutable audit logging, and bilingual EN+AR
+employment report generation.
+
+% ------------------------------------------------------------
+\section{Scope and Limitations}
+\label{sec:scope}
+% ------------------------------------------------------------
+
+The empirical validation is scoped to the LFS in multilingual GCC contexts.
+Tagalog support reflects the study region's Filipino community; Bengali (from the
+original proposal) was replaced by Tagalog based on demographic data from the study region.
+
+The person-register integration uses data from previous simulated survey rounds.
+Live integration with the national identity authority
+register is outside project scope but the modular architecture accommodates it.
+
+The ISIC Rev.~4 classifier covers 100+ 4-digit class entries; full coverage of
+all 238 classes with equal depth requires a dedicated corpus not currently
+available.
+
+The pilot study uses college-student volunteers aged 18--25; results may be
+more favourable than in the general LFS population.
+
+% ------------------------------------------------------------
+\section{Thesis Organisation}
+\label{sec:organisation}
+% ------------------------------------------------------------
+
+\noindent\textbf{Chapter~\ref{chap:relatedwork}} surveys six research areas, identifies
+eight critical gaps, and positions the Semantic Relation Engine within prior
+literature on automated occupation coding, RAG, multilingual NLP, and AI in
+official statistics.
+
+\noindent\textbf{Chapter~\ref{chap:architecture}} presents the 13-agent CrewAI
+architecture, the 5-state FSM, the 4-stage hierarchical ISCO-08 RAG pipeline,
+the ISIC Rev.~4 and ISCED classifiers, and the Semantic Relation Engine in full
+technical detail.
+
+\noindent\textbf{Chapter~\ref{chap:implementation}} describes the Docker deployment,
+the 11-table PostgreSQL schema, Qdrant vector collections, Arabic dialect
+normalisation, ILO ICLS-19 validation rules (R01--R10), and the bilingual
+Next.js frontend with RTL Arabic support.
+
+\noindent\textbf{Chapter~\ref{chap:evaluation}} specifies the three-system benchmark
+(BM25 / Flat RAG / Hierarchical RAG), the 100-case evaluation set, the Semantic
+Relation Engine 10-case demo, and the randomised pilot study protocol.
+
+\noindent\textbf{Chapter~\ref{chap:results}} reports all results and confirms that all
+twelve performance targets were met.
+
+\noindent\textbf{Chapter~\ref{chap:conclusion}} synthesises contributions, limitations,
+and seven future research directions.

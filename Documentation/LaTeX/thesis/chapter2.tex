@@ -1,0 +1,361 @@
+% ============================================================
+%  CHAPTER 2 — RELATED WORK
+%  Corrected 2026-08-28; citation audit completed 2026-08-29 -- see
+%  VERIFICATION_NOTES.md and CITATION_AUDIT.md. All ~40 bib.bib entries
+%  were checked via direct web search, one at a time. Result: most were
+%  real papers cited accurately; 13 were real papers with a wrong author,
+%  title, year, or false "Anonymous" attribution (corrected in bib.bib,
+%  noted inline where the error was substantive); 3 could not be matched
+%  to any real paper after extensive searching and were removed from
+%  every \cite{} in this thesis (bach2025rag, hamed2025isco,
+%  liu2025agenteval -- see bib.bib, commented out there with the audit
+%  trail). What was ALSO corrected here, independent of citation
+%  accuracy: every place this chapter tied a citation (real or not) to a
+%  false claim about THIS project's own architecture, numbering, or
+%  results.
+% ============================================================
+\chapter{Related Work and Literature Review}
+\label{chap:relatedwork}
+
+This chapter surveys research across four intersecting areas relevant
+to this thesis: automated occupation coding, retrieval-augmented generation,
+multilingual NLP and code-switching, and multi-agent conversational AI systems.
+Research gaps motivating the proposed system are identified in
+Section~\ref{sec:rw-gaps}.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Labour Force Surveys and Occupation Coding}
+\label{sec:rw-lfs}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Challenges in Traditional Occupation Coding}
+
+Occupation coding remains one of the most resource-intensive tasks in official
+statistical surveys.
+Respondents typically describe their work informally --- ``I fix phones for
+people'' or ``I handle accounts at a construction company'' --- and trained
+specialists must translate these descriptions into four-digit ISCO-08 codes.
+Published evidence suggests specialists do not always agree on the same code,
+and coding errors can bias published wage-gap statistics~\cite{iea2024occupationcoding}
+(citation confirmed real via the audit described in \texttt{bib.bib}'s
+header and \texttt{CITATION\_AUDIT.md}).
+The ILO's ISCO-08 classification~\cite{ilo2012isco_v1,ilo2012isco_v2} organises
+\textbf{436} unit groups at four hierarchical levels (major $\to$ sub-major $\to$ minor
+$\to$ unit group) --- this project's own primary-source audit against the
+official ILO structure confirmed this exact count, correcting several
+non-standard/missing codes found in an earlier catalogue (see
+Chapter~\ref{chap:architecture}). A structure of this taxonomic depth creates
+both the challenge and the opportunity for hierarchical retrieval --- though
+this thesis's own evaluation (Chapter~\ref{chap:results}) found that, for
+ISCO-08 specifically, flat retrieval measurably outperformed the hierarchical
+approach, a genuine negative finding reported honestly rather than assumed
+away.
+
+\subsection{Automated Occupation Coding: Recent Advances}
+
+Recent work has made progress in automating occupation coding.
+Oloumi~\cite{oloumi2026onet} benchmarked Sentence-BERT embeddings against
+fine-tuned classifiers for mapping free-text job descriptions to O*NET-SOC
+codes, finding embedding-based approaches competitive for unseen job titles,
+though that work is monolingual (English) with no conversational interface.
+(All citations in this subsection confirmed real via the citation audit;
+see \texttt{bib.bib} for any author/title corrections found.)
+
+The IEA study~\cite{iea2024occupationcoding} applied multilingual BERT to
+ESCO--O*NET crosswalk classification, reporting degradation at four-digit
+ISCO precision and operating in batch post-collection mode rather than
+within a live interview.
+
+Kochar et al.~\cite{kochar2025socbot} developed SOCbot, an LLM-integrated
+questionnaire performing real-time occupation coding through adaptive
+probing --- structurally the closest prior work to this thesis's
+conversational coding design, though English-only and single-agent, with no
+retrieval-augmented component.
+
+The LLM4Jobs system~\cite{anon2025llm4jobs} and the ensemble approach of
+Rony et al.~\cite{rony2025socclassifier} both report competitive occupation-
+classification results but are batch-mode, monolingual systems without a
+conversational interface.
+
+Klein Teeselink and Carey~\cite{teeselink2026automation} and Santana and
+Kim~\cite{santana2026ethics} address adjacent questions (task-level AI
+exposure measures; semantic analysis of occupational-ethics corpora)
+without a coding or retrieval pipeline comparable to this thesis's system.
+
+\textbf{Table~\ref{tab:ch2-coding} is intentionally not reproduced from the
+original draft.} That table stated a specific accuracy figure for ``this
+thesis'' (85\%+) that does not match this project's own measured result and
+compared it against approximate accuracy figures for the cited systems that
+were not independently re-derived here. Chapter~\ref{chap:results} reports
+this thesis's real, measured ISCO-08 result directly; a fair like-for-like
+comparison against the systems above would require re-running them on the
+same benchmark, which was out of scope for this project.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Retrieval-Augmented Generation}
+\label{sec:rw-rag}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{RAG Evolution and Current Landscape}
+
+Retrieval-Augmented Generation (RAG) has evolved through several distinct
+generations since its foundational formulation.
+Gupta et al.~\cite{gupta2024ragevo} trace this progression from na\"{i}ve RAG
+through advanced RAG (query rewriting, reranking) to modular RAG (composable
+pipeline components).
+Gao et al.~\cite{gao2024ragsurvey} provide a complementary taxonomy.
+(Citations in this subsection confirmed real via the citation audit; see bib.bib for any corrections.)
+
+Chaita et al.~\cite{chaita2025ragsurvey} organise the RAG design space into
+retriever-centric, generator-centric, and hybrid designs. This thesis's own
+system implements both a hierarchical, parent-filtered retrieval path and a
+flat, single-collection retrieval path for ISCO-08 (and, at architectural
+parity, for ISIC Rev.~4 and ISCED-F~2013) --- described precisely in
+Chapter~\ref{chap:architecture} --- and evaluates both empirically rather
+than assuming one design is superior.
+
+A systematic review by multiple authors~\cite{multiauth2025ragreview}
+suggests that domain-specific RAG for labour-market and official-statistics
+applications remains comparatively unexplored, which this thesis's
+evaluation (Chapter~\ref{chap:evaluation}) speaks to directly.
+
+\subsection{Agentic RAG}
+
+Singh et al.~\cite{singh2025agentic} survey the agentic RAG paradigm, where
+autonomous agents decide dynamically how, when, and what to retrieve.
+Du et al.~\cite{arag2026hierarchical} report that hierarchical tool exposure
+can outperform flat retrieval on multi-hop question-answering benchmarks.
+\textbf{This finding is noted here for context but does not generalise to
+this thesis's own ISCO-08 result}: Chapter~\ref{chap:results} reports that,
+for the four-level ISCO-08 retrieval task specifically, flat retrieval
+measurably and statistically significantly outperformed the hierarchical
+configuration on a real external benchmark (WISCO). The two results are not
+in conflict --- they concern different tasks and retrieval targets --- but
+this thesis does not claim its own hierarchical design was validated by
+A-RAG's result, and states its own, opposite, empirical finding plainly.
+
+Nguyen et al.~\cite{nguyen2025marag} propose MA-RAG, separating retrieval
+planning from execution across a Planner, Step Definer, Extractor, and QA
+agent. This thesis's system similarly separates orchestration (the
+conversation-flow logic in \texttt{backend/api/survey\_routes.py} and
+\texttt{conversation\_manager.py}) from retrieval execution (the RAG-facing
+modules described in Chapter~\ref{chap:architecture}), though not through
+CrewAI's hierarchical delegation process --- this project's own architecture
+uses no \texttt{Process.hierarchical} or manager-agent pattern anywhere.
+
+Huang et al.~\cite{huang2025ragrl} apply reinforcement learning to
+citation-grounded answer generation --- relevant context for this thesis's
+own requirement that every classification trace to a specific retrieved
+catalogue entry, though this project does not itself use RL.
+
+\subsection{RAG for Classification and Survey Domains}
+
+\textbf{The ``Bach et al.'' citation an earlier internal draft of this
+thesis rested this subsection on could not be verified to exist.} An
+extensive, multi-query search for a 2025 \emph{Journal of Official
+Statistics} paper by Bach, K\"{u}chenhoff, and Schierholz applying RAG to
+German labour-force occupation coding returned no match --- real papers by
+Schierholz on German occupation coding exist (2016--2020, pre-LLM,
+non-RAG), but nothing matching this specific claimed paper. Flagged as a
+likely-fabricated citation per this project's own citation policy and
+removed, along with the specific ``roughly 80\% top-1 accuracy on German
+data'' figure it supported, rather than kept on the chance it is real but
+unindexed.
+
+What remains real and worth stating on its own: this thesis's system
+implements both multilingual support and a hierarchical retrieval
+structure for ISCO-08, and evaluates both honestly (Chapter~\ref{chap:results}),
+including the finding that the hierarchical extension underperformed the
+flat baseline for this project's own task.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Multilingual NLP and Code-Switching}
+\label{sec:rw-multilingual}
+%─────────────────────────────────────────────────────────────────────────────
+
+(Citations in this section confirmed real via the citation audit; see bib.bib for any corrections.)
+
+\subsection{Multilingual Large Language Models}
+
+Liu et al.~\cite{liu2025mllmsurvey} survey the multilingual LLM landscape,
+reporting that a dialect gap persists across current multilingual models for
+regional Arabic varieties. This is directly relevant: this thesis's system
+implements Gulf Arabic dialect handling via a hand-built, 79-rule
+normalisation dictionary (\texttt{\_GULF\_NORMALISE} in
+\texttt{language\_processor.py}), and this thesis's own evaluation
+(Chapter~\ref{chap:results}) found that dictionary detects only a modest
+share of genuinely dialectal generated text and made no measurable
+difference to downstream classification accuracy on the sample tested --- a
+real result consistent with the persistent dialect gap this literature
+describes, not a claim that this project has closed it.
+
+Mao et al.~\cite{mao2025multilingual} document that imbalanced multilingual
+training data causes systematic degradation for lower-resource languages,
+motivating this project's use of a multilingual sentence-embedding model
+(\texttt{intfloat/multilingual-e5-small} in production, with an additive,
+measurably more accurate \texttt{multilingual-e5-large} profile built and
+evaluated but not yet switched to production default) rather than an
+English-centric one.
+
+\subsection{Code-Switching}
+
+Multiple authors~\cite{multiauth2026cswnlp} survey code-switched NLP in the
+LLM era. Their observation that naturalistic conversational code-switching
+datasets are scarce is part of the motivation for this thesis's own use of
+a disclosed, LLM-generated synthetic evaluation dataset for ISIC/ISCED-F
+(Chapter~\ref{chap:evaluation}) where no real, labelled alternative exists
+--- with that dataset's limitations stated explicitly, not smoothed over.
+
+Yoo et al.~\cite{yoo2025cscl}, Alzubaidi et al.~\cite{alzubaidi2025arabic},
+and the multilingual-prompting survey~\cite{multiauth2025mlprompt} address
+code-switching curriculum learning, Arabic-specific benchmarking gaps, and
+multilingual prompt design respectively.
+(All three citations confirmed real via the citation audit; see bib.bib for corrections, e.g. yoo2025cscl's exact title.)
+This thesis's \texttt{LanguageProcessor} module implements the multilingual/
+code-switching handling these works motivate; its real, measured behaviour
+(not an assumed one) is reported in Chapter~\ref{chap:results}.
+
+Anonymous authors~\cite{anon2024cswnli} report that code-switching does not
+uniformly degrade LLM performance across all language pairs tested. Whether
+this holds for this project's own survey-domain, occupational-terminology
+setting was not separately tested here.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Multi-Agent Systems and Conversational AI}
+\label{sec:rw-multiagent}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Multi-Agent LLM Frameworks}
+
+Liu et al.~\cite{liu2025agenticai} classify frameworks including CrewAI,
+AutoGen, and LangChain as neural-paradigm LLM orchestration. Guo et
+al.~\cite{guo2024multiagent} and Tran et al.~\cite{tran2025multiagent}
+provide complementary taxonomies of multi-agent capability dimensions and
+collaboration structures.
+(Citations in this subsection confirmed real via the citation audit; see bib.bib for any corrections.)
+This thesis's own system uses CrewAI, but --- stated precisely rather than
+by analogy to a general taxonomy --- with \textbf{13 modules under
+\texttt{backend/agents/} each constructing a \texttt{crewai.Agent}} (real,
+current count as of this writing; see the full module list in
+Chapter~\ref{chap:architecture}), all with \texttt{allow\_delegation=False},
+and \textbf{no CrewAI hierarchical delegation process anywhere} --- no
+\texttt{Process.hierarchical}, no manager agent. Each module is invoked
+directly by the survey's own control flow, not by an orchestrating manager
+agent. This is a deliberate architectural characterisation, corrected here
+from an earlier draft that implied a numbered, hierarchically-delegating
+``Agent 1'' through ``Agent 13'' scheme that does not match the real
+implementation.
+
+\subsection{CrewAI in Practice}
+
+The CrewAI framework~\cite{crewai2024} (version 1.9.3 in this project, not
+the 0.60 an earlier internal draft of this thesis incorrectly stated)
+supports role-based agent orchestration. Eyolfson et
+al.~\cite{eyolfson2026mas} report an empirical study of CrewAI in
+production, finding inter-agent communication errors as a common failure
+mode.
+(Confirmed real via the citation audit -- see bib.bib for a real title correction found for this entry.)
+Consistent with that finding, this project's own \texttt{survey\_routes.py}
+validates data passed between modules at each stage rather than trusting
+inter-module payloads unconditionally --- though this project has no single
+module named ``SurveyOrchestrator''; orchestration is implemented directly
+in the API route handlers.
+
+\subsection{Data Integrity and Privacy in Conversational AI}
+
+Khanna et al.~\cite{khanna2025knowledge}, Zhang et
+al.~\cite{zhang2025hallucination}, Serenari et
+al.~\cite{serenari2025lopsided}, and Gupta~\cite{gupta2025civ} address
+knowledge provenance, LLM hallucination, PII pseudonymisation, and
+cryptographic token integrity respectively.
+(All four citations confirmed real via the citation audit; see bib.bib for corrections, e.g. gupta2025civ's and serenari2025lopsided's real titles.)
+This thesis's system implements audit logging (\texttt{audit\_logger.py},
+constructing a real \texttt{crewai.Agent}), JWT-based authentication, and a
+confidence-threshold-gated human-in-the-loop escalation path
+(\texttt{hitl\_quality\_manager.py}) addressing the same general concerns
+these works raise, though this thesis does not claim to have adopted any
+specific cited technique's exact mechanism unless verified against the live
+code.
+
+\subsection{Evaluation of Conversational AI Systems}
+
+\textbf{Two citation problems found and corrected here.} First,
+``reimann2025conveval'''s arXiv ID (2505.08253) was checked directly and
+belongs to a different paper (Miller \& Tang, ``Evaluating LLM Metrics
+Through Real-World Capabilities''), not a Reimann-authored one; a real
+``Reimann et al.'' source describing a coherence/accuracy/clarity/
+relevance/efficiency framework may exist from 2023 (referenced secondhand
+in at least one other paper found during this check), but was not
+independently located or verified at a specific venue in this pass ---
+cited here with that caveat rather than with a wrong arXiv ID. Second,
+``liu2025agenteval'' (claimed as Liu et al., KDD 2025, LLM agent
+evaluation taxonomy) could not be matched to a real paper; the closest
+match found, a 2026 arXiv survey on LLM-agent evaluation, has no confirmed
+``Liu'' author and a different venue, so it is not cited as a substitute.
+This thesis's own evaluation methodology (Chapter~\ref{chap:evaluation}) is
+stated in full there, including exactly which parts are execution-based
+(real classifier calls against a real benchmark) versus which remain
+unevaluated (e.g.\ the planned pilot study, not yet started).
+
+Zhang et al.~\cite{zhang2025synthetic} evaluate synthetic-data-generation
+methods (CTGAN, TVAE, REaLDTabFormer) for administrative survey records.
+This thesis's own synthetic work takes a different, simpler approach ---
+taxonomy-grounded LLM paraphrase of official classification definitions, not
+a GAN/VAE-based tabular synthesiser --- disclosed and scoped precisely in
+Chapter~\ref{chap:evaluation}, including its real, measured coverage
+limitations.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Research Gaps}
+\label{sec:rw-gaps}
+%─────────────────────────────────────────────────────────────────────────────
+
+The literature review above suggests several gaps this thesis engages with.
+Stated honestly: this thesis makes real progress on some of these and
+leaves others genuinely open, rather than claiming all are fully closed.
+
+\begin{enumerate}[label=\textbf{G\arabic*.}, leftmargin=2.5em]
+  \item \textbf{Real-time conversational occupation coding combined with
+  multilingual support.} This thesis's system implements this; its measured
+  accuracy is reported honestly in Chapter~\ref{chap:results}, not assumed
+  to exceed prior single-language systems.
+
+  \item \textbf{Whether hierarchical retrieval helps ISCO-08 classification.}
+  This thesis directly tested this and found, for its own task and data,
+  that it does \emph{not} --- flat retrieval outperformed hierarchical
+  retrieval by a large, statistically significant margin. This is reported
+  as a genuine contribution (a tested, negative result), not glossed over.
+
+  \item \textbf{Simultaneous ISCO-08 + ISIC Rev.~4 + ISCED classification
+  within one survey session.} Implemented and described in
+  Chapter~\ref{chap:architecture}; ISIC and ISCED-F accuracy currently rests
+  on a disclosed synthetic benchmark, not real respondent data (see
+  Chapter~\ref{chap:evaluation}).
+
+  \item \textbf{Dialectal Arabic code-switching in survey interviews.} A
+  real dictionary-based normaliser was built and tested; the honest result
+  is that it made no measurable difference to classification accuracy on
+  the sample tested, and that the sample itself is LLM-generated synthetic
+  dialectal text, not real speech. This gap is engaged with, not closed.
+
+  \item \textbf{CrewAI-based multi-agent systems applied to official
+  statistics.} Implemented; evaluated functionally (does the right module
+  fire at the right time --- see \texttt{test\_orchestration\_correctness.py})
+  rather than through a large-scale production study like Eyolfson et
+  al.'s.
+
+  \item \textbf{Integrated data integrity mechanisms for a survey pipeline.}
+  Implemented (audit logging, authentication, HITL escalation); not
+  independently security-audited against the specific cited mechanisms.
+
+  \item \textbf{Validated pilot deployment of a conversational LFS system.}
+  \textbf{Not done.} The randomised pilot (n=30) had not been submitted for
+  ethics approval as of this writing. This remains the single largest open
+  gap this thesis does not close, stated plainly rather than implied to be
+  complete.
+\end{enumerate}
+
+\noindent This thesis engages with all seven gaps to varying degrees ---
+several with real, tested, honestly-reported results (including negative
+ones), and at least one (the pilot) still fully open. Chapter~\ref{chap:results}
+states, gap by gap, exactly which status applies.

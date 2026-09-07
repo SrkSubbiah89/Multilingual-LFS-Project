@@ -1,0 +1,333 @@
+{
+  "source_csv": "eval\\results\\synthetic_isic_iscedf_benchmark\\synthetic_isic_iscedf_benchmark_20260827T163536Z.csv",
+  "generated_utc": "20260828T135210Z",
+  "n_rows": 694,
+  "n_passed": 679,
+  "overall_pass_rate": 0.9784,
+  "by_language": [
+    {
+      "language": "ar",
+      "n": 116,
+      "n_passed": 116,
+      "pass_rate": 1.0,
+      "n_cjk_contamination": 0,
+      "n_script_mismatch": 0,
+      "n_length_fail": 0,
+      "n_title_leak": 0,
+      "n_refusal_pattern": 0
+    },
+    {
+      "language": "ar-gulf",
+      "n": 108,
+      "n_passed": 108,
+      "pass_rate": 1.0,
+      "n_cjk_contamination": 0,
+      "n_script_mismatch": 0,
+      "n_length_fail": 0,
+      "n_title_leak": 0,
+      "n_refusal_pattern": 0
+    },
+    {
+      "language": "en",
+      "n": 121,
+      "n_passed": 109,
+      "pass_rate": 0.9008,
+      "n_cjk_contamination": 0,
+      "n_script_mismatch": 0,
+      "n_length_fail": 0,
+      "n_title_leak": 12,
+      "n_refusal_pattern": 0
+    },
+    {
+      "language": "hi",
+      "n": 125,
+      "n_passed": 123,
+      "pass_rate": 0.984,
+      "n_cjk_contamination": 0,
+      "n_script_mismatch": 2,
+      "n_length_fail": 0,
+      "n_title_leak": 0,
+      "n_refusal_pattern": 1
+    },
+    {
+      "language": "tl",
+      "n": 111,
+      "n_passed": 110,
+      "pass_rate": 0.991,
+      "n_cjk_contamination": 0,
+      "n_script_mismatch": 0,
+      "n_length_fail": 0,
+      "n_title_leak": 0,
+      "n_refusal_pattern": 1
+    },
+    {
+      "language": "ur",
+      "n": 113,
+      "n_passed": 113,
+      "pass_rate": 1.0,
+      "n_cjk_contamination": 0,
+      "n_script_mismatch": 0,
+      "n_length_fail": 0,
+      "n_title_leak": 0,
+      "n_refusal_pattern": 0
+    }
+  ],
+  "failed_rows": [
+    {
+      "case_id": "SYN-ISCEDF-0531-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0531",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 10,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0313-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0313",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 12,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISIC-9609-hi-1",
+      "input_language": "hi",
+      "standard": "isic",
+      "gold_code": "9609",
+      "cjk_contamination": false,
+      "script_match": false,
+      "dominant_script_fraction": 0.0,
+      "word_count": 8,
+      "length_ok": true,
+      "title_leak": false,
+      "refusal_pattern": true,
+      "passed": false,
+      "failure_reasons": [
+        "script_mismatch",
+        "refusal_pattern"
+      ]
+    },
+    {
+      "case_id": "SYN-ISIC-9609-tl-1",
+      "input_language": "tl",
+      "standard": "isic",
+      "gold_code": "9609",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 8,
+      "length_ok": true,
+      "title_leak": false,
+      "refusal_pattern": true,
+      "passed": false,
+      "failure_reasons": [
+        "refusal_pattern"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0913-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0913",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 10,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0542-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0542",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 11,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0714-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0714",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 10,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0223-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0223",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 10,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0916-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0916",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 10,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0533-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0533",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 10,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0321-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0321",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 11,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISIC-5229-hi-1",
+      "input_language": "hi",
+      "standard": "isic",
+      "gold_code": "5229",
+      "cjk_contamination": false,
+      "script_match": false,
+      "dominant_script_fraction": 0.0,
+      "word_count": 14,
+      "length_ok": true,
+      "title_leak": false,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "script_mismatch"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0221-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0221",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 7,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0222-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0222",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 9,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    },
+    {
+      "case_id": "SYN-ISCEDF-0311-en-1",
+      "input_language": "en",
+      "standard": "iscedf",
+      "gold_code": "0311",
+      "cjk_contamination": false,
+      "script_match": true,
+      "dominant_script_fraction": 1.0,
+      "word_count": 11,
+      "length_ok": true,
+      "title_leak": true,
+      "refusal_pattern": false,
+      "passed": false,
+      "failure_reasons": [
+        "title_leak"
+      ]
+    }
+  ]
+}

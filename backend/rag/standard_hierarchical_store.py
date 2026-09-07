@@ -83,7 +83,7 @@ from typing import Optional
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
-from backend.rag.hierarchy_engine import EngineCandidate, HierarchyBeamSearchEngine, StageConfig
+from backend.rag.hierarchy_engine import EngineCandidate, HierarchyBeamSearchEngine, StageConfig, extract_label_en
 
 _logger = logging.getLogger(__name__)
 
@@ -92,20 +92,99 @@ VECTOR_DIM = 384
 HITL_THRESHOLD = 0.70
 
 # ---------------------------------------------------------------------------
-# Collection names -- stable, unambiguous, standard-specific
+# Embedding profiles -- mirrors backend/rag/official_isco08_catalogue.py's
+# PROFILE_EMBEDDING_CONFIG/PROFILE_COLLECTION_NAMES pattern, so ISIC/ISCED-F
+# can gain e5-large collections the same additive way ISCO did (see
+# ENRICHED_E5LARGE_PROFILE there). "e5_small" is the default and reproduces
+# every collection name / model exactly as before this change -- zero
+# behaviour change for any existing caller that doesn't pass profile=.
 # ---------------------------------------------------------------------------
 
-ISIC_COLLECTIONS = {
-    "sections": "isic_rev4_sections",
-    "divisions": "isic_rev4_divisions",
-    "groups": "isic_rev4_groups",
-    "classes": "isic_rev4_classes",
+PROFILE_MODEL_CONFIG = {
+    "e5_small": ("intfloat/multilingual-e5-small", 384),
+    "e5_large": ("intfloat/multilingual-e5-large", 1024),
+    # Added 2026-08-25: same model as "e5_large" -- this profile's only
+    # difference is the SOURCE TEXT (real official definitions/examples via
+    # backend/rag/official_source_enrichment.py, not the plain e5_large
+    # profile's title+keywords), the flat-retrieval counterpart of
+    # ISCO-08's own ENRICHED_E5LARGE_PROFILE. Only meaningful for the FLAT
+    # collections (see ISIC_FLAT_COLLECTIONS_BY_PROFILE /
+    # ISCEDF_FLAT_COLLECTIONS_BY_PROFILE below) -- no hierarchical
+    # "enriched_e5large" collections were built (see this session's
+    # CLAUDE.md entry for why the flat recipe is the one that actually
+    # mirrors ISCO-08's best-tested configuration).
+    "enriched_e5large": ("intfloat/multilingual-e5-large", 1024),
 }
 
-ISCEDF_COLLECTIONS = {
-    "broad_fields": "iscedf2013_broad_fields",
-    "narrow_fields": "iscedf2013_narrow_fields",
-    "detailed_fields": "iscedf2013_detailed_fields",
+# ---------------------------------------------------------------------------
+# Collection names -- stable, unambiguous, standard-specific, per profile
+# ---------------------------------------------------------------------------
+
+ISIC_COLLECTIONS_BY_PROFILE = {
+    "e5_small": {
+        "sections": "isic_rev4_sections",
+        "divisions": "isic_rev4_divisions",
+        "groups": "isic_rev4_groups",
+        "classes": "isic_rev4_classes",
+    },
+    "e5_large": {
+        "sections": "isic_rev4_sections_e5large",
+        "divisions": "isic_rev4_divisions_e5large",
+        "groups": "isic_rev4_groups_e5large",
+        "classes": "isic_rev4_classes_e5large",
+    },
+}
+
+ISCEDF_COLLECTIONS_BY_PROFILE = {
+    "e5_small": {
+        "broad_fields": "iscedf2013_broad_fields",
+        "narrow_fields": "iscedf2013_narrow_fields",
+        "detailed_fields": "iscedf2013_detailed_fields",
+    },
+    "e5_large": {
+        "broad_fields": "iscedf2013_broad_fields_e5large",
+        "narrow_fields": "iscedf2013_narrow_fields_e5large",
+        "detailed_fields": "iscedf2013_detailed_fields_e5large",
+    },
+}
+
+# Back-compat aliases -- identical to the e5_small profile, unchanged names.
+ISIC_COLLECTIONS = ISIC_COLLECTIONS_BY_PROFILE["e5_small"]
+ISCEDF_COLLECTIONS = ISCEDF_COLLECTIONS_BY_PROFILE["e5_small"]
+
+# ---------------------------------------------------------------------------
+# Flat (single-collection, no parent-chain traversal) retrieval -- added
+# 2026-08-25. Architecturally identical to ISCO-08's own "flat" collection
+# role (backend/rag/official_isco08_catalogue.py's PROFILE_COLLECTION_NAMES
+# "flat" entries, queried directly by hierarchical_store.py::_flat_search):
+# the SAME leaf-level records/index_text hierarchy_nodes.py already derives
+# for the hierarchical "classes"/"detailed_fields" level, built into a
+# separately-named collection so the flat baseline and the hierarchical
+# multi-stage build can evolve independently -- ISCO-08 made this same
+# design choice (its own "unit" and "flat" collections are built from
+# identical source records, in build_official_isco08_collections*.py's
+# _target_builds()). This exists because ISCO-08's own BEST-TESTED
+# configuration (see CLAUDE.md) is FLAT retrieval, not hierarchical --
+# hierarchical retrieval measurably underperformed flat for ISCO-08
+# (10.35% vs 21.19%, McNemar p≈1.86e-301) -- so giving ISIC/ISCED-F only a
+# hierarchical option would NOT actually mirror ISCO-08's real
+# implementation. Whether flat beats hierarchical for ISIC/ISCED-F too is
+# UNTESTED (no labelled evaluation data exists for either standard -- see
+# Documentation/Conference_I_Reviewer_2/
+# ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md) -- this is an
+# architecture-parity addition, not an accuracy claim.
+# ---------------------------------------------------------------------------
+
+ISIC_FLAT_COLLECTIONS_BY_PROFILE = {
+    "e5_small": "isic_rev4_classes_flat",
+    "e5_large": "isic_rev4_classes_flat_e5large",
+    "enriched_e5large": "isic_rev4_classes_flat_enriched_e5large",
+}
+
+ISCEDF_FLAT_COLLECTIONS_BY_PROFILE = {
+    "e5_small": "iscedf2013_detailed_fields_flat",
+    "e5_large": "iscedf2013_detailed_fields_flat_e5large",
+    "enriched_e5large": "iscedf2013_detailed_fields_flat_enriched_e5large",
 }
 
 # ---------------------------------------------------------------------------
@@ -124,18 +203,41 @@ assert abs(sum(ISIC_STAGE_WEIGHTS) - 1.0) < 1e-9, "ISIC_STAGE_WEIGHTS must sum t
 assert abs(sum(ISCEDF_STAGE_WEIGHTS) - 1.0) < 1e-9, "ISCEDF_STAGE_WEIGHTS must sum to 1.0"
 
 
-def isic_stages() -> list[StageConfig]:
+def _hierarchical_collections_for(
+    collections_by_profile: dict[str, dict[str, str]], profile: str, standard: str,
+) -> dict[str, str]:
+    """Real, reproducible bug found and fixed 2026-08-27 (code review): a
+    bare `collections_by_profile[profile]` KeyError'd with no explanation
+    when `profile="enriched_e5large"` -- a real, argparse-accepted
+    PROFILE_MODEL_CONFIG key -- was passed to a hierarchical-store caller,
+    since that profile only has flat-collection entries (see
+    ISIC_FLAT_COLLECTIONS_BY_PROFILE / ISCEDF_FLAT_COLLECTIONS_BY_PROFILE
+    above). Fails closed with a clear, actionable message instead."""
+    if profile not in collections_by_profile:
+        raise ValueError(
+            f"{standard}: profile {profile!r} has no hierarchical collections "
+            f"(valid here: {sorted(collections_by_profile)}). If you meant the "
+            f"flat, enriched-official-text profile, use the flat store/CLI "
+            f"path instead (StandardFlatStore / build_standard_hierarchical_"
+            f"collections.py's --flat flag), not the hierarchical one."
+        )
+    return collections_by_profile[profile]
+
+
+def isic_stages(profile: str = "e5_small") -> list[StageConfig]:
     names = ("sections", "divisions", "groups", "classes")
+    collections = _hierarchical_collections_for(ISIC_COLLECTIONS_BY_PROFILE, profile, "ISIC Rev.4")
     return [
-        StageConfig(name=n, collection=ISIC_COLLECTIONS[n], weight=w)
+        StageConfig(name=n, collection=collections[n], weight=w)
         for n, w in zip(names, ISIC_STAGE_WEIGHTS)
     ]
 
 
-def iscedf_stages() -> list[StageConfig]:
+def iscedf_stages(profile: str = "e5_small") -> list[StageConfig]:
     names = ("broad_fields", "narrow_fields", "detailed_fields")
+    collections = _hierarchical_collections_for(ISCEDF_COLLECTIONS_BY_PROFILE, profile, "ISCED-F 2013")
     return [
-        StageConfig(name=n, collection=ISCEDF_COLLECTIONS[n], weight=w)
+        StageConfig(name=n, collection=collections[n], weight=w)
         for n, w in zip(names, ISCEDF_STAGE_WEIGHTS)
     ]
 
@@ -179,10 +281,12 @@ class StandardHierarchicalStore:
         embedder=None,
         host: Optional[str] = None,
         port: Optional[int] = None,
+        model_name: str = MODEL_NAME,
     ) -> None:
         self.standard = standard
         self.stages = stages
         self._required_collections = [s.collection for s in stages]
+        self._model_name = model_name
 
         if client is not None:
             self._client = client
@@ -343,7 +447,7 @@ class StandardHierarchicalStore:
         # exactly like a query-encoding failure, never raised to the
         # classifier. An injected embedder is never overwritten.
         if self._embedder is None:
-            self._embedder = SentenceTransformer(MODEL_NAME)
+            self._embedder = SentenceTransformer(self._model_name)
         prefixed = f"query: {text.strip()}"
         vec = self._embedder.encode(
             [prefixed], normalize_embeddings=True, show_progress_bar=False, batch_size=1,
@@ -357,37 +461,268 @@ class StandardHierarchicalStore:
 
 _isic_store: Optional[StandardHierarchicalStore] = None
 _iscedf_store: Optional[StandardHierarchicalStore] = None
+_isic_stores_by_profile: dict[str, StandardHierarchicalStore] = {}
+_iscedf_stores_by_profile: dict[str, StandardHierarchicalStore] = {}
 
 
-def get_isic_hierarchical_store(client=None, embedder=None) -> StandardHierarchicalStore:
-    """Production callers (no args): lazily-constructed, cached singleton,
+def get_isic_hierarchical_store(
+    client=None, embedder=None, profile: str = "e5_small",
+) -> StandardHierarchicalStore:
+    """Production callers (no args): lazily-constructed, cached singleton
+    for the given profile ("e5_small" is the default and today's only
+    production-referenced profile -- passing "e5_large" is additive, for
+    eval/comparison use, and never changes what the default call returns),
     same pattern as backend.rag.hierarchical_store.get_hierarchical_store().
     Tests (either arg passed): always a fresh, non-cached instance built
     from the supplied fake(s) -- never touches or warms the production
     singleton."""
     global _isic_store
+    model_name = PROFILE_MODEL_CONFIG[profile][0]
     if client is not None or embedder is not None:
         return StandardHierarchicalStore(
-            standard="ISIC Rev.4", stages=isic_stages(), hitl_threshold=HITL_THRESHOLD,
-            client=client, embedder=embedder,
+            standard="ISIC Rev.4", stages=isic_stages(profile), hitl_threshold=HITL_THRESHOLD,
+            client=client, embedder=embedder, model_name=model_name,
         )
-    if _isic_store is None:
-        _isic_store = StandardHierarchicalStore(
-            standard="ISIC Rev.4", stages=isic_stages(), hitl_threshold=HITL_THRESHOLD,
+    if profile == "e5_small":
+        if _isic_store is None:
+            _isic_store = StandardHierarchicalStore(
+                standard="ISIC Rev.4", stages=isic_stages(profile), hitl_threshold=HITL_THRESHOLD,
+                model_name=model_name,
+            )
+        return _isic_store
+    if profile not in _isic_stores_by_profile:
+        _isic_stores_by_profile[profile] = StandardHierarchicalStore(
+            standard="ISIC Rev.4", stages=isic_stages(profile), hitl_threshold=HITL_THRESHOLD,
+            model_name=model_name,
         )
-    return _isic_store
+    return _isic_stores_by_profile[profile]
 
 
-def get_iscedf_hierarchical_store(client=None, embedder=None) -> StandardHierarchicalStore:
+def get_iscedf_hierarchical_store(
+    client=None, embedder=None, profile: str = "e5_small",
+) -> StandardHierarchicalStore:
     """See get_isic_hierarchical_store()'s docstring -- identical contract."""
     global _iscedf_store
+    model_name = PROFILE_MODEL_CONFIG[profile][0]
     if client is not None or embedder is not None:
         return StandardHierarchicalStore(
-            standard="ISCED-F 2013", stages=iscedf_stages(), hitl_threshold=HITL_THRESHOLD,
-            client=client, embedder=embedder,
+            standard="ISCED-F 2013", stages=iscedf_stages(profile), hitl_threshold=HITL_THRESHOLD,
+            client=client, embedder=embedder, model_name=model_name,
         )
-    if _iscedf_store is None:
-        _iscedf_store = StandardHierarchicalStore(
-            standard="ISCED-F 2013", stages=iscedf_stages(), hitl_threshold=HITL_THRESHOLD,
+    if profile == "e5_small":
+        if _iscedf_store is None:
+            _iscedf_store = StandardHierarchicalStore(
+                standard="ISCED-F 2013", stages=iscedf_stages(profile), hitl_threshold=HITL_THRESHOLD,
+                model_name=model_name,
+            )
+        return _iscedf_store
+    if profile not in _iscedf_stores_by_profile:
+        _iscedf_stores_by_profile[profile] = StandardHierarchicalStore(
+            standard="ISCED-F 2013", stages=iscedf_stages(profile), hitl_threshold=HITL_THRESHOLD,
+            model_name=model_name,
         )
-    return _iscedf_store
+    return _iscedf_stores_by_profile[profile]
+
+
+# ---------------------------------------------------------------------------
+# Flat store -- single-collection, direct retrieval (no parent-chain beam
+# traversal). See the "Flat (single-collection...)" comment block above for
+# why this exists. Deliberately NOT built on HierarchyBeamSearchEngine,
+# which requires >= 2 stages (a single-stage config is explicitly out of
+# its scope, per its own module docstring) -- this mirrors the simpler,
+# direct-query shape of HierarchicalISCOStore._flat_search() instead.
+# ---------------------------------------------------------------------------
+
+class StandardFlatStore:
+    """Flat retrieval for ONE standard's leaf-level collection (ISIC Rev.4
+    classes or ISCED-F 2013 detailed fields). Same readiness/embedding
+    contract as StandardHierarchicalStore (explicit ready/unavailable_reason,
+    lazy embedder construction, never a fabricated result), but queries a
+    single collection directly with no parent_code filter -- the flat
+    counterpart to ISCO-08's own _flat_search()."""
+
+    def __init__(
+        self,
+        standard: str,
+        collection: str,
+        hitl_threshold: float = HITL_THRESHOLD,
+        client: Optional[QdrantClient] = None,
+        embedder=None,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        model_name: str = MODEL_NAME,
+    ) -> None:
+        self.standard = standard
+        self.collection = collection
+        self.hitl_threshold = hitl_threshold
+        self._model_name = model_name
+
+        if client is not None:
+            self._client = client
+        else:
+            _host = host or os.getenv("QDRANT_HOST", "localhost")
+            _port = int(port or os.getenv("QDRANT_PORT", 6333))
+            self._client = QdrantClient(host=_host, port=_port)
+
+        self._unavailable_reason: str = ""
+        try:
+            existing = {c.name for c in self._client.get_collections().collections}
+            self.ready = collection in existing
+            if not self.ready:
+                self._unavailable_reason = (
+                    f"Required Qdrant collection missing for {self.standard} flat retrieval: "
+                    f"{collection!r}. Build it with 'python -m backend.rag."
+                    f"build_standard_hierarchical_collections --standard <isic|iscedf> "
+                    f"--flat --execute' before this store can run a real search."
+                )
+                _logger.warning(
+                    "StandardFlatStore(%s): required Qdrant collection missing: %s. "
+                    "search() will report ready=False and never attempt a query.",
+                    self.standard, collection,
+                )
+        except Exception as exc:
+            self.ready = False
+            self._unavailable_reason = (
+                f"Qdrant readiness check failed for {self.standard} flat store: {exc}."
+            )
+            _logger.warning(
+                "StandardFlatStore(%s): Qdrant readiness check failed: %s.",
+                self.standard, exc,
+            )
+
+        self._embedder = embedder
+
+    def search(self, text: str, top_k: int = 5) -> StandardHierarchyResult:
+        if not self.ready:
+            return StandardHierarchyResult(
+                code="", label_en="", label_ar="", confidence=0.0,
+                stage_confidences={}, hierarchy_path=[], top_candidates=[],
+                hitl_required=True, ready=False,
+                unavailable_reason=self._unavailable_reason,
+            )
+
+        text = (text or "").strip()
+        if not text:
+            return StandardHierarchyResult(
+                code="", label_en="", label_ar="", confidence=0.0,
+                stage_confidences={}, hierarchy_path=[], top_candidates=[],
+                hitl_required=True, ready=True,
+                unavailable_reason="empty input text",
+            )
+
+        try:
+            query_vec = self._embed_query(text)
+        except Exception as exc:
+            _logger.warning(
+                "StandardFlatStore(%s): embedding failed: %s.", self.standard, exc,
+            )
+            return StandardHierarchyResult(
+                code="", label_en="", label_ar="", confidence=0.0,
+                stage_confidences={}, hierarchy_path=[], top_candidates=[],
+                hitl_required=True, ready=True,
+                unavailable_reason=f"{self.standard} flat query embedding failed: {exc}",
+            )
+
+        try:
+            response = self._client.query_points(
+                collection_name=self.collection, query=query_vec, limit=top_k, with_payload=True,
+            )
+            hits = response.points
+        except Exception as exc:
+            _logger.warning(
+                "StandardFlatStore(%s): query failed: %s.", self.standard, exc,
+            )
+            return StandardHierarchyResult(
+                code="", label_en="", label_ar="", confidence=0.0,
+                stage_confidences={}, hierarchy_path=[], top_candidates=[],
+                hitl_required=True, ready=True,
+                unavailable_reason=f"{self.standard} flat query failed: {exc}",
+            )
+
+        if not hits:
+            return StandardHierarchyResult(
+                code="", label_en="", label_ar="", confidence=0.0,
+                stage_confidences={}, hierarchy_path=[], top_candidates=[],
+                hitl_required=True, ready=True,
+                unavailable_reason=f"{self.standard} flat search returned no candidates for this query",
+            )
+
+        best = hits[0]
+        score = round(float(best.score), 4)
+        code = best.payload.get("code", "")
+
+        top_candidates = [
+            EngineCandidate(
+                code=hit.payload.get("code", ""),
+                label_en=extract_label_en(hit.payload),
+                label_ar=hit.payload.get("label_ar", ""),
+                score=round(float(hit.score), 4),
+            )
+            for hit in hits
+        ]
+
+        return StandardHierarchyResult(
+            code=code,
+            label_en=extract_label_en(best.payload),
+            label_ar=best.payload.get("label_ar", ""),
+            confidence=score,
+            stage_confidences={"flat": score},
+            hierarchy_path=[code],
+            top_candidates=top_candidates,
+            hitl_required=score < self.hitl_threshold,
+            ready=True,
+            unavailable_reason="",
+        )
+
+    def _embed_query(self, text: str) -> list[float]:
+        if self._embedder is None:
+            self._embedder = SentenceTransformer(self._model_name)
+        prefixed = f"query: {text.strip()}"
+        vec = self._embedder.encode(
+            [prefixed], normalize_embeddings=True, show_progress_bar=False, batch_size=1,
+        )
+        return vec[0].tolist()
+
+
+_isic_flat_stores_by_profile: dict[str, StandardFlatStore] = {}
+_iscedf_flat_stores_by_profile: dict[str, StandardFlatStore] = {}
+
+
+def get_isic_flat_store(client=None, embedder=None, profile: str = "e5_small") -> StandardFlatStore:
+    """Same DI/caching contract as get_isic_hierarchical_store(): production
+    callers (no args) get a lazily-constructed, per-profile cached
+    singleton; either client=/embedder= passed means a fresh instance for
+    tests. New in this session -- no prior default behaviour to preserve,
+    so "e5_small" is chosen only for naming consistency with the
+    hierarchical factories; nothing calls this without an explicit
+    profile= today."""
+    model_name = PROFILE_MODEL_CONFIG[profile][0]
+    collection = ISIC_FLAT_COLLECTIONS_BY_PROFILE[profile]
+    if client is not None or embedder is not None:
+        return StandardFlatStore(
+            standard="ISIC Rev.4", collection=collection, hitl_threshold=HITL_THRESHOLD,
+            client=client, embedder=embedder, model_name=model_name,
+        )
+    if profile not in _isic_flat_stores_by_profile:
+        _isic_flat_stores_by_profile[profile] = StandardFlatStore(
+            standard="ISIC Rev.4", collection=collection, hitl_threshold=HITL_THRESHOLD,
+            model_name=model_name,
+        )
+    return _isic_flat_stores_by_profile[profile]
+
+
+def get_iscedf_flat_store(client=None, embedder=None, profile: str = "e5_small") -> StandardFlatStore:
+    """See get_isic_flat_store()'s docstring -- identical contract."""
+    model_name = PROFILE_MODEL_CONFIG[profile][0]
+    collection = ISCEDF_FLAT_COLLECTIONS_BY_PROFILE[profile]
+    if client is not None or embedder is not None:
+        return StandardFlatStore(
+            standard="ISCED-F 2013", collection=collection, hitl_threshold=HITL_THRESHOLD,
+            client=client, embedder=embedder, model_name=model_name,
+        )
+    if profile not in _iscedf_flat_stores_by_profile:
+        _iscedf_flat_stores_by_profile[profile] = StandardFlatStore(
+            standard="ISCED-F 2013", collection=collection, hitl_threshold=HITL_THRESHOLD,
+            model_name=model_name,
+        )
+    return _iscedf_flat_stores_by_profile[profile]

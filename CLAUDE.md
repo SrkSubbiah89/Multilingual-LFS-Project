@@ -80,7 +80,7 @@ docker compose -f docker/docker-compose.yml up --build
 | Frontend (Next.js 14) | http://localhost:3000 | 4 pages: `/`, `/chat`, `/report`, `/supervisor_review` — all confirmed loading |
 | Backend (FastAPI) | http://localhost:8000 | `/docs` (Swagger), `/ready`, `/health`, `/debug/isco/{job_title}` — all confirmed responding |
 | PostgreSQL 15 | internal :5432 | 11 tables (see below), Alembic migrations, confirmed at head as of 2026-08-12 |
-| Qdrant | http://localhost:6333 | **22 live collections** (corrected 2026-08-24 from a stale "10" — that number was never updated as ISIC/ISCED-F and the e5-large profile were added later in this same document; re-counted directly via a live `GET /collections` call): 5 legacy ISCO-08 (`isco_occupations` + major/submajor/minor/unit), 5 `official_ilo2021_v1` (major/submajor/minor/unit + flat-unit), 5 `official_ilo2021_v1_e5large` (same 5, e5-large embeddings), 4 `isic_rev4_*` (sections/divisions/groups/classes), 3 `iscedf2013_*` (broad/narrow/detailed fields) |
+| Qdrant | http://localhost:6333 | **43 live collections** (corrected 2026-08-25, re-counted directly via a live `GET /collections` call — up from this same day's earlier "41" count, since the real-official-source enrichment work documented below adds 2 more `_flat_enriched_e5large` collections): 5 legacy ISCO-08 (`isco_occupations` + major/submajor/minor/unit), 5 `official_ilo2021_v1`, 5 `official_ilo2021_v1_e5large`, 5 `official_ilo2021_v1_enriched`, 5 `official_ilo2021_v1_enriched_e5large` (each of the 4 ISCO-08 profiles = major/submajor/minor/unit + flat-unit), 4 `isic_rev4_*` (sections/divisions/groups/classes), 4 `isic_rev4_*_e5large` (same 4, e5-large), 1 `isic_rev4_classes_flat_e5large`, 1 `isic_rev4_classes_flat_enriched_e5large` (121 points — 134 minus 13 disclosed non-standard codes, see below), 3 `iscedf2013_*` (broad/narrow/detailed fields), 3 `iscedf2013_*_e5large` (same 3, e5-large), 1 `iscedf2013_detailed_fields_flat_e5large`, 1 `iscedf2013_detailed_fields_flat_enriched_e5large` (61 points — 63 minus 2 disclosed non-standard codes) |
 | Redis 7 | internal :6379 | confirmed healthy |
 | Ollama | http://localhost:11434 | confirmed healthy; **7 models present** (corrected 2026-08-24, re-checked live via `GET /api/tags` — the prior 3-model list was missing `qwen2.5:3b`, which Module J's own findings elsewhere in this document actively depend on, plus 3 more): `llama3.2:1b`, `llama3.2:latest`, `gemma3:4b`, `qwen2.5:3b`, `aya:latest`, `hf.co/CohereLabs/tiny-aya-global-GGUF:Q4_K_M`, `hf.co/CohereLabs/tiny-aya-fire-GGUF:Q4_K_M` |
 
@@ -576,6 +576,681 @@ dedicated passing tests.
   confidence alone). ISCED's retry is scoped to the FIELD dimension only
   — level stays deterministic. Default `False`, zero behavioural change
   for existing callers. 10 new tests.
+- **ISIC/ISCED-F e5-large embedding profile, 2026-08-25** — prompted
+  directly by "close the ISIC/ISCED gap with ISCO-08." Checked before
+  building anything: does the ISCO-08 "magnet effect" catalogue-text bug
+  (see the 32.55% enrichment finding above) apply here too? **No** — real
+  investigation, not assumed. `_ISIC_DATA`/`_ISCED_FIELDS` already carry
+  real multilingual keyword strings per entry, and
+  `backend/rag/hierarchy_nodes.py` already aggregates descendant keywords
+  bottom-up into every internal node's index text — the richness ISCO-08's
+  catalogue was missing before enrichment. The real, verified gap was
+  different: ISIC/ISCED-F's hierarchical store had no e5-large option at
+  all (`MODEL_NAME` was hardcoded to e5-small in
+  `backend/rag/standard_hierarchical_store.py`, no profile concept
+  existed), unlike ISCO-08's own store. Closed additively, same pattern as
+  every ISCO-08 profile: `PROFILE_MODEL_CONFIG`,
+  `ISIC_COLLECTIONS_BY_PROFILE`/`ISCEDF_COLLECTIONS_BY_PROFILE`, and a
+  `profile=` parameter on `isic_stages()`/`iscedf_stages()` and both
+  `get_*_hierarchical_store()` factories; `ISIC_COLLECTIONS`/
+  `ISCEDF_COLLECTIONS` (no suffix) remain exact aliases of the `e5_small`
+  profile, so every existing caller — including both classifiers'
+  `_classify_hierarchical()`, which still calls the factories with no
+  `profile=` argument — is byte-for-byte unaffected. Built and verified
+  live: `isic_rev4_{sections,divisions,groups,classes}_e5large` (341
+  nodes total) and `iscedf2013_{broad,narrow,detailed}_fields_e5large` (99
+  nodes). Direct store-level verification (not through the classifiers,
+  to avoid touching production code without evaluation evidence behind
+  it): real queries against both new stores returned `ready=True`,
+  `unavailable_reason==""`, and semantically correct codes — e.g. "I build
+  mobile apps at a software company" → ISIC `6201` (Computer programming
+  activities, the exact example in `isic_classifier.py`'s own docstring),
+  "construction labourer on a residential building site" → ISIC `4100`
+  (Construction of buildings), "Bachelor's degree in computer science" →
+  ISCED-F `0613`. Proof the collections are live and serving, **not an
+  accuracy claim**. 26 new tests
+  (`backend/tests/test_standard_hierarchical_store_e5large_profile.py`
+  plus 2 in `test_build_standard_hierarchical_collections.py`); full
+  suite re-run with zero regressions. **The classifiers were not changed
+  and do not use this profile in production** — infrastructure parity
+  with ISCO-08, not a production switch.
+
+  **What this does NOT close, and no amount of further engineering can**:
+  unlike ISCO-08, there is still no labelled evaluation dataset for
+  ISIC/ISCED-F. WISCO (every ISCO-08 accuracy number in this document) is
+  occupation-only — no industry or field-of-study gold labels. The only
+  labelled data touching ISIC/ISCED-F anywhere in this repo is
+  `eval/fixtures/synthetic_lfs_intake_package/synthetic_test_set.csv` — 5
+  rows, every field explicitly prefixed `"SYNTHETIC EXAMPLE"`, built for
+  Module F's pre-fill stress test, and missing ISCED-F **field** gold
+  labels entirely (only the independent ISCED **level** dimension is
+  present). Deliberately not used as an accuracy source — 5 synthetic
+  rows dressed up as a benchmark would be exactly the kind of
+  overclaiming this document exists to prevent. So the honest state stays:
+  ISCO-08 has a real, full-scale, best-tested number (40.95%); ISIC/ISCED-F
+  have real, tested, now-at-parity infrastructure and a real "method used"
+  label, but **no accuracy number exists or can be honestly produced for
+  them without new labelled data** — see
+  `Documentation/Conference_I_Reviewer_2/
+  ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md`'s new "Why this
+  remains the one gap infrastructure cannot close" section for the full
+  writeup.
+- **ISIC/ISCED-F flat retrieval, 2026-08-25, same day** — a direct,
+  explicit user correction to the entry above: "we need to use the same
+  implementation what ISCO08 is implemented, because its novel
+  contribution." Checked what that actually requires before building:
+  ISCO-08's own **best-tested, headline configuration is FLAT retrieval**
+  (40.95%), not hierarchical — ISCO-08's hierarchical retrieval measurably
+  **underperformed** its own flat retrieval (10.35% vs 21.19%, see the
+  WISCO Tier-1 table above). So the hierarchical-only path the e5-large
+  entry above added, on its own, did not actually mirror ISCO-08's real
+  best implementation — it mirrored ISCO-08's *worse* one. Closed for
+  real: `backend/rag/standard_hierarchical_store.py` gained
+  `StandardFlatStore` (single-collection direct query, no parent-chain
+  traversal — deliberately not built on `HierarchyBeamSearchEngine`,
+  which requires ≥2 stages by its own docstring) plus
+  `ISIC_FLAT_COLLECTIONS_BY_PROFILE`/`ISCEDF_FLAT_COLLECTIONS_BY_PROFILE`
+  and `get_isic_flat_store()`/`get_iscedf_flat_store()`; the build script
+  gained `--flat`, reusing the SAME leaf-level derived nodes as the
+  hierarchical build's own final stage (no new node-derivation logic —
+  matches ISCO-08's own precedent of building "flat" and hierarchical-leaf
+  collections from identical source records). Both classifiers gained
+  `classify(text, method=ISIC_FLAT_RETRIEVAL / ISCEDF_FLAT_RETRIEVAL)`,
+  **hardcoded internally to `profile="e5_large"`** — not a caller choice
+  — because flat+e5-large specifically is the recipe being mirrored, not
+  flat-with-whatever-model. Built and verified live:
+  `isic_rev4_classes_flat_e5large` (134 points) and
+  `iscedf2013_detailed_fields_flat_e5large` (63 points). Full
+  section/division/group (ISIC) and broad/narrow (ISCED-F) ancestry is
+  reconstructed via new `_ENTRY_BY_CLASS`/`_ENTRY_BY_DETAILED` lookups,
+  since the flat result only ever carries the single leaf code. 34 new
+  tests (`test_standard_flat_store.py` plus additions to
+  `test_isic_classifier.py`/`test_isced_classifier.py`/
+  `test_build_standard_hierarchical_collections.py`); full suite re-run,
+  zero regressions. `classify(text)` (no `method=`) is byte-for-byte
+  unchanged for both classifiers — same discipline as every prior
+  addition, infrastructure/architecture parity, not a production-default
+  switch. **What this does not, and cannot, resolve**: whether flat (or
+  hierarchical) retrieval is actually more accurate than the existing
+  keyword/LLM pipeline for ISIC or ISCED-F is still genuinely untested —
+  the no-labelled-data blocker above is unchanged by this. This closes
+  the *implementation-parity* gap the user pointed at (the architecture
+  diagram showing ISCO-08 with a best-tested RAG config and ISIC/ISCED-F
+  with only "keyword match"), not an accuracy gap — those remain two
+  different, correctly-distinguished things.
+- **ISIC/ISCED-F real official-source enrichment + a genuine magnet-effect
+  regression found and fixed, 2026-08-25, same day** — a direct user
+  instruction to double-check the "already rich, no fix needed" claim two
+  entries above, before moving on. Re-verified rather than re-asserted:
+  measured ISIC/ISCED-F's keyword text objectively (mean 11.4 / 9.7 words)
+  against the REAL ISCO-08 official workbook's actual enriched content
+  (50-150+ word prose definitions + real example lists) — not against
+  ISCO-08's original bug state as the earlier comparison had done. The
+  richness gap was real. Checked whether an equivalent official source
+  even exists for ISIC/ISCED-F (it hadn't been checked before dismissing
+  the idea) — it does: the UN Statistics Division's ISIC Rev.4 structure
+  publication and UNESCO UIS's ISCED-F 2013 detailed field descriptions,
+  both real, both public. Downloaded both (`eval/local_catalogues/
+  isic_rev4_2008/`, `eval/local_catalogues/iscedf_2013/`), built a
+  reproducible parser (`eval/parse_official_isic_iscedf_definitions.py`,
+  using `pdfplumber`, already a dependency) extracting real per-code
+  definitions/examples — 419/419 ISIC classes and 92 ISCED-F fields parsed
+  correctly, verified via multiple full read-throughs against the raw PDF
+  text, not just spot-checked.
+
+  **A second, larger, unplanned finding surfaced by this same
+  verification**: cross-checking `_ISIC_DATA`/`_ISCED_FIELDS`'s already-
+  embedded codes against the real official document found 13 ISIC codes
+  and 2 ISCED-F codes that **do not exist in the official standard at
+  all** — e.g. `_ISIC_DATA`'s `"7311 Advertising agencies"` vs the real
+  official `"7310 Advertising"`; `"9001 Performing arts"`/`"9003 Artistic
+  creation"` vs the real single class `"9000 Creative, arts and
+  entertainment activities"` (no 9001/9003 split exists in ISIC Rev.4 at
+  all). The same class of bug Task 20/21's primary-source audit found and
+  fixed in the ISCO-08 catalogue (19 non-standard codes there) — genuinely
+  new here, not previously known, and **not fixed in this pass** (deciding
+  the correct replacement code for each requires its own careful audit,
+  out of scope for a text-enrichment task). Disclosed precisely via
+  `backend/rag/official_source_enrichment.py`'s `NON_STANDARD_ISIC_CODES`
+  / `NON_STANDARD_ISCEDF_CODES`.
+
+  Built `backend/rag/official_source_enrichment.py`
+  (`build_enriched_text()`, real definition+examples where a match exists,
+  falls back to the existing title+keywords text otherwise — never
+  fabricates), wired into a new `"enriched_e5large"` profile on the flat
+  collections only (mirrors the specific flat+enriched+e5-large recipe
+  that IS ISCO-08's actual best-tested config). **`ISIC_FLAT_RETRIEVAL`/
+  `ISCEDF_FLAT_RETRIEVAL` now use this profile** (changed from the plain
+  `e5_large` profile the prior entry built) — this is genuinely the same
+  implementation ISCO-08 uses, not just the same architecture family.
+
+  **Live-tested before declaring this done, per this project's own
+  standing discipline — and a real regression was caught doing so**: the
+  first live build (all 134/63 codes included, non-standard ones kept
+  with their thin fallback text) showed a genuine magnet effect —
+  "I build mobile apps at a software company" and "construction labourer
+  on a residential building site" both wrongly matched non-standard code
+  `8899` instead of their real codes (`6201`, `4100`); a 15-query broad
+  smoke test showed 3 of the 13 non-standard codes actively capturing
+  unrelated queries. Exact same mechanism as ISCO-08's own pre-enrichment
+  magnet bug (see the 32.55% enrichment finding above) — once every OTHER
+  code's text got much richer, the already-thin non-standard entries stood
+  out as disproportionately generic-looking matches. **Fixed by excluding
+  `NON_STANDARD_ISIC_CODES`/`NON_STANDARD_ISCEDF_CODES` from this specific
+  collection entirely** (not a coverage loss in any meaningful sense,
+  since these codes were already confirmed not to correspond to any real
+  official code — a query that would have hit one now correctly falls
+  through to its real neighbouring code, e.g. excluding `7311` means
+  "advertising agency" queries now correctly land on `7310`, the actual
+  official code for the same concept). Rebuilt both collections (121/61
+  points); re-ran the same 15-query smoke test — zero repeated codes
+  across all 15 queries (every prior magnet resolved), remaining
+  differences are ordinary adjacent-category ambiguity (e.g. "nurse" →
+  `8690` Other human health activities vs the expected `8610` Hospital
+  activities), not a systemic bug. Live-verified end-to-end through the
+  real classifiers, not just the store layer.
+
+  60 new tests (`test_official_source_enrichment.py` plus additions to
+  `test_build_standard_hierarchical_collections.py`); full suite re-run,
+  zero regressions. **Still cannot be turned into an accuracy claim** — no
+  labelled ISIC/ISCED-F evaluation data exists, unchanged by any of this
+  work. What changed: ISIC/ISCED-F's `ISIC_FLAT_RETRIEVAL`/
+  `ISCEDF_FLAT_RETRIEVAL` methods are now genuinely, not just
+  architecturally, the same implementation ISCO-08's own best-tested
+  config uses — real official enriched text, e5-large embeddings, flat
+  retrieval — with a real, live-caught, live-fixed data-quality issue
+  along the way. `classify(text)` (no `method=`) remains byte-for-byte
+  unchanged for both classifiers throughout.
+- **A real, if synthetic and incomplete, ISIC/ISCED-F accuracy number now
+  exists, 2026-08-26/27** — directly supersedes the "still cannot be
+  turned into an accuracy claim" line in the entry directly above. Prompted
+  by an explicit instruction to generate a real evaluation dataset via a
+  standard, defensible synthetic-data methodology, covering all 5 project
+  languages, since WISCO doesn't cover these standards and — at the time
+  this work started — the IPUMS correspondence (see below) had not yet
+  received a reply.
+
+  **Method**: taxonomy-grounded LLM paraphrase data augmentation — a real,
+  standard technique for bootstrapping labelled evaluation data from a
+  classification schema's own official definitions when real annotated
+  examples don't exist (the same family used across NLP to build
+  taxonomy-classification benchmarks from a schema document). Every
+  generated example is grounded in the real official definition/examples
+  from `backend/rag/official_source_enrichment.py` (the same data behind
+  the `enriched_e5large` profile above) and explicitly instructed to
+  paraphrase into casual respondent language, not echo official
+  terminology — so a keyword classifier can't trivially "win" by matching
+  the source text back to itself. New script:
+  `eval/generate_synthetic_isic_iscedf_benchmark.py`. Full disclosure in
+  that script's own docstring: **not real respondent data, not a
+  substitute for real correspondence-sourced data or the Module E pilot**
+  — genuinely useful for regression-testing and directional comparison
+  between methods, never to be cited as WISCO-equivalent or pilot-grade
+  accuracy.
+
+  **IPUMS International correspondence — closed, 2026-08-27, definitive
+  negative answer, not a non-reply.** The line above ("had not yet
+  received a reply") was true only when the synthetic-data work started;
+  a real reply arrived and was verified before this document was updated.
+  Full transcript: `Documentation/Phase_2/Week_1/
+  ipums_correspondence_log.md`. Sivarama emailed IPUMS User Support
+  2026-08-24 asking specifically whether the Egypt/Jordan (Arabic), India
+  (Hindi), and Pakistan (Urdu) samples distribute original verbatim
+  occupation/industry write-in text, or only final coded values.
+  Isabel Pastoor (IPUMS User Support) replied 2026-08-25 (two messages,
+  the second after consulting the IPUMS International team directly):
+  **IPUMS International does not have access to original string variables
+  for occupation, industry, or education for these samples at all** — only
+  coded variables are ever received from national statistical agencies,
+  and even where a string variable exists internally for some samples, data-
+  provider agreements preclude IPUMS from ever distributing it to users.
+  This is a real, sourced dead end — the same class of finding as Module
+  D's ISCO-08 Vol. I crosswalk search (a real check that came back
+  negative, not an unanswered question) — and it **closes the IPUMS
+  avenue for this project**, not just for this correspondence. It does
+  not change the synthetic benchmark's own disclosed status above. The
+  two remaining real (non-synthetic) paths, neither attempted in this
+  pass: extending Module E's pilot scope to capture industry/education
+  alongside occupation, or a direct approach to the relevant national
+  statistical agencies (Isabel Pastoor's own suggestion) — a materially
+  higher-effort path with its own likely ethics-consideration
+  requirements, not something this correspondence itself provides.
+
+  **Model selection, and a real quality-driven correction along the
+  way**: a first attempt used local Ollama (`qwen2.5:3b`) exclusively.
+  Directly inspecting the output caught real, disqualifying problems —
+  Arabic generations mixed in literal Chinese characters mid-sentence
+  (e.g. "أنا程序员"), Urdu output was grammatically broken, and a larger
+  multilingual-specialist model (`aya:latest`) timed out (>120s/call) on
+  this hardware. Switched to Groq (`groq/openai/gpt-oss-120b` — already
+  used successfully for ISCO-08 reranking) after directly comparing
+  output: clean, natural text in every language tested, ~1-2s/call.
+
+  **Coverage actually achieved, and why it's incomplete — disclosed, not
+  hidden**: target was 1,092 rows (182 matched codes × 6 languages × 1
+  example). Groq's real, confirmed constraints — first an 8000
+  tokens-PER-MINUTE ceiling (fixed via proactive request pacing plus
+  retry/backoff, both real code, not just intent), then, after roughly 90
+  minutes of combined generation across two passes, a hard **200,000
+  tokens-PER-DAY** ceiling (confirmed directly from the API's own error:
+  "Used 199,703, Limit 200,000") — capped the real total at **372 rows**
+  (34% of target). A same-session attempt to route the remainder through
+  OpenRouter's free-tier models failed outright (every tested free model
+  slug on this account returned 404/unavailable). This is the same class
+  of constraint as this document's own already-disclosed Gemini-quota
+  precedent — marked invalid/incomplete honestly rather than presented as
+  full coverage. Real per-language counts in the final 372: en 66, hi 69,
+  ur 68, tl 63, ar 58, ar-gulf 48 — reasonably even, not concentrated in
+  one language. A resume/fill-in capability
+  (`--skip-existing`, deterministic case-ID matching) was built into the
+  generator specifically so a future session can top up the remaining 720
+  rows once the daily quota resets, without re-spending budget on the 372
+  that already succeeded.
+
+  **The result** (`eval/run_synthetic_isic_iscedf_eval.py`, real computed
+  numbers over the full 372-row set, both standards, all 6 languages,
+  Wilson 95% CI, McNemar exact test):
+
+  | | n | legacy keyword/LLM | flat_retrieval (enriched_e5large) | McNemar p |
+  |---|---:|---:|---:|---:|
+  | Overall | 372 | 13.98% [10.82%, 17.87%] | **83.06%** [78.92%, 86.53%] | 9.37×10⁻⁶⁸ |
+  | ISIC | 254 | 12.99% | 80.71% | 2.89×10⁻⁴⁴ |
+  | ISCED-F | 118 | 16.10% | 88.14% | 1.14×10⁻²⁴ |
+  | en | 66 | 31.82% | 86.36% | 5.63×10⁻⁹ |
+  | ar | 58 | 17.24% | 84.48% | 3.82×10⁻¹¹ |
+  | ar-gulf | 48 | 22.92% | 79.17% | 4.63×10⁻⁷ |
+  | hi | 69 | 1.45% | 84.06% | 2.08×10⁻¹⁶ |
+  | ur | 68 | 4.41% | 83.82% | 1.58×10⁻¹⁵ |
+  | tl | 63 | 9.52% | 79.37% | 1.14×10⁻¹³ |
+
+  A large, statistically overwhelming gap in every breakdown — the legacy
+  keyword pipeline is essentially non-functional on Hindi/Urdu/Tagalog
+  (1-10%, since `_ISIC_DATA`/`_ISCED_FIELDS`'s hand-built "keywords" field
+  has virtually no coverage in those languages), while `flat_retrieval`
+  (multilingual e5-large embeddings) stays in a consistent 79-88% band
+  across every one of the 6 languages. **Read honestly, per this
+  document's own discipline**: this measures how well each method
+  recovers the class its own LLM-generated prompt was built from — a real
+  signal, the best available in the current absence of real respondent
+  data, but not equivalent to a WISCO-style external validation. The
+  directional conclusion (RAG-based multilingual retrieval dramatically
+  outperforms English-only keyword matching for non-English LFS
+  respondents) is exactly what the project's architecture already
+  predicted; this is the first real, computed number behind that
+  prediction for these two standards.
+
+  **A genuine bonus finding — closes a previously-blocked gap (Module G,
+  "multilingual validation")**: Module G's planned Gulf Arabic dialect-
+  normalization A/B test had been blocked because WISCO's Arabic data was
+  confirmed to have zero dialectal content — no real Gulf-dialect text
+  existed to test `LanguageProcessor._normalise_gulf_arabic()`'s 79-term
+  dictionary against. The `ar-gulf` rows here are genuine dialectal text
+  (LLM-instructed to use colloquial Khaleeji Arabic; confirmed using real
+  Gulf markers like "إحنا" vs. MSA "نحن"). New script:
+  `eval/gulf_arabic_dialect_normalization_ab_test.py`. Real result on the
+  full 48 ar-gulf rows: the marker dictionary's detection rate is
+  **12.5% (6/48)** — most LLM-generated Gulf dialect text doesn't trip any
+  of the 79 hand-curated markers, a real, disclosed, low-coverage finding.
+  Classification accuracy was **byte-identical with and without
+  normalization** (38/48 = 79.17% both ways, McNemar b=0 c=0 p=1) — the
+  multilingual e5-large embedding model already handles Gulf dialect
+  vocabulary robustly without help from the hand-built normalizer, for
+  this specific downstream task. This extends the project's now-repeated
+  "extra processing doesn't move the needle" pattern (LLM reranking, 6
+  independent nulls; corrective retry, 1 null) to dialect normalization —
+  a 7th instance, on real generated dialectal text, in an area that
+  previously had NO real data to test against at all.
+
+  19 new tests across `test_generate_synthetic_isic_iscedf_benchmark.py`
+  and `test_run_synthetic_isic_iscedf_eval.py` (hermetic — prompt
+  construction, definition truncation, resume/skip-existing logic, and
+  the accuracy-reporting arithmetic against hand-computed fixture values;
+  no live LLM call in the test suite itself); full suite re-run, zero
+  regressions.
+
+  **2026-08-27, same effort continued** — the Groq daily quota reset
+  (confirmed live: a trivial test call succeeded again), so the
+  `--skip-existing` resume path was used to top up the missing (code,
+  language) pairs a user check had correctly flagged (only 4 of 131
+  populated codes had all 6 languages at the 372-row stage). A second
+  fill-in pass added 77 more rows before hitting the same daily TPD
+  ceiling again (confirmed via the identical error message, now at
+  199,632/200,000) — **final real total: 449/1,092 rows (41%
+  coverage)**, 10 of 143 populated codes now have all 6 languages.
+  Per-language counts: hi 88, ur 78, en 78, tl 73, ar 71, ar-gulf 61.
+
+  **A real infrastructure bug caught and corrected, not glossed over**:
+  the first evaluation re-run on the enlarged 449-row set, and the first
+  Gulf A/B re-run, were both launched concurrently and both silently
+  degraded — many `StandardFlatStore` calls failed with a genuine OS-level
+  error ("The paging file is too small for this operation to complete",
+  Windows error 1455) and Ollama's local server also returned HTTP 500s.
+  Root cause, confirmed directly (`docker stats`, `wmic OS get
+  FreePhysicalMemory`): this machine has only ~8GB total RAM; Qdrant alone
+  now holds ~1.3GB resident (41 collections, several with 1024-dim
+  e5-large vectors, built across this session's work), leaving too little
+  headroom for two concurrently-loaded `multilingual-e5-large`
+  `SentenceTransformer` instances (~1-1.5GB each) plus CrewAI/local-LLM
+  overhead. The degraded run's Gulf-Arabic accuracy (45.90%, badly out of
+  line with the clean 79-80% band) was the tell. **Fixed by re-running
+  both evaluations strictly sequentially** (never concurrently) —
+  confirmed zero paging errors on the clean re-runs, and the resulting
+  numbers landed close to the earlier smaller-sample results, as expected
+  for a real, stable effect: **overall 82.85% (372/449) vs. 13.14%
+  (59/449), McNemar p≈5.5×10⁻⁸³** (vs. 83.06%/13.98% at n=372 — consistent
+  within sampling noise); Gulf A/B **80.33% (49/61) identical with/without
+  normalization** (vs. 79.17% at n=48; detection rate 13.11%, vs. 12.5%).
+  **A standing, disclosed operational constraint for this session's local
+  dev machine, not fixed at the OS level**: further concurrent heavy
+  eval/generation work on this machine should be run strictly
+  sequentially, one memory-heavy process at a time, given the real,
+  confirmed low-RAM ceiling.
+
+  **Code review, 2026-08-27, same effort continued** — a requested
+  line-by-line review of the whole ISIC/ISCED-F flat-retrieval diff
+  (multi-agent, 4 independent angles). Every finding was independently
+  re-verified before being acted on, not accepted at face value:
+
+  - **Real, reproduced bug, fixed**: `python -m backend.rag.
+    build_standard_hierarchical_collections --standard isic --dry-run
+    --profile enriched_e5large` (a documented, argparse-valid flag
+    combination, just missing `--flat`) crashed with a bare, unexplained
+    `KeyError: 'enriched_e5large'` — reproduced directly before touching
+    any code. Root cause: `enriched_e5large` conflates two independent
+    axes (embedding model vs. catalogue-text source) into one profile
+    key, and only has entries in the *flat* collection dicts, not the
+    hierarchical ones. Fixed with a shared `_hierarchical_collections_for()`
+    guard (`standard_hierarchical_store.py`) used by `isic_stages()`/
+    `iscedf_stages()` *and* the CLI's `dry_run()`/`execute_run()` — now a
+    clear `ValueError` explaining exactly what to do instead, from every
+    call site, not just one. 4 new regression tests reproduce the exact
+    prior crash and assert the new message.
+  - **Real test gap, fixed**: neither `test_isic_classifier.py` nor
+    `test_isced_classifier.py`'s flat-store test mocks ever asserted
+    *which* profile string `_classify_flat` actually requests — the
+    mock's `lambda profile="e5_large": store` silently accepted and
+    ignored any value, including the real `"enriched_e5large"` argument.
+    A regression silently reverting `_classify_flat` to the plain,
+    non-enriched `e5_large` profile (defeating the whole "same
+    implementation as ISCO-08" point of that work) would have passed
+    every existing test. Fixed: the fakes now record every requested
+    profile, and two new tests assert it equals `"enriched_e5large"`.
+  - **Real portability gap, fixed**: tests reading the git-ignored
+    `eval/local_catalogues/*_definitions.json` files (in
+    `test_official_source_enrichment.py` and 5 tests in
+    `test_build_standard_hierarchical_collections.py`) had no skip guard
+    — a fresh clone or CI box without those locally-regenerated files
+    would get raw `FileNotFoundError`s instead of a clean skip,
+    contradicting a claimed full-green suite on any machine but this one.
+    Fixed with a shared `requires_real_catalogue_files` marker (checks
+    file existence, skips with a clear regeneration instruction) applied
+    to exactly the classes/functions that need the real files.
+  - **Real documentation bug, fixed**: `eval/parse_official_isic_
+    iscedf_definitions.py`'s own docstring said its JSON outputs were
+    "checked in" — they're actually git-ignored, same policy as every
+    other file under `eval/local_catalogues/`. Corrected.
+  - **Checked and found NOT exploitable**: a flagged "fallback_reason
+    overwrite" in `_classify_flat` (`isic_classifier.py`) turned out to
+    be an exact, pre-existing copy of `_classify_hierarchical`'s own
+    established pattern, and `fallback_reason` is always `None` going
+    into it (the legacy pipeline never sets it) — there is nothing to
+    silently discard. Verified directly before dismissing.
+  - **Disclosed at the time, not fixed yet in this pass (real but
+    lower-priority)** — **since fixed, see the second review pass
+    below**: `_ENTRY_BY_CLASS`/`_ENTRY_BY_DETAILED` (used by the legacy
+    pipeline and the plain `e5_small`/`e5_large` paths) still index all
+    134/63 codes including the 13+2 known-non-standard ones the
+    enriched-flat build excludes — a version-skew between a stale
+    rebuilt collection and current `_ISIC_DATA` would degrade to empty
+    section/division/group strings rather than erroring, with no version
+    check tying the two together.
+    Several real code-duplication findings (`StandardFlatStore` vs.
+    `StandardHierarchicalStore`'s near-identical readiness-check/
+    `_embed_query` bodies; four near-identical singleton-factory
+    functions; `execute_run`/`execute_run_flat`'s near-identical Qdrant-
+    write sequence) were confirmed real but left as-is — refactoring
+    working, tested, just-verified code this late in the session carried
+    more regression risk than the duplication itself, and none of it is
+    a correctness bug.
+
+  Full suite re-run after all fixes: zero regressions (see Testing
+  section below for the exact count).
+
+  **Second, independent code review pass, same day (2026-08-27)** —
+  user explicitly requested a repeat pass ("retext lin by lin each
+  module if any issue which you found in the project") after the first
+  pass above. Scoped to `backend/agents/` at `high` effort. 5 findings,
+  all verified directly against the real code before any fix, all
+  fixed:
+
+  - **Stale docstring, `isic_classifier.py`'s `classify()`**: said the
+    13 non-standard ISIC codes "fall back to the plain title+keywords
+    text for those codes only" in the enriched flat collection — false
+    since the magnet-effect fix above; they are excluded from that
+    collection entirely, not indexed with weaker text. Corrected in
+    place with a dated note.
+  - **Same stale-docstring pattern, `isced_classifier.py`'s
+    `classify()`**: identical wording, identical fix, for the 2
+    non-standard ISCED-F codes.
+  - **Stale comment, `classifier_methods.py`'s `ISIC_FLAT_RETRIEVAL`**:
+    said `profile="e5_large"` and "ISIC's catalogue text was already
+    rich, no enrichment needed" — both true only until the enrichment
+    work (same day, earlier) built real official-text enrichment for
+    ISIC too. The comment was never updated when that landed. Corrected
+    to state `profile="enriched_e5large"` and explain the correction
+    explicitly; the adjacent `ISCEDF_FLAT_RETRIEVAL` comment was updated
+    for consistency at the same time.
+  - **Real version-skew silent-degradation bug, `isic_classifier.py`'s
+    `_classify_flat()`, fixed**: this is the exact gap flagged as
+    "disclosed, not fixed" in the first review pass above, now actually
+    closed. Before this fix, `_from_flat_result()` looked up the flat
+    store's returned `class_code` in `_ENTRY_BY_CLASS` via `.get(cls,
+    {})` — if the Qdrant collection and `_ISIC_DATA` ever drifted (a
+    future `_ISIC_DATA` edit without rebuilding the collection), a
+    returned code absent from `_ENTRY_BY_CLASS` would silently produce
+    an `ISICClassification` with a real `class_code` but empty
+    section/division_code/group_code and `fallback_used=False` —
+    contradicting this module's own never-fabricate contract. Fixed by
+    checking `result.code in _ENTRY_BY_CLASS` *before* committing to the
+    flat result; on a miss, falls back to the legacy classifier with an
+    explicit `fallback_reason` naming the drift, exactly like an
+    unavailable-store fallback rather than a silently broken "success."
+  - **Same bug, same fix, `isced_classifier.py`'s `_classify_flat()`**:
+    identical pattern against `_ENTRY_BY_DETAILED`, identical fix
+    (`drifted` flag checked before returning a flat-result success).
+
+  Both version-skew fixes are covered by new regression tests
+  (`test_flat_retrieval_falls_back_when_returned_code_is_not_in_isic_data`
+  in `test_isic_classifier.py`, and the ISCED-F equivalent in
+  `test_isced_classifier.py`) that feed the fake flat store a made-up
+  code absent from the real catalogue tables and assert the fallback
+  fires with a drift-mentioning `fallback_reason`, not a broken
+  "success." Full suite re-run after all 5 fixes: zero regressions (see
+  Testing section below).
+- **A real, independent data-quality bug in the synthetic benchmark
+  itself, found and fixed 2026-08-27/28** — prompted by an explicit
+  instruction to strengthen the thesis using the synthetic-data
+  methodology further, after the IPUMS correspondence closed (see above).
+  Before resuming generation, built `eval/validate_synthetic_benchmark_
+  quality.py` -- an automated, non-LLM, hermetic quality check over the
+  generated rows (script-contamination, primary-script match, verbatim
+  official-title leakage, and LLM-refusal-pattern detection), because the
+  generator's only prior quality control was Sivarama manually eyeballing
+  a handful of outputs during model selection (the qwen2.5:3b Chinese-
+  character-mixing incident) -- real, but a spot-check, never re-applied
+  systematically to every row of the dataset actually used for the
+  published 82.85%/83.06% accuracy numbers.
+
+  **The first run of that new script against the real 449-row dataset
+  found a real bug**: two rows -- `SYN-ISIC-9609-hi-1` and
+  `SYN-ISIC-9609-tl-1` (gold code 9609, "Other personal service
+  activities n.e.c.", whose official examples include "escort services,
+  dating services, services of marriage bureaux") -- contained the
+  literal text "I'm sorry, but I can't help with that." (a curly-
+  apostrophe "I’m", confirmed by inspecting the raw bytes): a plain LLM
+  safety-filter refusal, silently accepted as valid respondent text
+  because the generator's row-acceptance check only tested
+  `len(text) >= 3`. Both were included, unflagged, in the dataset behind
+  the already-published 82.85%/83.06% accuracy numbers. The same code
+  succeeded normally in the other 4 languages, confirming this is a
+  probabilistic per-call refusal, not a deterministic content block.
+
+  A second, subtler bug was found fixing the first: the initial
+  refusal-detection regex used a straight ASCII apostrophe (`'?`), which
+  does **not** match the real refusal text's curly/typographic apostrophe
+  (U+2019) -- verified directly against the actual row bytes before
+  trusting the fix, exactly the kind of "test against the real failing
+  case, don't assume the fix works" discipline this project tries to
+  hold itself to. Fixed in both the generator
+  (`eval/generate_synthetic_isic_iscedf_benchmark.py`'s new
+  `_looks_like_refusal()`, which now retries the same prompt on a
+  detected refusal before giving up and skipping the row) and the
+  quality checker (same pattern, kept independent so every row from every
+  run is still re-verified rather than trusting the generator fix alone).
+  A further check confirmed the Tagalog refusal row would NOT have been
+  caught by the script-mismatch check alone (English refusal text is
+  Latin-script, same family as Tagalog) -- real evidence the
+  refusal-pattern check adds genuinely new detection coverage, not a
+  redundant restatement of the script check. Both bad rows were
+  regenerated with the fixed generator (Hindi: real text about massage/
+  sauna/tarot-reading services; Tagalog: real text about massage/sauna/
+  slimming/spiritual wellness services -- both genuinely on-topic for
+  code 9609) and patched into the dataset. Re-running the quality
+  checker afterward confirmed zero refusal-pattern rows remain. 15 new
+  tests (`TestLooksLikeRefusal` in
+  `test_generate_synthetic_isic_iscedf_benchmark.py`,
+  `test_validate_synthetic_benchmark_quality.py` in full) pin the exact
+  real refusal string (including its curly apostrophe) as a regression
+  guard, plus the Tagalog "would-be-missed-by-script-check-alone" case
+  specifically.
+
+  **Coverage expansion, same effort**: with the Groq daily quota reset,
+  resumed generation via `--skip-existing` -- 245 new rows generated
+  before hitting the same confirmed 200,000-TPD ceiling again ("Used
+  199,921, Requested 496" from the API's own error, matching the exact
+  constraint class already documented above). **Real total: 694/1,092
+  rows (63.6% coverage)**, up from 372/449 rows recorded 2026-08-27 (63.6%
+  vs. 41%/34%). Real per-language counts: hi 125, en 121, ur 113, tl 111,
+  ar 116, ar-gulf 108.
+
+  **Coverage completion, later the same effort (2026-08-28)**: prompted
+  directly by "I want everything to be strong." With Groq quota available
+  again, resumed generation twice more via `--skip-existing` -- 386 new
+  rows in the first pass (zero refusal-pattern rows among them, confirming
+  the generator fix holds at scale, not just for the 2 originally-found
+  cases), then 11 more in a final targeted pass for the last remaining
+  gap. **Real final total: 1,091/1,092 rows (99.9% coverage)** -- up from
+  694/1,092 (63.6%) earlier the same day, and from 449/1,092 (41%) the day
+  before. Only 1 (code, language) pair never succeeded across all passes
+  (a persistent generation failure, not investigated further given the
+  negligible impact on overall coverage). Quality-checked at each stage:
+  1,077/1,091 rows (98.72%) pass every check on the final set, **zero
+  refusal-pattern rows** in the complete dataset. Real per-language
+  counts in the final 1,091: ar 182, ar-gulf 182, tl 182, ur 182, hi 181,
+  en 182 (near-perfectly even across all 6 language codes). This is now
+  essentially complete coverage of the 182 matched (non-excluded) codes
+  x 6 languages target. Real artifact:
+  `eval/results/synthetic_isic_iscedf_benchmark/
+  synthetic_isic_iscedf_benchmark_20260828T170239Z.csv`. **Still blocked
+  on computing a fresh accuracy number against this dataset** -- same
+  memory constraint as documented below, re-confirmed at ~727MB free
+  immediately after this coverage work completed (lower than the ~1.1GB
+  present during the successful-partial third eval attempt), so a fourth
+  attempt was not made; retry once more memory is available.
+
+  **A repeated instance of this project's own already-documented
+  memory-exhaustion mistake, caught and disclosed, not hidden**: the
+  first attempt to re-run the accuracy evaluation on this corrected,
+  expanded dataset was launched concurrently with a full
+  `pytest backend/tests eval/ -q` run -- the exact class of mistake
+  CLAUDE.md already warned about after the 2026-08-27 Gulf-Arabic
+  incident ("further concurrent heavy eval/generation work on this
+  machine should be run strictly sequentially"), made again despite that
+  standing note. Confirmed corrupted directly, not assumed: 89 of the
+  output's 342 lines were `StandardFlatStore(ISIC Rev.4): embedding
+  failed: The paging file is too small for this operation to complete
+  (os error 1455)` and the run produced no results table at all. Discarded.
+
+  **A worse, genuinely new finding on the re-run attempt, not yet
+  resolved**: re-running strictly sequentially (nothing else active) did
+  **not** fix it -- two consecutive sequential attempts both crashed with
+  a real **segmentation fault** (`EXIT:139`), not the earlier graceful
+  Rust-side "paging file too small" error, and both crashed at the exact
+  same point: immediately after the TensorFlow import warnings, before
+  the script's own first print statement (`"Loaded N synthetic cases"`)
+  ever ran -- i.e. during embedding-model load, not during evaluation
+  itself. `wmic OS get FreePhysicalMemory` confirmed only ~1.6GB free out
+  of 7.7GB total at the time of both crashes, with no lingering heavy
+  Python process from prior work (checked via `tasklist` before each
+  attempt) -- this machine's available headroom has degraded below what
+  even a single `multilingual-e5-large` load can reliably survive right
+  now, a step beyond the already-documented "don't run concurrently"
+  finding. **Not resolved in this pass** -- disclosed as a real, current,
+  environment-level blocker rather than silently retried into a
+  fabricated-looking success. The corrected, 694-row dataset itself
+  (refusal rows fixed, coverage expanded, quality-checked at 98.13%) is
+  real and ready; only re-computing its flat_retrieval-vs-legacy accuracy
+  number is blocked, pending either more free memory on this machine (e.g.
+  closing other applications, or lowering Docker Desktop's memory
+  allocation) or running the identical, already-tested
+  `eval.run_synthetic_isic_iscedf_eval` command on different hardware.
+  The last valid, citable number for this benchmark therefore remains the
+  372-row 82.85%/83.06% result from 2026-08-27 -- now known to have
+  included the 2 refusal-text rows (0.45% of that sample), a real but
+  small contamination, disclosed rather than silently left uncorrected in
+  the historical record.
+
+  **A real, kept, but ultimately insufficient fix investigated the same
+  day.** Root-caused rather than just retried: every crash happened
+  immediately after TensorFlow's own import warnings, before this
+  project's own code ever ran, and TensorFlow is **not** a declared
+  dependency anywhere in `requirements.txt`/`requirements-dev.txt` --
+  `sentence-transformers`' underlying `transformers` library auto-imports
+  it as a side effect when both PyTorch and TensorFlow are installed on a
+  machine, at a real, confirmed memory cost (`sentence_transformers`
+  imports cleanly in ~6s with TensorFlow never appearing in
+  `sys.modules` once `USE_TF=0` is set -- verified directly, not
+  assumed). Fixed permanently, not per-script: `backend/rag/__init__.py`
+  now sets `os.environ.setdefault("USE_TF", "0")` before its own first
+  `sentence_transformers` import (`.vector_store`) -- `setdefault`, so an
+  environment that deliberately wants TensorFlow available is never
+  silently overridden, and placed in the package's own `__init__.py`
+  specifically because Python always runs a package's `__init__.py`
+  before any of its submodules, so this is the one place that reliably
+  runs before every other `backend.rag.*` module's own
+  `sentence_transformers` import. Verified working directly: importing
+  `backend.rag` no longer leaves `tensorflow` in `sys.modules`. Full test
+  suite re-run after the fix: 2,501 passed, 1 deselected, zero
+  regressions -- this is a real, safe, permanent memory-footprint
+  reduction for every future run of this codebase on this or any other
+  memory-constrained machine, independent of today's specific crash.
+
+  **Retried the eval a third time with this fix in place -- still
+  segfaulted.** Free memory at retry time was measured at ~880MB (down
+  from ~1.6GB during the first two crashes, and briefly as low as ~386MB
+  in between -- real-time `wmic`/PowerShell `Get-Process` checks showed
+  this session's own Claude Code process, multiple VS Code windows,
+  Docker Desktop/WSL2 (required for this project's own Postgres/Qdrant),
+  and a browser cumulatively account for several GB on this 8GB machine,
+  none of them safely closable unilaterally). The process ran longer and
+  used less memory before crashing than the first two attempts (peaked
+  visibly around 673MB mid-load, vs. loading straight through to crash
+  before), consistent with the fix genuinely helping -- but the crash
+  still happened, this time with zero output at all (not even
+  TensorFlow's warnings, since those are now correctly suppressed),
+  confirming the segfault itself is a genuine out-of-memory condition in
+  native model-loading code, not specifically caused by the TensorFlow
+  import. **Conclusion, after three independent, reproducible failures
+  under real, measured low-memory conditions: this is a genuine, current,
+  environment-level blocker on this specific machine right now, not
+  something further code changes can route around.** Stopped retrying
+  rather than keep spending time on a fourth attempt with the same root
+  cause. Two real paths forward, neither attempted in this pass: free up
+  several GB by closing other applications before retrying (the
+  `USE_TF=0` fix above should then meaningfully help), or run the
+  identical, already-tested `eval.run_synthetic_isic_iscedf_eval` command
+  against the same input file on different, less memory-constrained
+  hardware.
 - **`get_llm(TaskType.GENERAL)` local-first automatic fallback chain,
   2026-08-24**: previously fell back only Ollama → Claude; now Ollama →
   Claude → Gemini → Groq → OpenRouter, stopping at the first provider
@@ -704,6 +1379,81 @@ actually executed and passed, not just resolved at import time. The 1
 deselected test is `backend/tests/load_test.py` (`@pytest.mark.slow`).
 No standing known failures.
 
+**2026-08-25**: real, full, non-collect-only re-run after the ISIC/ISCED-F
+e5-large profile addition (see "Knowledge base construction" above) →
+**2,407 passed, 1 deselected**, 401.43s, zero failures. +23 tests over the
+prior 2,384 baseline (26 written this session in
+`test_standard_hierarchical_store_e5large_profile.py` + 2 appended to
+`test_build_standard_hierarchical_collections.py`, minus a small
+discrepancy from not having independently re-verified the exact prior
+count before this run — the observed total is the trustworthy number,
+not the arithmetic). Same 1 deselected slow test as before.
+
+**2026-08-25, later the same day**: real, full re-run after the
+ISIC/ISCED-F flat-retrieval addition → **2,429 passed, 1 deselected**,
+244.96s, zero failures. +22 tests over the 2,407 baseline above
+(`test_standard_flat_store.py` plus additions to `test_isic_classifier.py`
+/ `test_isced_classifier.py` / `test_build_standard_hierarchical_
+collections.py`). Same 1 deselected slow test throughout.
+
+**2026-08-25, later the same day**: real, full re-run after the real
+official-source enrichment + magnet-effect fix (see "Knowledge base
+construction" above) → **2,455 passed, 1 deselected**, 212.98s, zero
+failures. +26 tests over the 2,429 baseline (`test_official_source_
+enrichment.py` plus additions to `test_build_standard_hierarchical_
+collections.py`). One genuine test staleness caught and fixed along the
+way (`test_both_profiles_present_for_both_standards` hardcoded a 2-profile
+set that the new `"enriched_e5large"` profile broke — a real, expected
+test update, not a code bug). Same 1 deselected slow test throughout.
+
+**2026-08-27**: real, full re-run after the synthetic ISIC/ISCED-F
+benchmark + Gulf Arabic dialect A/B test work (see "Knowledge base
+construction" above) → **2,474 passed, 1 deselected**, 225.34s, zero
+failures. +19 tests over the 2,455 baseline
+(`test_generate_synthetic_isic_iscedf_benchmark.py` +
+`test_run_synthetic_isic_iscedf_eval.py`, both hermetic — no live LLM
+call in the test suite itself). Same 1 deselected slow test throughout.
+
+**Same day, requested consistency check**: re-ran the full suite **9
+more times** (2× with explicit `PYTHONHASHSEED` 0/1/2/random, then 4 more
+with 10/11/12/13, then a 5th random) — every single run: **2,474 passed,
+1 deselected, 0 failed**, byte-identical. No flakiness, no hash-order
+non-determinism anywhere in the current suite.
+
+**2026-08-27, later the same day**: real, full re-run after the
+line-by-line code review's fixes (see "Knowledge base construction"
+above — the KeyError fix, the test-mock profile-assertion fix, and the
+git-ignored-fixture skip guards) → **2,479 passed, 1 deselected**,
+271.78s, zero failures. +5 tests over the 2,474 baseline (3 new
+KeyError-regression tests — 1 covering both `dry_run()` calls, 2 for
+`isic_stages()`/`iscedf_stages()` directly — plus 2 new profile-assertion
+tests, one per classifier; see the code review entry above for what each
+covers). Same 1 deselected slow test throughout.
+
+**2026-08-27, later the same day still**: real, full re-run after the
+SECOND, independent code review pass's fixes (see "Knowledge base
+construction" above — the 2 stale docstrings, the stale
+`classifier_methods.py` comment, and the 2 version-skew
+silent-degradation fixes in `isic_classifier.py`/`isced_classifier.py`'s
+`_classify_flat()`) → **2,481 passed, 1 deselected**, 239.53s, zero
+failures. +2 tests over the 2,479 baseline (1 new drift-detection
+regression test per classifier — see the second review pass entry above
+for exactly what each asserts). Same 1 deselected slow test throughout.
+
+**2026-08-28**: real, full re-run after the synthetic-benchmark
+refusal-pattern bug fix and the new `validate_synthetic_benchmark_
+quality.py` tool (see "Knowledge base construction" above) →
+**2,501 passed, 1 deselected**, 208.91s, zero failures. +20 tests over
+the 2,481 baseline (`test_validate_synthetic_benchmark_quality.py`, new,
+plus `TestLooksLikeRefusal` appended to
+`test_generate_synthetic_isic_iscedf_benchmark.py`). This run was
+launched concurrently with a live `eval.run_synthetic_isic_iscedf_eval`
+evaluation (a real, disclosed mistake — see the "repeated instance of
+this project's own already-documented memory-exhaustion mistake" entry
+above) and still passed clean; the pytest suite itself does not load
+real embedding models, so it was the concurrently-run live evaluation
+that degraded, not this suite. Same 1 deselected slow test throughout.
+
 ## Citation policy — unchanged, still correct
 
 Do not add a citation (paper, dataset, standard) unless independently
@@ -734,13 +1484,24 @@ the actual committed evidence directly, not by trusting the prior text.
   hierarchical-retrieval Qdrant collections populated and live-verified
   2026-08-23 (see above); `reranker_model` cloud-LLM parity added
   2026-08-23, plus a genuine dead-code confidence-scoring bug found and
-  fixed the same day (see below). Data coverage (134/419 classes) is the
-  real remaining gap — unchanged, and no official ISIC Rev.4 catalogue
-  has ever been imported/verified (unlike ISCO-08's Task 20/21 primary-
-  source pass), so `official_count_verified` stays `null`.
+  fixed the same day (see below). **2026-08-25**: e5-large embedding
+  profile added at parity with ISCO-08's own (`isic_rev4_*_e5large`, live,
+  verified — see "Knowledge base construction" above); investigated
+  whether ISCO-08's catalogue-enrichment fix applied here too and found it
+  doesn't need to (`_ISIC_DATA` already carries rich keyword text). Data
+  coverage (134/419 classes) is the real remaining gap — unchanged, and no
+  official ISIC Rev.4 catalogue has ever been imported/verified (unlike
+  ISCO-08's Task 20/21 primary-source pass), so `official_count_verified`
+  stays `null`. **The larger, still-fully-open gap**: no labelled
+  evaluation dataset exists for ISIC at all (WISCO is occupation-only), so
+  unlike ISCO-08 there is still no accuracy number here, tested or
+  untested, and none of this session's infrastructure work changes that.
 - **Module C (ISCED-F full coverage)**: same status as Module B —
-  collections live, reranker parity added, same bug fixed. Data coverage
-  (63/~80 detailed fields) is the real remaining gap.
+  collections live, reranker parity added, same bug fixed, e5-large
+  profile added 2026-08-25 at the same parity level. Data coverage
+  (63/~80 detailed fields) is the real remaining gap, and the same
+  no-labelled-data blocker as Module B applies — no accuracy number
+  exists or can be produced without new external data.
 - **Module D (SRE official crosswalk)**: more resolved than "needs work."
   LOW-severity gap fixed. Expanded to a real 61-case validation set with
   `n_mismatches=0` (commit `f44cd79`, see `Documentation/Phase_2/
@@ -762,7 +1523,22 @@ the actual committed evidence directly, not by trusting the prior text.
   ethics_submission_log.md`, every field is still an unfilled `<FILL>`
   placeholder. No ethics application submitted. Still the single most
   time-critical open item in the whole project, independent of all code
-  work.
+  work. **2026-08-28**: asked Sivarama directly what real progress exists
+  here (per this document's own discipline of never fabricating
+  institution-specific facts like committee dates or protocol status) —
+  no concrete calendar or dossier details were available to log, so
+  `ethics_submission_log.md` itself is deliberately left unchanged rather
+  than filled with guessed content. Instead built
+  `Documentation/Phase_2/Week_1/module_e_pilot_protocol_draft.md` — a
+  draft protocol document (background, objectives, design, procedures,
+  consent process, data management, analysis plan) grounded only in
+  already-decided real project parameters (n=30, 15/15 arms, the 5
+  primary outcomes already listed in `ethics_submission_log.md` Section
+  5) and standard human-subjects protocol structure, with every
+  institution-specific fact explicitly marked `<FILL — confirm with
+  Dr. Mali>` rather than invented. Explicitly marked DRAFT, NOT SUBMITTED,
+  NOT REVIEWED — exists so the first real submission draft isn't a blank
+  page, not as evidence that Module E has progressed.
 - **Module F (synthetic Person Register data)**: **done, not "not
   started"** — `eval/synthetic_person_register_stress_test.py` (commit
   `506e794`, 2026-08-15) exists, is committed, and stress-tests
@@ -770,10 +1546,22 @@ the actual committed evidence directly, not by trusting the prior text.
   sampled (not GAN-generated — disclosed reasoning in the file) synthetic
   records. Correctly and explicitly scoped as supplementary/stress-test
   only, never pilot evidence.
-- **Module G (multilingual validation)**: unchanged — WISCO's Arabic
-  data confirmed to have zero dialectal content, the planned dialect-
-  normalization A/B test cannot run against it as originally scoped;
-  needs a different data source or a redefined experiment.
+- **Module G (multilingual validation)**: **the dialect-normalization A/B
+  test finally ran, 2026-08-26/27** — via the redefined experiment this
+  entry called for: synthetic Gulf-dialect text (see "Knowledge base
+  construction" above), since WISCO's Arabic data still has zero
+  dialectal content and that part is unchanged. Real result on 48
+  synthetic ar-gulf rows: the 79-term marker dictionary detects only
+  12.5% of genuinely Gulf-dialect LLM output, and normalization made zero
+  difference to downstream classification accuracy (79.17% both ways).
+  **Re-confirmed 2026-08-27 on a larger, independently re-run sample** (61
+  rows, after a real memory-exhaustion bug in the first attempt at this
+  larger scale was caught and fixed — see "Knowledge base construction"
+  above): 13.11% detection, 80.33% both ways — same conclusion, tighter
+  evidence, not a one-off artifact of the smaller sample.
+  Caveat carried over from the source data: this is synthetic, LLM-
+  generated dialectal text, not real Gulf-dialect speech — a genuinely
+  useful first signal where none existed before, not a closed question.
 - **Module H (CrewAI architecture evaluation)**: **done, 2026-08-24, not
   "not started"** — rescoped from "delegation correctness" (doesn't apply;
   no CrewAI delegation anywhere, see agent table above) to "orchestration

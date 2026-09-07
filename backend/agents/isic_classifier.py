@@ -52,6 +52,9 @@ from typing import Optional
 from crewai import Agent, Crew, Task
 
 from backend.agents.classifier_methods import (
+    ISIC_FLAT_FALLBACK_KEYWORD,
+    ISIC_FLAT_FALLBACK_LLM,
+    ISIC_FLAT_RETRIEVAL,
     ISIC_HIERARCHICAL_FALLBACK_KEYWORD,
     ISIC_HIERARCHICAL_FALLBACK_LLM,
     ISIC_HIERARCHICAL_RETRIEVAL,
@@ -903,12 +906,44 @@ class ISICClassifier:
             set to ``ISIC_HIERARCHICAL_FALLBACK_KEYWORD`` or
             ``ISIC_HIERARCHICAL_FALLBACK_LLM`` (never silently reported as
             ``ISIC_HIERARCHICAL_RETRIEVAL``), with ``fallback_used=True``
-            and a non-empty ``fallback_reason``. See
-            Documentation/Conference_I_Reviewer_2/
+            and a non-empty ``fallback_reason``. Passing
+            ``ISIC_FLAT_RETRIEVAL`` runs a single-collection direct search
+            over the 134 leaf classes (no parent-chain traversal) via
+            ``StandardFlatStore(profile="enriched_e5large")`` -- the
+            architecturally-identical counterpart to ISCO-08's own
+            BEST-TESTED configuration: flat retrieval + real official
+            per-class definitions/examples (parsed directly from the UN
+            Statistics Division's ISIC Rev.4 publication -- see
+            ``backend.rag.official_source_enrichment``, added 2026-08-25 to
+            close the richness gap between this catalogue's original
+            keyword-only text and ISCO-08's own enriched text) +
+            ``multilingual-e5-large``, since ISCO-08's hierarchical
+            retrieval measurably underperformed its own flat retrieval
+            (see CLAUDE.md). Same explicit-fallback contract, reporting
+            ``ISIC_FLAT_FALLBACK_KEYWORD``/``ISIC_FLAT_FALLBACK_LLM`` on
+            fallback. Whether flat or hierarchical retrieval is more
+            accurate FOR ISIC specifically is still untested -- no
+            labelled ISIC evaluation data exists. 13 of the 134 classes
+            have no match in the official ISIC Rev.4 structure document
+            (a real, disclosed, pre-existing catalogue issue found while
+            building this -- see
+            ``official_source_enrichment.NON_STANDARD_ISIC_CODES``).
+            **Corrected 2026-08-27 (code review)**: those 13 codes are
+            NOT indexed in this collection at all, not indexed with
+            weaker fallback text -- a live-tested magnet-effect
+            regression (see CLAUDE.md) showed keeping them with thin
+            text actively misclassified unrelated queries, so
+            ``build_standard_hierarchical_collections.py::
+            _enriched_flat_nodes()`` excludes them entirely. This method
+            can never return one of those 13 class codes; a query whose
+            true answer is one of them will instead resolve to its
+            nearest real neighbour. See Documentation/Conference_I_Reviewer_2/
             ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md.
         """
         if method == ISIC_HIERARCHICAL_RETRIEVAL:
             return self._classify_hierarchical(text)
+        if method == ISIC_FLAT_RETRIEVAL:
+            return self._classify_flat(text)
         return self._classify_legacy(text)
 
     # ── Legacy keyword/LLM pipeline (unchanged behaviour) ───────────────────────
@@ -1019,6 +1054,100 @@ class ISICClassifier:
             alternatives=alternatives,
             raw_text=text,
             hierarchy_path=path,
+            stage_confidences=dict(result.stage_confidences),
+            hitl_required=result.hitl_required,
+            fallback_used=False,
+            fallback_reason=None,
+        )
+
+    # ── Flat retrieval (ISCO-08 best-tested-config parity), explicit fallback ──
+
+    def _classify_flat(self, text: str) -> ISICClassification:
+        """Same explicit-fallback contract as _classify_hierarchical(), but
+        via StandardFlatStore(profile="enriched_e5large") -- single-collection
+        direct search over the 134 leaf classes, no parent-chain beam
+        traversal. See classifier_methods.ISIC_FLAT_RETRIEVAL's docstring
+        for why this specific profile+method combination mirrors ISCO-08's
+        own best-tested configuration."""
+        from backend.rag.standard_hierarchical_store import get_isic_flat_store
+
+        store = get_isic_flat_store(profile="enriched_e5large")
+        result = store.search(text)
+
+        # Real gap found and fixed by a second, independent code review
+        # pass (2026-08-27): the Qdrant collection and _ISIC_DATA are two
+        # separately-maintained sources of truth with no version check
+        # tying them together. If they ever drift (a future _ISIC_DATA
+        # edit without rebuilding the collection), a returned class code
+        # could be absent from _ENTRY_BY_CLASS -- treating that as success
+        # would silently report an ISICClassification with a real
+        # class_code but empty section/division_code/group_code and
+        # fallback_used=False, contradicting this module's own "never
+        # fabricate" contract. Checked explicitly here, before committing
+        # to the flat result, so this degrades to the same honest
+        # fallback path as an unavailable store, not a silently broken
+        # "success".
+        if result.ready and not result.unavailable_reason and result.code and result.code in _ENTRY_BY_CLASS:
+            return self._from_flat_result(result, text)
+
+        legacy = self._classify_legacy(text)
+        legacy.method = (
+            ISIC_FLAT_FALLBACK_LLM if legacy.method == "llm"
+            else ISIC_FLAT_FALLBACK_KEYWORD
+        )
+        legacy.fallback_used = True
+        if result.ready and not result.unavailable_reason and result.code:
+            legacy.fallback_reason = (
+                f"ISIC flat store returned code {result.code!r}, which is not present in "
+                f"_ISIC_DATA -- the Qdrant collection and the catalogue have drifted out of sync"
+            )
+        else:
+            legacy.fallback_reason = (
+                result.unavailable_reason or "ISIC flat store returned no usable result"
+            )
+        return legacy
+
+    def _from_flat_result(self, result, text: str) -> ISICClassification:
+        """Unlike _from_hierarchical_result(), the flat store's
+        hierarchy_path only ever carries the single leaf class code (no
+        parent chain was traversed) -- section/division/group are resolved
+        from _ENTRY_BY_CLASS, the same lookup already used above for
+        alternatives."""
+        cls = result.code
+        entry = _ENTRY_BY_CLASS.get(cls, {})
+        section = entry.get("section", "")
+        division = entry.get("division_code", "")
+        group = entry.get("group_code", "")
+
+        alternatives = []
+        for cand in result.top_candidates:
+            if cand.code == cls:
+                continue
+            cand_entry = _ENTRY_BY_CLASS.get(cand.code)
+            alternatives.append({
+                "class_code": cand.code,
+                "class_title": cand.label_en,
+                "division_code": cand_entry["division_code"] if cand_entry else "",
+                "section": cand_entry["section"] if cand_entry else "",
+                "confidence": round(cand.score, 4),
+            })
+            if len(alternatives) >= self._TOP_K - 1:
+                break
+
+        return ISICClassification(
+            section=section,
+            section_title=_SECTION_TITLES.get(section, ""),
+            division_code=division,
+            division_title=_DIVISION_TITLES.get(division, ""),
+            group_code=group,
+            group_title=_GROUP_TITLES.get(group, ""),
+            class_code=cls,
+            class_title=result.label_en,
+            confidence=result.confidence,
+            method=ISIC_FLAT_RETRIEVAL,
+            alternatives=alternatives,
+            raw_text=text,
+            hierarchy_path=[section, division, group, cls],
             stage_confidences=dict(result.stage_confidences),
             hitl_required=result.hitl_required,
             fallback_used=False,

@@ -49,6 +49,35 @@ ISIC_HIERARCHICAL_RETRIEVAL = "isic_hierarchical_retrieval"
 ISIC_HIERARCHICAL_FALLBACK_KEYWORD = "isic_hierarchical_fallback_keyword"
 ISIC_HIERARCHICAL_FALLBACK_LLM = "isic_hierarchical_fallback_llm"
 
+# ISIC Rev.4: FLAT retrieval (added 2026-08-25) -- single-collection direct
+# search over the 134 leaf classes, no parent-chain beam traversal. This is
+# the architecturally-identical counterpart to ISCO-08's own BEST-TESTED
+# configuration (flat retrieval + rich catalogue text + multilingual-e5-large
+# -- see CLAUDE.md's 40.95% headline result). Uses backend/rag/
+# standard_hierarchical_store.py's StandardFlatStore(profile="enriched_e5large")
+# -- **corrected 2026-08-27 (code review): this comment previously said
+# "e5_large" and claimed ISIC's catalogue text needed no enrichment; both
+# were true only until the enrichment work later the same day (2026-08-25)
+# found the richness gap WAS real relative to ISCO-08's actual enriched
+# state (not its original bug state) and built
+# backend/rag/official_source_enrichment.py's real official-text
+# enrichment for ISIC too -- see CLAUDE.md's "Knowledge base construction"
+# log for the full finding. This comment was never updated when that
+# landed; now corrected.** The 13 ISIC codes with no official-document
+# match (NON_STANDARD_ISIC_CODES) are excluded from this collection
+# entirely, not indexed with weaker text -- a live-tested magnet-effect
+# regression (see CLAUDE.md) showed keeping them caused active
+# misclassification. Whether this actually outperforms the keyword/LLM
+# pipeline for ISIC beyond the synthetic-benchmark signal already measured
+# (see CLAUDE.md's 82.85%-vs-13.14% synthetic result) is not yet confirmed
+# on real respondent data (see
+# Documentation/Conference_I_Reviewer_2/
+# ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md). This gives ISIC the
+# same IMPLEMENTATION ISCO-08 uses, not a WISCO-equivalent accuracy result.
+ISIC_FLAT_RETRIEVAL = "isic_flat_retrieval"
+ISIC_FLAT_FALLBACK_KEYWORD = "isic_flat_fallback_keyword"
+ISIC_FLAT_FALLBACK_LLM = "isic_flat_fallback_llm"
+
 # ISCED 2011: currently implemented method (pure keyword/rule-based
 # attainment-level classification, no LLM) -- see
 # backend/agents/isced_classifier.py.
@@ -66,3 +95,16 @@ ISCEDF_HIERARCHICAL_RETRIEVAL = "iscedf_hierarchical_retrieval"
 # ISCED-F 2013: explicit fallback label, same contract as the ISIC fallback
 # labels above (ISCEDClassifier has no LLM path, so there is only one).
 ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD = "iscedf_hierarchical_fallback_keyword"
+
+# ISCED-F 2013: FLAT retrieval (added 2026-08-25) -- same rationale, same
+# StandardFlatStore(profile="enriched_e5large") + real official-text
+# enrichment, and same exclusion of NON_STANDARD_ISCEDF_CODES, as
+# ISIC_FLAT_RETRIEVAL above (see its comment for the full, corrected
+# writeup): single-collection direct search over the 61 indexed leaf
+# detailed fields (63 minus 2 excluded non-standard codes), paired with
+# multilingual-e5-large, mirroring ISCO-08's own best-tested flat+e5-large
+# recipe. ISCED 2011 attainment LEVEL is never part of this path -- it
+# stays independently classified either way, same as the hierarchical
+# path above.
+ISCEDF_FLAT_RETRIEVAL = "iscedf_flat_retrieval"
+ISCEDF_FLAT_FALLBACK_KEYWORD = "iscedf_flat_fallback_keyword"

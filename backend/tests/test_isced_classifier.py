@@ -9,6 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 from backend.agents.classifier_methods import (
+    ISCEDF_FLAT_FALLBACK_KEYWORD,
+    ISCEDF_FLAT_RETRIEVAL,
     ISCEDF_HIERARCHICAL_FALLBACK_KEYWORD,
     ISCEDF_HIERARCHICAL_RETRIEVAL,
 )
@@ -20,6 +22,8 @@ from backend.agents.isced_classifier import (
 from backend.rag.standard_hierarchical_store import (
     HITL_THRESHOLD,
     ISCEDF_COLLECTIONS,
+    ISCEDF_FLAT_COLLECTIONS_BY_PROFILE,
+    StandardFlatStore,
     StandardHierarchicalStore,
     iscedf_stages,
 )
@@ -78,6 +82,63 @@ def _patch_iscedf_store(monkeypatch, table, existing_collections):
         "backend.rag.standard_hierarchical_store.get_iscedf_hierarchical_store",
         lambda: store,
     )
+    return client
+
+
+class _FakeFlatQdrantClient:
+    """Fake client for StandardFlatStore -- query_points(collection_name=,
+    query=, limit=, with_payload=True), NO query_filter kwarg."""
+
+    def __init__(self, table, existing_collections):
+        self.table = table
+        self.existing_collections = set(existing_collections)
+        self.calls = []
+
+    def get_collections(self):
+        return SimpleNamespace(collections=[SimpleNamespace(name=n) for n in self.existing_collections])
+
+    def query_points(self, collection_name, query, limit, with_payload):
+        self.calls.append((collection_name, limit))
+        rows = self.table.get(collection_name, [])
+        points = [
+            SimpleNamespace(score=score, payload={"code": code, "label_en": label_en, "label_ar": label_ar})
+            for code, label_en, label_ar, score in rows[:limit]
+        ]
+        return SimpleNamespace(points=points)
+
+
+_ISCEDF_FLAT_COLLECTION = ISCEDF_FLAT_COLLECTIONS_BY_PROFILE["enriched_e5large"]
+_ISCEDF_FLAT_HIT_TABLE = {
+    _ISCEDF_FLAT_COLLECTION: [
+        ("0613", "Software and applications development and analysis", "", 0.83),
+    ],
+}
+
+
+def _patch_iscedf_flat_store(monkeypatch, table, existing_collections):
+    """ISCEDClassifier._classify_flat always requests
+    profile="enriched_e5large" (see classifier_methods.ISCEDF_FLAT_RETRIEVAL's
+    docstring). Records every requested profile (client.requested_profiles)
+    so test_flat_retrieval_requests_the_enriched_e5large_profile can assert
+    against it -- a bare lambda with a stale default used to silently
+    accept and ignore whatever profile was actually passed (code review,
+    2026-08-27)."""
+    client = _FakeFlatQdrantClient(table, existing_collections)
+    store = StandardFlatStore(
+        standard="ISCED-F 2013", collection=_ISCEDF_FLAT_COLLECTION, hitl_threshold=HITL_THRESHOLD,
+        client=client, embedder=_FakeEmbedder(),
+    )
+    requested_profiles: list[str] = []
+
+    def _fake_get_iscedf_flat_store(profile):
+        requested_profiles.append(profile)
+        return store
+
+    monkeypatch.setattr(
+        "backend.rag.standard_hierarchical_store.get_iscedf_flat_store",
+        _fake_get_iscedf_flat_store,
+    )
+    client.requested_profiles = requested_profiles
     return client
 
 
@@ -308,3 +369,89 @@ def test_hierarchical_retrieval_empty_text_is_plain_fallback(clf, monkeypatch):
     result = clf.classify("", method=ISCEDF_HIERARCHICAL_RETRIEVAL)
     assert result.confidence == 0.0
     assert result.method != ISCEDF_HIERARCHICAL_RETRIEVAL
+
+
+# ---------------------------------------------------------------------------
+# Flat retrieval (ISCO-08 best-tested-config parity, added 2026-08-25)
+# ---------------------------------------------------------------------------
+
+def test_flat_retrieval_runs_real_direct_search_and_keeps_independent_level(clf, monkeypatch):
+    """method=iscedf_flat_retrieval must query the flat collection directly
+    (single call, no parent filter), resolve broad/narrow from
+    _ENTRY_BY_DETAILED since the flat store's hierarchy_path only carries
+    the leaf detailed_code, and still report the independent ISCED 2011
+    level from _score_level()."""
+    client = _patch_iscedf_flat_store(monkeypatch, _ISCEDF_FLAT_HIT_TABLE, {_ISCEDF_FLAT_COLLECTION})
+
+    result = clf.classify("Bachelor of Science in software development", method=ISCEDF_FLAT_RETRIEVAL)
+
+    assert isinstance(result, ISCEDClassification)
+    assert result.method == ISCEDF_FLAT_RETRIEVAL
+    assert result.fallback_used is False
+    assert result.fallback_reason is None
+    assert result.detailed_code == "0613"
+    assert result.broad_code == "06"
+    assert result.narrow_code == "061"
+    assert result.hierarchy_path == ["06", "061", "0613"]
+    assert result.level == 6
+    assert client.calls == [(_ISCEDF_FLAT_COLLECTION, 5)]
+
+
+def test_flat_retrieval_requests_the_enriched_e5large_profile(clf, monkeypatch):
+    """Real gap found and fixed by code review: no prior test asserted
+    WHICH profile string _classify_flat actually requests."""
+    client = _patch_iscedf_flat_store(monkeypatch, _ISCEDF_FLAT_HIT_TABLE, {_ISCEDF_FLAT_COLLECTION})
+    clf.classify("Bachelor of Science in software development", method=ISCEDF_FLAT_RETRIEVAL)
+    assert client.requested_profiles == ["enriched_e5large"]
+
+
+def test_flat_retrieval_falls_back_when_returned_code_is_not_in_isced_fields(clf, monkeypatch):
+    """Real gap found by a second, independent code review pass and fixed
+    2026-08-27: the Qdrant collection and _ISCED_FIELDS are two separate
+    sources of truth with no version check. A detailed_code the collection
+    returns that _ISCED_FIELDS doesn't have (simulated here with a made-up
+    code no real ISCED-F field uses) must fall back honestly, never be
+    reported as a successful classification with empty broad/narrow."""
+    drifted_table = {
+        _ISCEDF_FLAT_COLLECTION: [("9999", "A code _ISCED_FIELDS does not have", "", 0.90)],
+    }
+    _patch_iscedf_flat_store(monkeypatch, drifted_table, {_ISCEDF_FLAT_COLLECTION})
+
+    result = clf.classify("Bachelor of Science in software development", method=ISCEDF_FLAT_RETRIEVAL)
+
+    assert result.fallback_used is True
+    assert result.method != ISCEDF_FLAT_RETRIEVAL
+    assert result.fallback_reason
+    assert "drifted" in result.fallback_reason.lower() or "not present" in result.fallback_reason.lower()
+    # The independent keyword-based field scorer still ran for real.
+    assert result.broad_code != ""
+
+
+def test_flat_retrieval_falls_back_when_collection_missing(clf, monkeypatch):
+    _patch_iscedf_flat_store(monkeypatch, table={}, existing_collections=set())
+
+    result = clf.classify("Bachelor of Science BSc university", method=ISCEDF_FLAT_RETRIEVAL)
+
+    assert result.method == ISCEDF_FLAT_FALLBACK_KEYWORD
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert "missing" in result.fallback_reason.lower()
+    assert result.level == 6
+
+
+def test_flat_retrieval_falls_back_when_search_finds_nothing(clf, monkeypatch):
+    _patch_iscedf_flat_store(monkeypatch, table={}, existing_collections={_ISCEDF_FLAT_COLLECTION})
+
+    result = clf.classify("Bachelor of Science BSc university", method=ISCEDF_FLAT_RETRIEVAL)
+
+    assert result.fallback_used is True
+    assert result.fallback_reason
+    assert "no candidates" in result.fallback_reason.lower()
+    assert result.method != ISCEDF_FLAT_RETRIEVAL
+
+
+def test_flat_retrieval_empty_text_is_plain_fallback(clf, monkeypatch):
+    _patch_iscedf_flat_store(monkeypatch, _ISCEDF_FLAT_HIT_TABLE, {_ISCEDF_FLAT_COLLECTION})
+    result = clf.classify("", method=ISCEDF_FLAT_RETRIEVAL)
+    assert result.confidence == 0.0
+    assert result.method != ISCEDF_FLAT_RETRIEVAL

@@ -97,3 +97,80 @@ isco08:
     validating this catalogue.
 
   imported_at_utc: "2026-08-08T18:42:59Z"
+
+# ---------------------------------------------------------------------------
+# ISIC Rev.4 / ISCED-F 2013 -- added 2026-08-25, same provenance discipline
+# as isco08 above. These are the source for
+# backend/rag/official_source_enrichment.py's real per-code definitions
+# (eval/parse_official_isic_iscedf_definitions.py is the parser/normalizer
+# equivalent to eval/normalize_ilo_isco08_catalogue.py). The raw PDFs and
+# parsed JSON are kept local and git-ignored under eval/local_catalogues/,
+# same policy as isco08's workbook -- this record is what makes the exact
+# source verifiable/reproducible from a fresh clone without committing the
+# (possibly copyright-restricted) source content itself.
+#
+# Unlike isco08 above, this is NOT a full official-catalogue coverage
+# import -- only the codes already present in backend/agents/
+# isic_classifier.py's _ISIC_DATA / isced_classifier.py's _ISCED_FIELDS
+# were looked up in the parsed set (121/134 and 61/63 matched; the 13 + 2
+# non-matches are a real, disclosed, unresolved catalogue issue -- see
+# official_source_enrichment.py's NON_STANDARD_ISIC_CODES /
+# NON_STANDARD_ISCEDF_CODES, and CLAUDE.md's 2026-08-25 entry for the full
+# writeup, including a genuine "magnet effect" regression this parsing
+# work surfaced and a fix that excludes those 15 non-standard codes from
+# the enriched flat Qdrant collections entirely).
+# ---------------------------------------------------------------------------
+
+isic_rev4_2008:
+  standard_key: isic_rev4
+  standard_name: "ISIC Rev.4"
+  issuing_organization: "United Nations Statistics Division"
+
+  official_publication_url: "https://unstats.un.org/unsd/classifications/Econ/Download/In%20Text/ISIC_Rev_4_publication_English.pdf"
+  retrieved_at_utc: "2026-08-25"
+
+  raw_pdf_sha256: "ef36c082df9bb6232627945e2f092130bccdd8f319a9c55c55c75e6bf51342fe"
+  parsed_definitions_sha256: "16f27e13f674c7e2030eba15fa2be005717409fe3725cdc0826cbde53484a075"
+  parsed_definitions_entry_count: 419
+
+  matched_against_isic_classifier_data:
+    total_codes_in__ISIC_DATA__: 134
+    matched_with_real_official_definition: 121
+    non_standard_no_official_match: 13
+    non_standard_codes: ["7311", "7430", "7739", "8424", "8531", "8559", "8560", "8621", "8622", "8623", "8899", "9001", "9003"]
+
+  parser_script: "eval/parse_official_isic_iscedf_definitions.py"
+  parser_script_sha256: "b838aad30fb0f2eb18842ffae3760405191f8f31e31ae350422fa876f2232e6e"
+
+  licence_or_use_note: >-
+    No explicit reuse/redistribution licence text was located distinct
+    from the UN's general copyright notice. Same convention as isco08
+    above: the raw PDF and parsed JSON are kept local and git-ignored,
+    never committed.
+
+iscedf_2013:
+  standard_key: iscedf_2013
+  standard_name: "ISCED-F 2013"
+  issuing_organization: "UNESCO Institute for Statistics (UIS)"
+
+  official_publication_url: "https://www.uis.unesco.org/sites/default/files/medias/fichiers/2025/04/international-standard-classification-of-education-fields-of-education-and-training-2013-detailed-field-descriptions-2015-en.pdf"
+  retrieved_at_utc: "2026-08-25"
+
+  raw_pdf_sha256: "3f463bb91d7ae89f17f12fcbd53d7746db46c81c140e49183518b8d7804e8564"
+  parsed_definitions_sha256: "8556bafbeab7bf7f6f479bcc1b5addbabbcec3455bb56c3e88ce1f45ecd4f8d8"
+  parsed_definitions_entry_count: 92
+
+  matched_against_isced_classifier_data:
+    total_codes_in__ISCED_FIELDS__: 63
+    matched_with_real_official_definition: 61
+    non_standard_no_official_match: 2
+    non_standard_codes: ["0224", "0919"]
+
+  parser_script: "eval/parse_official_isic_iscedf_definitions.py"
+  parser_script_sha256: "b838aad30fb0f2eb18842ffae3760405191f8f31e31ae350422fa876f2232e6e"
+
+  licence_or_use_note: >-
+    No explicit reuse/redistribution licence text was located distinct
+    from UNESCO's general copyright notice. Same convention as isco08
+    above: the raw PDF and parsed JSON are kept local and git-ignored,
+    never committed.

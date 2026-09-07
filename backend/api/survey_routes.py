@@ -22,6 +22,7 @@ _perf_log = logging.getLogger("lfs.perf")
 from backend.database.connection import get_db
 from backend.database.models import HITLQueue, SurveyResponse, SurveySession, User
 from backend.auth.jwt_handler import verify_access_token
+from backend.auth.email_otp import check_rate_limit
 from backend.agents.conversation_manager import ConversationContext, ConversationManager, ConversationState
 from backend.agents.language_processor import LanguageProcessor, LanguageProcessorResult
 from backend.agents.isco_classifier import ISCOClassifier
@@ -40,18 +41,39 @@ router = APIRouter(prefix="/survey", tags=["survey"])
 bearer_scheme = HTTPBearer()
 
 
-# Rate limiting — track requests per IP with Redis
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP extraction (proxy-aware) -- same logic as auth_routes.py's
+    own helper of the same name; duplicated rather than imported since it's a tiny,
+    dependency-free function and auth_routes.py's copy is module-private."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+# Rate limiting — track requests per IP with Redis.
+#
+# FIXED 2026-09-02: this previously called request.app.state.limiter.hit(...),
+# a real, reproduced bug -- slowapi.Limiter (the actually-installed 0.1.9) has
+# no `.hit()` method at all (confirmed directly: dir(Limiter) lists exempt/
+# get_app_config/limit/limiter/reset/shared_limit/slowapi_startup, no hit).
+# Every single call raised AttributeError, which the bare `except Exception`
+# caught, logged as "non-fatal", and silently swallowed -- meaning the
+# documented "30 requests/minute" cap on this endpoint has never actually
+# been enforced, in any deployment, since this code was written. Confirmed
+# live: every message in every session log from this entire work session
+# logged that exact warning.
+#
+# Fixed by reusing backend/auth/email_otp.py's check_rate_limit() -- a real,
+# independent, already-working Redis-backed rate limiter (with an in-process
+# fallback) already proven in production by auth_routes.py's OTP endpoints.
+# Simpler and more consistent with the rest of the codebase than getting
+# slowapi's lower-level `limits` API (Limiter.limiter.hit(item, *ids)) right,
+# and avoids introducing a second rate-limiting mechanism.
 async def _check_rate_limit(request: Request) -> None:
     """Check if client has exceeded 30 requests/minute. Raises HTTPException(429) if so."""
-    if not hasattr(request.app, "state") or not hasattr(request.app.state, "limiter"):
-        return  # Limiter not configured; skip check
-    try:
-        limiter = request.app.state.limiter
-        limiter.hit("send_message", request)
-    except Exception as e:
-        if "too many requests" in str(e).lower():
-            raise HTTPException(status_code=429, detail="Too many requests. Max 30 per minute.")
-        _logger.warning("Rate limit check failed (non-fatal): %s", e)
+    if not check_rate_limit(f"send_message:{_client_ip(request)}", max_requests=30, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many requests. Max 30 per minute.")
 
 
 # ---------------------------------------------------------------------------

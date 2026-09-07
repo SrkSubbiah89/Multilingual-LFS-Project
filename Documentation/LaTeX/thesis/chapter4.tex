@@ -1,0 +1,293 @@
+% ============================================================
+%  CHAPTER 4 — IMPLEMENTATION
+%  Corrected 2026-08-28 -- see VERIFICATION_NOTES.md.
+% ============================================================
+\chapter{Implementation}
+\label{chap:implementation}
+
+This chapter describes the implementation of the system: the Docker
+deployment, database schema, agent implementation, knowledge-base
+construction, and the frontend.
+%% VERIFY AGAINST CODE: the original draft's specific "three six-week
+%% sprints" framing was not independently verifiable from project
+%% artifacts in this pass and has been removed rather than restated
+%% unchecked.
+
+% ------------------------------------------------------------
+\section{Development Environment}
+\label{sec:impl-method}
+% ------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{Key library dependencies and versions, verified directly against
+\texttt{requirements.txt} (pip-freeze-pinned, 28 packages).}
+\label{tab:ch4-deps}
+\footnotesize\renewcommand{\arraystretch}{1.4}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{3.8cm}
+                >{\centering}p{2.0cm}
+                >{\raggedright\arraybackslash}p{6.6cm}}
+\toprule
+\textbf{Library} &
+\textbf{Version} &
+\textbf{Purpose} \\
+\midrule
+crewai & 1.9.3 & Multi-agent orchestration \\
+fastapi & 0.131.0 & Async REST API \\
+sqlalchemy & 2.0.46 & PostgreSQL ORM \\
+alembic & 1.18.4 & Database migration management \\
+qdrant-client & 1.17.0 & Qdrant vector database client \\
+sentence-transformers & 5.2.3 & multilingual-e5-small/-large embeddings \\
+redis & 7.2.0 & Redis client \\
+pytest & 9.0.2 & Test runner \\
+pytest-asyncio & 1.3.0 & Async test support \\
+rank-bm25 & (pinned) & Used by the legacy BM25 comparison baseline \\
+sendgrid & 6.12.5 & Email OTP delivery --- confirmed real and pinned \\
+python-jose[cryptography] & 3.5.0 & JWT creation/verification --- confirmed real and pinned \\
+langdetect & 1.0.9 & Language detection --- confirmed real and pinned \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\textbf{Arabic dialect normalisation is NOT via an external library.} An
+earlier internal draft of this thesis stated \texttt{camel-tools==1.5} as a
+dependency for this purpose; verified directly against
+\texttt{requirements.txt} and \texttt{language\_processor.py}, this is
+false --- \texttt{camel-tools} is not a dependency of this project at all.
+Gulf-dialect normalisation is a hand-built, 79-rule Python dictionary
+(\texttt{\_GULF\_NORMALISE} in \texttt{language\_processor.py}). By
+contrast, \texttt{sendgrid}, \texttt{python-jose}, and \texttt{langdetect}
+(above) were checked the same way and confirmed genuinely present in
+\texttt{requirements.txt} --- the correction in this thesis is precise
+about which claims were false and which were real, not a blanket distrust
+of the original draft's every dependency claim.
+
+% ------------------------------------------------------------
+\section{Docker Deployment}
+\label{sec:impl-docker}
+% ------------------------------------------------------------
+
+The system deploys via:
+\begin{lstlisting}
+start.bat
+# or, Docker-only:
+docker compose -f docker/docker-compose.yml up --build
+\end{lstlisting}
+
+\begin{table}[htbp]
+\centering
+\caption{Services and access URLs, verified against the live running system.}
+\label{tab:ch4-docker}
+\footnotesize\renewcommand{\arraystretch}{1.4}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{2.5cm}
+                >{\raggedright}p{3.5cm}
+                >{\raggedright\arraybackslash}p{6.2cm}}
+\toprule
+\textbf{Service} &
+\textbf{URL} &
+\textbf{Notes} \\
+\midrule
+Frontend (Next.js~14) & http://localhost:3000 & Confirmed 4 pages: \texttt{/},
+  \texttt{/chat}, \texttt{/report}, \texttt{/supervisor\_review} \\
+Backend (FastAPI) & http://localhost:8000 & \texttt{/docs} (Swagger),
+  \texttt{/ready}, \texttt{/health}, \texttt{/debug/isco/\{job\_title\}} ---
+  all confirmed responding; 20 routes total \\
+PostgreSQL~15 & internal :5432 & 11 tables, Alembic migrations at head \\
+Qdrant & http://localhost:6333 & 43 live collections as of this project's
+  most recent count (not a fixed set of 4) \\
+Redis~7 & internal :6379 & \\
+Ollama & http://localhost:11434 & 7 local models present \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% ------------------------------------------------------------
+\section{PostgreSQL Schema (11 Tables)}
+\label{sec:impl-schema}
+% ------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{PostgreSQL 11-table schema, confirmed exact table names.}
+\label{tab:ch4-schema}
+\footnotesize\renewcommand{\arraystretch}{1.4}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{3.8cm}
+                >{\raggedright\arraybackslash}p{8.4cm}}
+\toprule
+\textbf{Table} &
+\textbf{Purpose} \\
+\midrule
+\texttt{users} & Registered respondents \\
+\texttt{otp\_codes} & Time-limited OTP codes \\
+\texttt{survey\_sessions} & Survey session per user; employment path \\
+\texttt{survey\_responses} & Individual field answers + classification codes \\
+\texttt{audit\_logs} & Audit trail \\
+\texttt{data\_access\_logs} & Per-row PII access log \\
+\texttt{agent\_decision\_logs} & Agent reasoning traces \\
+\texttt{quality\_reviews} & \texttt{HITLQualityManager} scoring records \\
+\texttt{hitl\_queue} & Low-confidence items pending supervisor review \\
+\texttt{person\_register} & Pre-fill data from previous survey rounds \\
+\texttt{survey\_report\_records} & Cached employment reports, including
+  persisted ISIC/ISCED/semantic-coherence enrichment (added after a real
+  bug --- see below) \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+Migration chain confirmed current at head: \texttt{001\_initial\_schema}
+$\to$ \texttt{976b9b9c96d4\_add\_hitlqueue\_evaluation\_tables} $\to$
+\texttt{f514fcb81c72\_add\_deleted\_at\_soft\_delete\_columns} $\to$
+\texttt{a3f9c1d2e4b6\_add\_survey\_response\_supersedes\_id} $\to$
+\texttt{c7e2a48f9d31\_add\_report\_isic\_isced\_coherence\_columns}. The last
+migration fixes a real bug found during this project's own development: a
+report's ISIC/ISCED/semantic-coherence results were correctly computed on
+first generation but \texttt{survey\_report\_records} had no columns to
+persist them, so every cache-hit re-view of an already-generated report
+silently returned \texttt{null} for all three. A second, independent bug in
+the same code path was found by the regression test written for the first:
+\texttt{dataclasses.asdict()} was called twice on an already-recursed
+result, raising a \texttt{TypeError} on every invocation that a bare
+\texttt{except Exception: pass} silently swallowed --- meaning
+\texttt{semantic\_coherence} was \texttt{null} in every report ever
+generated, independent of the caching bug. Both are stated here as real,
+found-and-fixed defects, not hypothetical examples.
+
+% ------------------------------------------------------------
+\section{ISCO-08 Knowledge Base Construction}
+\label{sec:impl-kb}
+% ------------------------------------------------------------
+
+\textbf{Source:} ILO ISCO-08 Volumes~I and~II~\cite{ilo2012isco_v1,ilo2012isco_v2}.
+\textbf{Coverage:} 436 unit groups (the exact official count), corrected via
+a direct primary-source cross-check --- not 441 as an earlier internal
+draft of this thesis stated, and not because of any ``ILO Geneva 2012
+supplementary guidance'' (that explanation was investigated and found to
+have no basis in any source checked; see Chapter~\ref{chap:architecture}).
+\textbf{Embeddings:} \texttt{intfloat/multilingual-e5-small} in the
+production-default profile; an additive \texttt{multilingual-e5-large}
+profile exists and is measurably more accurate but is not yet the default.
+%% VERIFY AGAINST CODE: specific HNSW parameters and payload field names
+%% were not independently re-verified against backend/rag/ in this pass.
+
+Real engineering finding from this construction work: the official
+catalogue's \texttt{embedding\_text} for every entry was originally just
+\texttt{"\{code\} \{2-4 word title\}"} (e.g.\ \texttt{"6122 Poultry
+Producers"}), while the official ILO source workbook already on hand
+carries full \texttt{Definition}, \texttt{Tasks include}, and \texttt{Included
+occupations} columns for every entry --- silently discarded by the original
+catalogue-normalisation script. Several thin-text codes acted as a
+``magnet,'' matching 15--55$\times$ more often than their true frequency in
+the evaluation set. This was fixed by building a real, opt-in enriched
+catalogue text using the source workbook's actual definitions --- the single
+largest accuracy improvement measured in this project (full results in
+Chapter~\ref{chap:results}).
+
+% ------------------------------------------------------------
+\section{Language Processing Implementation}
+\label{sec:impl-lang}
+% ------------------------------------------------------------
+
+The \texttt{LanguageProcessor} handles six language codes:
+\texttt{en}, \texttt{ar}, \texttt{ar-gulf}, \texttt{ur}, \texttt{hi},
+\texttt{tl} (plus an \texttt{other} fallback). Gulf-dialect normalisation
+uses a hand-built 79-rule dictionary, not an external library (see
+Section~\ref{sec:impl-method}). NER extracts entities via a
+\texttt{TaskType.GENERAL}-routed CrewAI agent (Ollama/Llama~3.2 primary,
+with the real automatic fallback chain described in
+Chapter~\ref{chap:architecture} if Ollama is unreachable) --- this degrades
+to empty entities rather than a hard failure if the underlying LLM is down.
+Language detection is confirmed to use \texttt{langdetect.detect\_langs()}
+as its primary probabilistic detector, with a documented Devanagari
+fast-path in the code specifically because ``langdetect sometimes misses
+pure Hindi'' --- confirmed directly against the live source, matching (not
+contradicting) the earlier draft's general framing here.
+%% VERIFY AGAINST CODE: the exact code-switch-detection mechanism beyond
+%% this was not independently re-verified in this pass.
+
+A real, tested finding: this project's own evaluation of the Gulf-dialect
+normaliser (Chapter~\ref{chap:results}) found it detects only a modest
+fraction of genuinely dialectal text and made no measurable difference to
+downstream classification accuracy on the sample tested --- reported
+honestly as a real negative result.
+
+% ------------------------------------------------------------
+\section{Validation Agent}
+\label{sec:impl-validation}
+% ------------------------------------------------------------
+
+The \texttt{ValidationAgent} enforces ten deterministic rules, confirmed
+directly against \texttt{backend/agents/validation\_agent.py}:
+
+\begin{itemize}
+  \item \textbf{R01} Required fields (\texttt{employment\_status},
+  \texttt{industry}) must be present and non-empty
+  \item \textbf{R02} \texttt{hours\_per\_week} must be parseable as a number
+  \item \textbf{R03} \texttt{hours\_per\_week} must be in $[1, 168]$
+  \item \textbf{R04} \texttt{hours\_per\_week} $> 80$ triggers an outlier warning
+  \item \textbf{R05} Unemployed respondent with a non-empty \texttt{job\_title}
+  is a contradiction
+  \item \textbf{R06} Unemployed respondent with \texttt{hours\_per\_week} $>0$
+  is a contradiction
+  \item \textbf{R07} Not-in-labour-force respondent with a non-empty
+  \texttt{job\_title} is a contradiction
+  \item \textbf{R08} Full-time employment with fewer than 20 hours/week
+  triggers a warning
+  \item \textbf{R09} Part-time employment with 35+ hours/week triggers a
+  warning
+  \item \textbf{R10} Employed respondent with 0 \texttt{hours\_per\_week} is
+  an error
+\end{itemize}
+
+\textbf{This replaces the original draft's ten rules entirely}, which
+described ILO ICLS-19-specific mechanisms (a wage gate, platform-worker
+disclosure, national-employment-programme routing, an ``F3'' re-routing
+rule to \texttt{not\_in\_labour\_force}) that do not exist as R01--R10 in the
+real code. The real ten rules, listed above, are hours/employment-status
+logical-consistency checks. An optional Stage-2 LLM semantic check exists
+on top of these ten deterministic rules but was not independently
+re-verified in detail in this pass.
+
+% ------------------------------------------------------------
+\section{Frontend Implementation}
+\label{sec:impl-frontend}
+% ------------------------------------------------------------
+
+Confirmed four pages (login flow tested end-to-end): \texttt{/} (login,
+email OTP $\to$ JWT), \texttt{/chat} (survey conversation), \texttt{/report}
+(bilingual employment report with the Cross-Standard Coherence panel), and
+\texttt{/supervisor\_review} (HITL dashboard).
+%% VERIFY AGAINST CODE: specific component names, exact field/quick-reply
+%% counts, and font/RTL implementation details from the original draft
+%% were not independently re-verified against frontend/ in this pass.
+
+% ------------------------------------------------------------
+\section{Testing}
+\label{sec:impl-testing}
+% ------------------------------------------------------------
+
+The test suite spans \texttt{backend/tests/} and \texttt{eval/}, run via
+\texttt{pytest backend/tests eval/ -q}. \textbf{Real, current count (this
+project's most recent full run): 2,501 passed, 1 deselected}, not the ``18
+mocked files'' an earlier internal draft of this thesis stated --- that
+figure was stale even relative to this project's own mid-project state (44
+files in \texttt{backend/tests/} alone at one verified point, growing
+substantially further since). The one deselected test is a slow load test
+(\texttt{@pytest.mark.slow}); no standing known failures. This count has
+been independently reproduced multiple times, including nine consecutive
+full runs under varying \texttt{PYTHONHASHSEED} values with byte-identical
+results, confirming no hash-order non-determinism in the current suite.
+
+A separate, pre-existing framework (\texttt{eval/legacy\_thesis\_ch6/
+evaluate.py}, formerly \texttt{backend/evaluation/}) compares BM25, flat, and
+hierarchical retrieval on a 100-item \emph{synthetic} corpus. This is real
+and still used (its \texttt{BM25Baseline} class is imported by the main
+evaluation harness), but --- stated precisely, unlike the original draft ---
+its numbers are never the primary, citable evaluation result for this
+thesis; the primary result comes from the real, external WISCO benchmark
+(Chapter~\ref{chap:evaluation}).

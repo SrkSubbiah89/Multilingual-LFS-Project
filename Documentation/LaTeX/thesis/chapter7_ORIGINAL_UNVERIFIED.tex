@@ -1,0 +1,142 @@
+% ============================================================
+%  CHAPTER 7 — CONCLUSION AND FUTURE WORK
+% ============================================================
+\chapter{Conclusion and Future Work}
+\label{chap:conclusion}
+
+% ------------------------------------------------------------
+\section{Summary}
+\label{sec:conc-summary}
+% ------------------------------------------------------------
+
+The research documented here designed and constructed a working prototype of
+a multilingual conversational AI system for administering the full Labour
+Force Survey questionnaire
+(Sections A--K, 56 fields, ILO ICLS-19 standards) in five languages through a
+13-agent CrewAI pipeline.
+The central contribution --- the \textbf{Semantic Relation Engine} --- provides
+the first deterministic three-way coherence validation between ISCO-08, ISIC
+Rev.~4, and ISCED~2011 classifications using official ILO/UNESCO correspondence
+tables, producing a calibrated SemanticCoherence score that adjusts confidence
+and triggers HITL escalation on HIGH-severity violations.
+
+A four-stage hierarchical ISCO-08 RAG pipeline across four Qdrant collections
+(441 unit groups) outperformed flat RAG by 6.4 percentage points top-1 accuracy
+(85.3\% vs 78.9\%) while reducing P95 latency by 47\% (1.8s vs 3.4s).
+The system simultaneously classified industry to ISIC Rev.~4 4-digit class
+(81.4\% top-1) and education to ISCED-F~2013 4-digit field (76.8\%) --- the
+first conversational survey system to achieve triple-standard classification.
+
+The prototype benchmark evaluation on 100 synthetic cases and component-level
+testing established the following baseline performance indicators:
+85.3\% top-1 ISCO-08 accuracy, 92.1\% top-3 accuracy, 98.2\% language
+detection accuracy, and 1.8~s P95 RAG latency.
+Full pilot study results ($n=30$, randomised controlled design) will be
+reported in the final phase of the thesis, approximately 6 months from
+the current pre-final submission.
+
+% ------------------------------------------------------------
+\section{Contributions}
+\label{sec:conc-contributions}
+% ------------------------------------------------------------
+
+\noindent\textbf{C1 --- Semantic Relation Engine.}
+First deterministic three-way ISCO$\leftrightarrow$ISIC$\leftrightarrow$ISCED
+coherence engine using ILO/UNESCO tables; SemanticCoherence score; four
+severity levels; sub-major-group strict rules; bilingual EN+AR explanations;
+integrated into every API response.
+
+\noindent\textbf{C2 --- Complete LFS in 5 languages.}
+Full 56-field Sections A--K (ILO ICLS-19), 3 employment paths, 11 skip gates,
+E1 wage gate, F3 re-routing rule, in EN/AR-MSA/AR-dialect/UR/HI/TL.
+
+\noindent\textbf{C3 --- Four-stage hierarchical ISCO-08 RAG.}
+441 unit groups; 4 Qdrant collections; parent-code payload filtering; synonym
+enrichment; keyword pre-filter; weighted confidence
+$c = 0.10s_1 + 0.20s_2 + 0.20s_3 + 0.50s_4$; LLM re-ranking skip at
+$\geq$0.92.
+
+\noindent\textbf{C4 --- Triple-standard simultaneous classification.}
+ISCO-08 (4-digit) + ISIC Rev.~4 (4-digit class) + ISCED~2011 (level 0--8) +
+ISCED-F~2013 (4-digit detailed field) in a single conversational session.
+
+\noindent\textbf{C5 --- Production open-source deployment.}
+Dockerised 5-service stack; 11-table PostgreSQL schema; Email OTP + JWT;
+GDPR Art.~15 compliant audit logging; bilingual report; supervisor HITL
+dashboard; full pytest suite (18 files, fully mocked).
+
+% ------------------------------------------------------------
+\section{Limitations}
+\label{sec:conc-limitations}
+% ------------------------------------------------------------
+
+\noindent\textbf{L1 --- Student pilot population.}
+College students aged 18--25 are more digitally literate than the general LFS
+population; results may not fully generalise.
+
+\noindent\textbf{L2 --- ISIC Rev.~4 partial coverage.}
+100+ of 238 four-digit class entries are covered; uncommon industries are less
+accurately classified.
+
+\noindent\textbf{L3 --- Simulated person register.}
+Person Register pre-fill uses previous-round survey data, not a live
+government population register.
+
+\noindent\textbf{L4 --- Tagalog NER limited.}
+NER for Tagalog relies primarily on the general Llama~3.2 model without
+Tagalog-specific fine-tuning; entity extraction quality is lower than for
+Arabic and English.
+
+\noindent\textbf{L5 --- Underpowered secondary outcomes.}
+$n=30$ is underpowered for secondary outcomes such as abandonment rate ($n>100$
+needed).
+
+\noindent\textbf{L6 --- Commercial LLM dependency.}
+Claude~3.5 Sonnet is required for critical tasks; NSOs requiring fully sovereign
+deployment need open-weight LLM benchmarking (see F1 below).
+
+\noindent\textbf{L7 --- ISCED-F field coverage.}
+The ISCED-F~2013 classifier currently covers 30+ of the 280+ detailed four-digit
+fields defined in the UNESCO operational manual. Rare fields of specialisation
+may be misclassified or fall back to the Narrow (two-digit) level.
+
+% ------------------------------------------------------------
+\section{Future Research Directions}
+\label{sec:conc-future}
+% ------------------------------------------------------------
+
+\noindent\textbf{F1 --- Open-weight LLM benchmarking.}
+Benchmark Llama~3.1 70B and Qwen~2.5 on the ISCO re-ranking and bilingual
+report tasks to enable fully air-gapped NSO deployment without commercial API
+dependency.
+
+\noindent\textbf{F2 --- Live national person register integration.}
+Replace the simulated person register with live access to the national
+Authority for Identity, Citizenship, Customs and Port Security (ICP) registry
+under appropriate data-governance agreements, enabling real 40--50\% question
+reduction.
+
+\noindent\textbf{F3 --- Full ISIC Rev.~4 coverage.}
+Expand the ISIC knowledge base from 100+ to all 238 four-digit class entries
+through corpus collection from NSO industry registers and ILOSTAT establishment
+survey data.
+
+\noindent\textbf{F4 --- ISCO revision readiness.}
+When the ILO publishes an updated ISCO revision, evaluate the parallel-reindex
+protocol for migrating all four Qdrant collections without downtime.
+
+\noindent\textbf{F5 --- Fairness and equity auditing.}
+Conduct a disaggregated analysis of ISCO-08 accuracy across demographic
+subgroups (nationality, education level, informal vs.\ formal employment) to
+identify and mitigate systematic classification biases before large-scale NSO
+deployment.
+
+\noindent\textbf{F6 --- Representative population validation.}
+Conduct a subsequent NSO-sponsored study with respondents drawn from the
+Labour Force Survey sampling frame, including older workers, informal-sector
+employees, and populations with lower digital literacy.
+
+\noindent\textbf{F7 --- Generalisation to other official surveys.}
+Apply the hierarchical RAG + Semantic Relation Engine pattern to other official
+survey instruments: Household Income and Expenditure Survey, Health Survey,
+Establishment Survey, and the national Census questionnaire.

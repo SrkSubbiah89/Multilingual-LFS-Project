@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from "react";
 import Head from "next/head";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { requestOtp, verifyOtp, requestSmsOtp, verifySmsOtp } from "../components/api";
 
@@ -61,6 +62,57 @@ const T = {
     loginHeading: "تسجيل الدخول للبدء",
     loginSub: "إجاباتك سرية ومحمية.",
   },
+  ur: {
+    title: "لیبر فورس سروے",
+    subtitle: "AI سے چلنے والا ملازمت ڈیٹا جمع کرنے کا پلیٹ فارم",
+    emailLabel: "ای میل ایڈریس",
+    emailPlaceholder: "you@example.com",
+    emailButton: "تصدیقی کوڈ بھیجیں",
+    otpLabel: "تصدیقی کوڈ",
+    otpPlaceholder: "6 ہندسوں کا کوڈ درج کریں",
+    otpSent: (e) => `تصدیقی کوڈ ${e} پر بھیج دیا گیا۔`,
+    otpButton: "سائن ان کریں",
+    backLink: "مختلف ای میل استعمال کریں",
+    resendLink: "کوڈ دوبارہ بھیجیں",
+    resendOk: "کوڈ دوبارہ بھیج دیا گیا!",
+    errorGeneric: "کچھ غلط ہو گیا۔ براہ کرم دوبارہ کوشش کریں۔",
+    loginHeading: "شروع کرنے کے لیے سائن ان کریں",
+    loginSub: "آپ کے جوابات خفیہ اور محفوظ ہیں۔",
+  },
+  hi: {
+    title: "श्रम बल सर्वेक्षण",
+    subtitle: "AI-संचालित रोजगार डेटा संग्रह प्लेटफ़ॉर्म",
+    emailLabel: "ईमेल पता",
+    emailPlaceholder: "you@example.com",
+    emailButton: "सत्यापन कोड भेजें",
+    otpLabel: "सत्यापन कोड",
+    otpPlaceholder: "6-अंकीय कोड दर्ज करें",
+    otpSent: (e) => `सत्यापन कोड ${e} पर भेजा गया।`,
+    otpButton: "साइन इन करें",
+    backLink: "एक अलग ईमेल का उपयोग करें",
+    resendLink: "कोड पुनः भेजें",
+    resendOk: "कोड पुनः भेज दिया गया!",
+    errorGeneric: "कुछ गलत हो गया। कृपया पुनः प्रयास करें।",
+    loginHeading: "शुरू करने के लिए साइन इन करें",
+    loginSub: "आपके उत्तर गोपनीय और सुरक्षित हैं।",
+  },
+  tl: {
+    title: "Labour Force Survey",
+    subtitle: "AI-Powered na Platform sa Pangongolekta ng Datos ng Trabaho",
+    emailLabel: "Email address",
+    emailPlaceholder: "you@example.com",
+    emailButton: "Ipadala ang verification code",
+    otpLabel: "Verification code",
+    otpPlaceholder: "Ilagay ang 6-digit na code",
+    otpSent: (e) => `Naipadala ang verification code sa ${e}.`,
+    otpButton: "Mag-sign in",
+    backLink: "Gumamit ng ibang email",
+    resendLink: "Ipadala ulit ang code",
+    resendOk: "Naipadala ulit ang code!",
+    errorGeneric: "May nagkamali. Pakisubukan muli.",
+    loginHeading: "Mag-sign in para magsimula",
+    loginSub: "Kumpidensyal at protektado ang iyong mga sagot.",
+  },
 };
 
 const STATS = [
@@ -79,28 +131,77 @@ const FEATURES = [
   },
   {
     id: "rag",
-    title: "Hierarchical RAG",
-    tag: "Core Thesis Contribution",
-    points: ["4-stage Qdrant pipeline", "Major → Sub-major → Minor → Unit", "Beam search (width = 2)", "Keyword major-group anchoring"],
+    title: "ISCO-08 Retrieval (RAG)",
+    tag: "Best-tested: flat + enrichment",
+    points: ["Flat retrieval + official-text enrichment (headline result)", "Hierarchical 4-stage pipeline also implemented, for comparison", "Hierarchical measurably underperforms flat on real benchmark data", "Keyword major-group anchoring"],
   },
   {
     id: "ilo",
-    title: "ILO Standards",
+    title: "Classification Standards",
     tag: null,
     points: ["ISCO-08 occupation coding", "ISIC Rev.4 industry coding", "ISCED 2011 education level", "UN M49 nationality coding"],
   },
 ];
 
-const PIPELINE_STAGES = [
-  { stage: "Stage 1", label: "Major Group",  count: "10" },
-  { stage: "Stage 2", label: "Sub-major",    count: "43" },
-  { stage: "Stage 3", label: "Minor Group",  count: "130" },
-  { stage: "Stage 4", label: "Unit Group",   count: "436" },
+// Real, verified counts for all 3 implemented classification standards
+// (checked directly against the live Qdrant collections and CLAUDE.md's
+// own verified-numbers table, 2026-08-30). Each standard gets its own card
+// below — ISIC Rev.4 and ISCED were previously missing from this page
+// entirely, giving the false impression only ISCO-08 was implemented.
+const STRUCTURE_SECTIONS = [
+  {
+    id: "isco",
+    title: "ISCO-08 Catalogue Structure (4 Levels)",
+    stages: [
+      { stage: "Stage 1", label: "Major Group", count: "10" },
+      { stage: "Stage 2", label: "Sub-major",   count: "43" },
+      { stage: "Stage 3", label: "Minor Group", count: "130" },
+      { stage: "Stage 4", label: "Unit Group",  count: "436" },
+    ],
+    caption: "436 unit groups, matching the official ILO count exactly · " +
+      "Best-tested retrieval: flat + official-text enrichment · Keyword " +
+      "major-group anchoring · LLM re-ranking when confidence < 0.92",
+  },
+  {
+    id: "isic",
+    title: "ISIC Rev.4 Catalogue Structure (4 Levels)",
+    stages: [
+      { stage: "Level 1", label: "Section",  count: "21" },
+      { stage: "Level 2", label: "Division", count: "68" },
+      { stage: "Level 3", label: "Group",    count: "118" },
+      { stage: "Level 4", label: "Class",    count: "134" },
+    ],
+    caption: "134 of 419 official ISIC Rev.4 classes populated — a real, " +
+      "disclosed coverage gap, not yet full · Same best-tested recipe as " +
+      "ISCO-08 (flat retrieval + official-text enrichment + e5-large " +
+      "embeddings), infrastructure-complete and live · No WISCO-style " +
+      "external accuracy benchmark exists for ISIC yet — only a synthetic, " +
+      "LLM-generated benchmark (disclosed in full in the thesis)",
+  },
+  {
+    id: "isced",
+    title: "ISCED-F 2013 Field Structure (3 Levels)",
+    stages: [
+      { stage: "Level 1", label: "Broad Field",    count: "11" },
+      { stage: "Level 2", label: "Narrow Field",   count: "25" },
+      { stage: "Level 3", label: "Detailed Field", count: "63" },
+    ],
+    caption: "63 of ~80 official ISCED-F 2013 detailed fields populated — " +
+      "a real, disclosed coverage gap · ISCED 2011 education-attainment " +
+      "level (9 categories, No formal education → PhD) is scored as a " +
+      "separate, independent dimension, not part of this field hierarchy · " +
+      "Same best-tested recipe as ISCO-08 · No WISCO-style external " +
+      "accuracy benchmark exists yet — only a synthetic benchmark " +
+      "(disclosed in full in the thesis)",
+  },
 ];
 
 const LANG_PILLS = [
   { code: "en", label: "EN" },
   { code: "ar", label: "AR" },
+  { code: "ur", label: "UR" },
+  { code: "hi", label: "HI" },
+  { code: "tl", label: "TL" },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -115,7 +216,7 @@ export default function LoginPage() {
   const [resendMsg, setResendMsg] = useState("");
 
   const t   = T[lang] || T.en;
-  const dir = lang === "ar" ? "rtl" : "ltr";
+  const dir = (lang === "ar" || lang === "ur") ? "rtl" : "ltr";
 
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("lfs_token")) {
@@ -193,20 +294,25 @@ export default function LoginPage() {
                 <span style={{ color: C.faint, fontSize: 11, marginLeft: 8 }}>AI Platform</span>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, color: C.muted, fontFamily: MONO }}>LANG:</span>
-              {LANG_PILLS.map(lp => (
-                <button key={lp.code} onClick={() => setLang(lp.code)}
-                  style={{
-                    fontFamily: MONO, fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
-                    background: lang === lp.code ? C.green : "transparent",
-                    color:      lang === lp.code ? "#fff"  : C.muted,
-                    border:     lang === lp.code ? `1px solid ${C.green}` : `1px solid ${C.border}`,
-                    cursor: "pointer", transition: "all 0.15s",
-                  }}>
-                  {lp.label}
-                </button>
-              ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <Link href="/questionnaire" style={{ fontSize: 12, color: C.green, textDecoration: "underline" }}>
+                Full questionnaire
+              </Link>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: C.muted, fontFamily: MONO }}>LANG:</span>
+                {LANG_PILLS.map(lp => (
+                  <button key={lp.code} onClick={() => setLang(lp.code)}
+                    style={{
+                      fontFamily: MONO, fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
+                      background: lang === lp.code ? C.green : "transparent",
+                      color:      lang === lp.code ? "#fff"  : C.muted,
+                      border:     lang === lp.code ? `1px solid ${C.green}` : `1px solid ${C.border}`,
+                      cursor: "pointer", transition: "all 0.15s",
+                    }}>
+                    {lp.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </header>
@@ -386,7 +492,7 @@ export default function LoginPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                     <div style={{ background: C.greenLt, border: `1px solid ${C.green}30`, borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: C.green }}>
-                        {f.id === "nlp" ? "NLP" : f.id === "rag" ? "RAG" : "ILO"}
+                        {f.id === "nlp" ? "NLP" : f.id === "rag" ? "RAG" : "STD"}
                       </span>
                     </div>
                     <h3 style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{f.title}</h3>
@@ -409,32 +515,38 @@ export default function LoginPage() {
             </div>
           </section>
 
-          {/* ── Pipeline ─────────────────────────────────────────────────────── */}
-          <section style={{ padding: "0 0 48px" }}>
-            <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: "24px 28px" }}>
-              <p style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 16 }}>
-                4-Stage Hierarchical ISCO-08 Classification Pipeline
-              </p>
-              <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
-                {PIPELINE_STAGES.map((st, idx) => (
-                  <div key={st.stage} style={{ display: "flex", alignItems: "center", flex: 1 }}>
-                    <div style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 12px", textAlign: "center",
-                      ...(idx === 3 ? { background: C.greenLt, border: `1px solid ${C.green}40` } : {}) }}>
-                      <p style={{ fontFamily: MONO, fontSize: 9, color: C.faint, marginBottom: 4 }}>{st.stage}</p>
-                      <p style={{ fontFamily: MONO, fontSize: 26, fontWeight: 700, color: idx === 3 ? C.green : C.text, lineHeight: 1 }}>{st.count}</p>
-                      <p style={{ fontSize: 11, color: idx === 3 ? C.green : C.muted, marginTop: 4 }}>{st.label}</p>
-                    </div>
-                    {idx < 3 && (
-                      <div style={{ padding: "0 8px", color: C.faint, fontSize: 18, fontWeight: 300 }}>›</div>
-                    )}
+          {/* ── Catalogue structure: ISCO-08, ISIC Rev.4, ISCED-F ─────────────── */}
+          {STRUCTURE_SECTIONS.map((sec, secIdx) => {
+            const lastIdx = sec.stages.length - 1;
+            const isLastSection = secIdx === STRUCTURE_SECTIONS.length - 1;
+            return (
+              <section key={sec.id} style={{ padding: isLastSection ? "0 0 48px" : "0 0 20px" }}>
+                <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: "24px 28px" }}>
+                  <p style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 16 }}>
+                    {sec.title}
+                  </p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+                    {sec.stages.map((st, idx) => (
+                      <div key={st.stage} style={{ display: "flex", alignItems: "center", flex: 1 }}>
+                        <div style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 12px", textAlign: "center",
+                          ...(idx === lastIdx ? { background: C.greenLt, border: `1px solid ${C.green}40` } : {}) }}>
+                          <p style={{ fontFamily: MONO, fontSize: 9, color: C.faint, marginBottom: 4 }}>{st.stage}</p>
+                          <p style={{ fontFamily: MONO, fontSize: 26, fontWeight: 700, color: idx === lastIdx ? C.green : C.text, lineHeight: 1 }}>{st.count}</p>
+                          <p style={{ fontSize: 11, color: idx === lastIdx ? C.green : C.muted, marginTop: 4 }}>{st.label}</p>
+                        </div>
+                        {idx < lastIdx && (
+                          <div style={{ padding: "0 8px", color: C.faint, fontSize: 18, fontWeight: 300 }}>›</div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <p style={{ fontSize: 11, color: C.faint, marginTop: 14, textAlign: "center" }}>
-                Beam search width = 2 at stages 1–3 · Keyword major-group anchoring · LLM re-ranking when confidence &lt; 0.92
-              </p>
-            </div>
-          </section>
+                  <p style={{ fontSize: 11, color: C.faint, marginTop: 14, textAlign: "center" }}>
+                    {sec.caption}
+                  </p>
+                </div>
+              </section>
+            );
+          })}
 
         </div>
       </div>

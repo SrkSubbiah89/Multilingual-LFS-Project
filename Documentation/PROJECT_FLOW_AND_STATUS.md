@@ -306,6 +306,20 @@ single best match. This is opt-in per classifier instance and, as of
 2026-08-24, available for all three standards (ISCO, ISIC, ISCED-F),
 each with the same fail-closed provider contract (§8).
 
+**2026-08-25**: ISIC/ISCED-F gained genuine flat retrieval (previously
+hierarchical-only), so both bullet points above are now real,
+architecturally-identical options for all three standards, not just
+ISCO-08 — `classify(text, method=ISIC_FLAT_RETRIEVAL /
+ISCEDF_FLAT_RETRIEVAL)`, matching ISCO-08's own best-tested (flat)
+configuration rather than only its underperforming hierarchical one.
+Production `classify(text)` still defaults to the legacy keyword/LLM
+pipeline for both — this is implementation parity, not a default switch,
+and not an accuracy claim (no labelled ISIC/ISCED-F evaluation data
+exists yet). See `CLAUDE.md`'s "Knowledge base construction" log and
+`Documentation/Conference_I_Reviewer_2/
+ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md` for the full
+writeup.
+
 ### 10.2 Semantic Relation Engine (SRE)
 
 A fourth, cross-cutting component checks whether the three

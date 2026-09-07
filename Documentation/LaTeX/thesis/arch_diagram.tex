@@ -1,0 +1,173 @@
+% ============================================================
+%  System Architecture Diagram — corrected 2026-08-28
+%  Rebuilt against verified facts: 13 real agent-constructing modules
+%  (not 10), no CrewAI hierarchical process (removed -- none exists in
+%  this codebase), real LLM tiers (GENERAL/CRITICAL, not GPT-4o/Llama
+%  3.1 70B, neither of which is used anywhere in this project), and
+%  storage limited to what is actually verified (PostgreSQL, Qdrant,
+%  Redis -- no MinIO/S3 claimed without verification).
+% ============================================================
+\begin{figure}[p]
+\centering
+
+\tikzset{
+  titlebar/.style={
+    draw=black, fill=black, text=white,
+    minimum width=14.10cm, minimum height=0.65cm,
+    align=center, font=\sffamily\bfseries\footnotesize,
+    inner sep=0pt
+  },
+  fullbar/.style={
+    draw=black, fill=white,
+    minimum width=14.10cm, minimum height=0.80cm,
+    align=center, font=\sffamily\scriptsize,
+    inner sep=3pt
+  },
+  shadebar/.style={
+    draw=black, fill=gray!15,
+    minimum width=14.10cm, minimum height=0.60cm,
+    align=center, font=\sffamily\bfseries\scriptsize,
+    inner sep=0pt
+  },
+  agentcell/.style={
+    draw=black, fill=white,
+    minimum width=4.55cm, minimum height=1.55cm,
+    align=center, inner sep=4pt,
+    font=\sffamily\scriptsize
+  },
+  dbcell/.style={
+    draw=black, fill=gray!10,
+    minimum width=4.55cm, minimum height=1.05cm,
+    align=center, inner sep=4pt,
+    font=\sffamily\scriptsize
+  },
+}
+
+\begin{tikzpicture}[every node/.style={outer sep=0pt}]
+
+\def\xL{2.275}
+\def\xM{7.050}
+\def\xR{11.825}
+
+%% Title
+\node[titlebar, anchor=north west] at (0, 0)
+  {CONVERSATIONAL AGENTIC SYSTEM FOR LFS (13 AGENT-CONSTRUCTING MODULES)};
+
+%% UI Layer
+\node[fullbar, anchor=north west] at (0, -0.65cm)
+  {\textbf{USER INTERFACE LAYER}\\[-2pt]
+   {\tiny Next.js~14 --- 4 pages: /, /chat, /report, /supervisor\_review (all confirmed live)}};
+
+%% API layer -- no orchestrator agent, no hierarchical process
+\node[shadebar, anchor=north west] at (0, -1.45cm)
+  {FASTAPI API LAYER (backend/api/survey\_routes.py) --- 20 routes; DIRECT invocation, NO orchestrator agent, NO CrewAI hierarchical process};
+
+%% Specialist agents header
+\node[shadebar, anchor=north west] at (0, -2.05cm)
+  {13 AGENT-CONSTRUCTING MODULES (backend/agents/), each allow\_delegation=False};
+
+%% Row 1: 3 modules
+\node[agentcell, anchor=north west] at (0, -2.65cm)
+  {\textbf{language\_processor}\\[2pt]
+   Language detect, Gulf-dialect\\normalisation (79-rule dict), NER\\[2pt]
+   {\tiny TaskType.GENERAL}};
+
+\node[agentcell, anchor=north west] at (4.775cm, -2.65cm)
+  {\textbf{conversation\_manager}\\[2pt]
+   Conversation flow,\\field ordering, skip gates\\[2pt]
+   {\tiny TaskType.GENERAL}};
+
+\node[agentcell, anchor=north west] at (9.55cm, -2.65cm)
+  {\textbf{isco\_classifier}\\[2pt]
+   ISCO-08: hierarchical AND\\flat retrieval (flat = best-tested)\\[2pt]
+   {\tiny GENERAL/CRITICAL}};
+
+%% Row 2: 3 modules
+\node[agentcell, anchor=north west] at (0, -4.20cm)
+  {\textbf{isic\_classifier}\\[2pt]
+   ISIC Rev.4: keyword/LLM\\legacy + hierarchical/flat retrieval\\[2pt]
+   {\tiny GENERAL/CRITICAL}};
+
+\node[agentcell, anchor=north west] at (4.775cm, -4.20cm)
+  {\textbf{isced\_classifier}\\[2pt]
+   ISCED level + ISCED-F field,\\same retrieval parity as ISIC\\[2pt]
+   {\tiny GENERAL/CRITICAL}};
+
+\node[agentcell, anchor=north west] at (9.55cm, -4.20cm)
+  {\textbf{semantic\_relation}\\[2pt]
+   Semantic Relation Engine:\\hand-built crosswalk, not ILO-sourced\\[2pt]
+   {\tiny Deterministic + optional LLM}};
+
+%% Row 3: 3 modules
+\node[agentcell, anchor=north west] at (0, -5.75cm)
+  {\textbf{validation\_agent}\\[2pt]
+   Rules R01--R10\\(hours/status consistency)\\[2pt]
+   {\tiny TaskType.GENERAL}};
+
+\node[agentcell, anchor=north west] at (4.775cm, -5.75cm)
+  {\textbf{hitl\_quality\_manager}\\[2pt]
+   Quality scoring, escalation,\\independent thresholds\\[2pt]
+   {\tiny TaskType.GENERAL}};
+
+\node[agentcell, anchor=north west] at (9.55cm, -5.75cm)
+  {\textbf{report\_generator}\\[2pt]
+   Employment report,\\ISIC/ISCED/SRE enrichment\\[2pt]
+   {\tiny GENERAL/CRITICAL}};
+
+%% Row 4: 3 modules
+\node[agentcell, anchor=north west] at (0, -7.30cm)
+  {\textbf{emotional\_intelligence}\\[2pt]
+   Engagement / abandonment\\risk signal\\[2pt]
+   {\tiny TaskType.GENERAL}};
+
+\node[agentcell, anchor=north west] at (4.775cm, -7.30cm)
+  {\textbf{audit\_logger}\\[2pt]
+   Audit-trail logging\\[2pt]
+   {\tiny Deterministic}};
+
+\node[agentcell, anchor=north west] at (9.55cm, -7.30cm)
+  {\textbf{context\_memory}\\[2pt]
+   Session context\\management\\[2pt]
+   {\tiny See Ch.3 verify-against-code note}};
+
+%% Row 5: 1 module + note
+\node[agentcell, anchor=north west] at (0, -8.85cm)
+  {\textbf{rag\_expert}\\[2pt]
+   Multi-classification\\RAG helper\\[2pt]
+   {\tiny See Ch.3 verify-against-code note}};
+
+\node[fullbar, anchor=north west, minimum height=1.55cm, align=left] at (4.775cm, -8.85cm)
+  {\tiny \textbf{Real, used, NOT agent-constructing:}\\
+   nationality\_classifier.py, person\_register.py (deterministic\\
+   pre-fill), isco\_reranker\_strict.py, classifier\_methods.py,\\
+   method\_registry.py. No survey\_orchestrator.py exists.};
+
+%% LLM tiers -- real
+\node[shadebar, anchor=north west] at (0, -10.40cm)
+  {LLM ROUTING (backend/llm/llm\_client.py) --- TaskType.GENERAL and TaskType.CRITICAL only};
+
+\node[fullbar, anchor=north west] at (0, -11.00cm)
+  {\textbf{GENERAL:} Ollama/Llama~3.2 $\to$ (fallback) Claude~3.5~Sonnet $\to$ Gemini $\to$ Groq $\to$ OpenRouter
+   \quad\textbar\quad
+   \textbf{CRITICAL:} Claude~3.5~Sonnet only, NO fallback (blocked by zero usable credit throughout evaluation)};
+
+%% Storage row -- verified only
+\node[dbcell, anchor=north west] at (0, -11.80cm)
+  {\textbf{Vector DB}\\[3pt]
+   {\small Qdrant --- 43 live collections}};
+
+\node[dbcell, anchor=north west] at (4.775cm, -11.80cm)
+  {\textbf{Relational DB}\\[3pt]
+   {\small PostgreSQL 15 --- 11 tables}};
+
+\node[dbcell, anchor=north west] at (9.55cm, -11.80cm)
+  {\textbf{Cache}\\[3pt]
+   {\small Redis}};
+
+\end{tikzpicture}
+
+\caption{System architecture, corrected against the live implementation:
+13 real agent-constructing modules, direct API-layer orchestration (no
+CrewAI hierarchical process), and the real two-tier LLM routing design.}
+\label{fig:system-architecture}
+\end{figure}

@@ -1,0 +1,364 @@
+% ============================================================
+%  APPENDICES
+% ============================================================
+
+% ─── APPENDIX A — LFS SECTION C (EMPLOYED PATH) ─────────────────────────
+\chapter{LFS Questionnaire — Section C (Employed Path)}
+\label{app:questionnaire}
+
+This appendix reproduces the Section C Employment Status and Current Job fields
+for the Employed path, the most complex section of the LFS questionnaire.
+Questions marked \textdagger{} may be pre-filled from the Person Register.
+Questions marked * are ILO ICLS-19 mandatory items.
+
+\begingroup
+\setlength{\tabcolsep}{3pt}
+\footnotesize
+\renewcommand{\arraystretch}{1.5}
+\emergencystretch=6em
+\begin{longtable}{>{\centering\bfseries}p{0.6cm}
+                  >{\raggedright}p{3.6cm}
+                  >{\raggedright}p{6.4cm}
+                  >{\raggedright\arraybackslash}p{3.6cm}}
+\caption{Section C Employment fields --- Employed path (ILO ICLS-19).}
+\label{tab:app-questionnaire}\\
+\toprule
+\textbf{\#} & \textbf{Field} & \textbf{Question (English)} & \textbf{Options / Type} \\
+\midrule
+\endfirsthead
+\multicolumn{4}{c}{\tablename\ \thetable{} -- \textit{continued}} \\
+\toprule
+\textbf{\#} & \textbf{Field} & \textbf{Question (English)} & \textbf{Options / Type} \\
+\midrule
+\endhead
+\midrule \multicolumn{4}{r}{\small\itshape Continued\ldots} \\ \endfoot
+\bottomrule \endlastfoot
+C1* & \texttt{\seqsplit{employment\_status}} &
+  Are you currently employed, unemployed, or not in the labour force? &
+  Employed / Unemployed / Not in LF \\[2pt]
+C3\textdagger & \texttt{\seqsplit{employment\_nature}} &
+  What best describes your employment situation? &
+  Paid employee / Self-employed / Employer / Unpaid family \\[2pt]
+C4 & \texttt{\seqsplit{employment\_sector}} &
+  Do you work in the government or private sector? &
+  Government / Private / Semi-gov / NGO \\[2pt]
+C5 & \texttt{job\_title} &
+  What is your current job title or occupation? &
+  Free text $\to$ ISCO-08 (4-digit) \\[2pt]
+C5a & \texttt{job\_duties} &
+  Briefly describe your main duties and responsibilities. &
+  Free text $\to$ ISCO enrichment \\[2pt]
+C6 & \texttt{industry} &
+  What industry or business sector do you work in? &
+  Free text $\to$ ISIC Rev.~4 \\[2pt]
+C7\textdagger & \texttt{\seqsplit{employer\_name}} &
+  What is your employer's name? &
+  Free text \\[2pt]
+C8 & \texttt{\seqsplit{work\_location}} &
+  Where is your primary workplace? &
+  Free text / Emirate \\[2pt]
+C9 & \texttt{\seqsplit{employees\_supervised}} &
+  How many people do you directly supervise? &
+  None / 1--4 / 5--9 / 10+ \\[2pt]
+C10 & \texttt{remote\_work} &
+  How often do you work remotely? &
+  Never / Rarely / Hybrid / Mostly / Fully \\
+\end{longtable}
+\endgroup
+
+% ─── APPENDIX B — CREWAI AGENT CONFIGURATION ────────────────────────────────
+\chapter{CrewAI Agent YAML Configurations}
+\label{app:crewai}
+
+Representative YAML configurations for the four core prototype agents.
+Environment secrets (API keys) are injected at runtime and not reproduced here.
+
+\section*{B.1 --- ISCOClassifier}
+\begin{lstlisting}[breaklines=true,caption={ISCOClassifier agent configuration.}]
+name: isco_classifier
+role: >
+  Four-stage hierarchical ISCO-08 occupation coder for the LFS.
+  Uses multilingual-e5-large embeddings and parent-code-filtered Qdrant
+  search across four collections (major, submajor, minor, unit groups).
+goal: >
+  Emit a calibrated 4-digit ISCO-08 unit-group code with a full evidence
+  package (retrieved text, per-stage similarities, composite confidence,
+  SRE coherence), or escalate to HITL when confidence < 0.70.
+llm: anthropic/claude-3-5-sonnet-20241022   # re-ranking only
+temperature: 0.0                             # deterministic re-ranking
+qdrant_collections:
+  - isco08_major_groups      # 10 records
+  - isco08_submajor_groups   # 43 records
+  - isco08_minor_groups      # 130 records
+  - isco08_unit_groups       # 441 records (synonym-enriched)
+embeddings: intfloat/multilingual-e5-large   # 1024-dim
+confidence_weights: [0.10, 0.20, 0.20, 0.50]
+hitl_threshold: 0.70
+skip_rerank_threshold: 0.92
+keyword_prefilter: true      # anchors to major group before embedding search
+\end{lstlisting}
+
+\section*{B.2 --- SemanticRelationEngine}
+\begin{lstlisting}[breaklines=true,caption={SemanticRelationEngine configuration.}]
+name: semantic_relation_engine
+role: >
+  Deterministic three-way crosswalk between ISCO-08, ISIC Rev.~4, and
+  ISCED~2011 using ILO Geneva 2012 ISCO-ISIC table and UNESCO ISCED~2011
+  Operational Manual Table 7. No LLM involvement in core coherence logic.
+goal: >
+  Produce a SemanticCoherence score (0-1) and severity classification
+  (NONE/LOW/MODERATE/HIGH). Adjust ISCO confidence by -20% to +10%.
+  Trigger HITL escalation for HIGH-severity violations.
+isco_isic_table: ilo_geneva_2012_isco_isic_crosswalk.json
+isced_ranges_table: unesco_isced2011_table7.json
+weights:
+  isic: 0.55
+  isced: 0.45
+severity_thresholds:
+  none: 0.90       # +10% confidence
+  low: 0.70        # +5% confidence
+  moderate: 0.50   # -5% confidence
+  high: 0.0        # -20% confidence, HITL mandatory
+submajor_strict_rules:
+  "22": {isic_required: "Q", isced_min: 7}   # Health Professionals
+  "25": {isic_preferred: "J"}                 # ICT Professionals
+  "11": {isced_min: 6}                        # Chief Executives
+bilingual_output: true    # explanation_en + explanation_ar in response
+\end{lstlisting}
+
+\section*{B.3 --- ConversationManager FSM}
+\begin{lstlisting}[breaklines=true,caption={ConversationManager FSM configuration.}]
+name: conversation_manager
+role: >
+  5-state FSM orchestrator for the complete Labour Force Survey
+  (Sections A-K, 56 fields, ILO ICLS-19). Manages 3 employment paths
+  (employed/unemployed/not-in-labour-force) with 11 skip gates.
+goal: >
+  Complete the LFS questionnaire accurately, enforcing skip logic
+  and ILO ICLS-19 special rules (E1 wage gate, F3 re-routing) in real
+  time. Coordinate ISCO, ISIC, ISCED, SRE, Validation, and PersonRegister
+  agents per turn.
+states: [GREETING, COLLECTING_INFO, CLARIFYING, VALIDATING, COMPLETING]
+llm: ollama/llama3.2          # general tasks
+temperature: 0.3
+fallback_llm: claude-3-5-sonnet-20241022
+field_order_fn: _get_field_order(collected_data)  # recomputed every turn
+employment_paths:
+  employed: [B, C_full, D, E, H, I, J, K]
+  unemployed: [B, C1, F, G_if_worked, H, J, K]
+  not_in_labour_force: [B, C1, G_if_worked, H, J, K]
+\end{lstlisting}
+
+\section*{B.4 --- ValidationAgent}
+\begin{lstlisting}[breaklines=true,caption={ValidationAgent ILO ICLS-19 rules configuration.}]
+name: validation_agent
+role: >
+  Real-time ILO ICLS-19 cross-answer consistency enforcer (rules R01-R10).
+goal: >
+  Detect all 10 ILO ICLS-19 rule violations in real time during the survey
+  session and return structured ValidationResult with violated rules,
+  severity, and remediation guidance.
+llm: anthropic/claude-3-5-sonnet-20241022   # CRITICAL task
+temperature: 0.0
+rules:
+  R01: Employed respondents must provide job_title and industry
+  R02: Hours worked must be 0-168 per week
+  R03: Unemployed (F1=yes) must provide job_search_method
+  R04: University-educated (education_level in {bachelor,master,phd})
+       must have ISCED >= 6
+  R05: Self-employed respondents skip monthly_wage_range (E1 gate)
+  R06: Platform workers (yes_primary/yes_supplementary) must name platforms
+  R07: national residents must answer national_employment_program (H4 gate)
+  R08: Income range must be consistent with employment_nature
+  R09: Contract type required for paid_employee (D7 gate)
+  R10: job_search_active=no AND available_for_work=no
+       => reclassify to not_in_labour_force (F3 re-route)
+\end{lstlisting}
+
+% ─── APPENDIX C — SEMANTIC RELATION ENGINE DEMO OUTPUT ───────────────────────
+\chapter{Semantic Relation Engine Demo Output}
+\label{app:sre-demo}
+
+The following output is produced by running
+\texttt{python -m backend.\-evaluation.\-semantic\_\-demo} (10 test cases,
+colour-coded: green = coherent, yellow = moderate, red = HIGH violation).
+
+\begin{lstlisting}[breaklines=true,caption={SRE demo output (representative cases).}]
+Case 1: Doctor (ISCO 2211) | Human Health (ISIC Q) | Master's (ISCED 7)
+  ISIC check: Major group 2 compatible with Q --> COMPATIBLE (1.0)
+  ISCED check: Level 7 in range [6,8] for group 2 --> COMPATIBLE (1.0)
+  SemanticCoherence: 0.55*1.0 + 0.45*1.0 = 1.00  [NONE]  +10%
+  >> GREEN: Strong alignment across all three standards.
+
+Case 8: Nurse (ISCO 2221) | Software Firm (ISIC J) | Secondary (ISCED 3)
+  ISIC check: Sub-major 22 requires ISIC Q, got J --> VIOLATION (0.0)
+  ISCED check: Sub-major 22 requires ISCED>=7, got 3 --> VIOLATION (0.0)
+  SemanticCoherence: 0.55*0.0 + 0.45*0.0 = 0.00  [HIGH]  -20%, HITL
+  >> RED: HIGH violation. Escalated to HITL queue (priority: HIGH).
+  explanation_en: "Significant inconsistency: Health Professional in
+    Information/Communication industry with Secondary education."
+  explanation_ar: "[AR_TEXT] [AR_TEXT]: [AR_TEXT] [AR_TEXT] [AR_TEXT] [AR_TEXT] [AR_TEXT] [AR_TEXT]
+    [AR_TEXT] [AR_TEXT] [AR_TEXT]."
+
+Case 9: Chef (ISCO 3434) | Finance Sector (ISIC K) | PhD (ISCED 8)
+  ISIC check: Major group 3 compatible with [G,I,R,N,...], not K --> VIOLATION
+  ISCED check: Level 8 above max(5) for group 3 --> VIOLATION
+  SemanticCoherence: 0.55*0.0 + 0.45*0.0 = 0.00  [HIGH]  -20%, HITL
+  >> RED: HIGH violation. PhD chef in Finance is statistically implausible.
+\end{lstlisting}
+
+% ─── APPENDIX D — CONSENT FORM AND ETHICS CHECKLIST ─────────────────────────
+\chapter{Participant Information and Study Protocol}
+\label{app:consent}
+
+\section*{D.1 --- Participant Information}
+
+\noindent\textbf{Study title:}
+Evaluation of a Multilingual Conversational AI System for Labour Force
+Survey Administration.
+
+\noindent\textbf{Principal investigator:}
+Sivarama Krishnan Subbiah (2024MCS110007), M.Tech AI \& Data Science,
+IIIT Kottayam.
+
+\noindent\textbf{Supervisor:}
+Dr.\ Goutam Mali, Department of Computer Science and Engineering, IIIT Kottayam.
+
+\noindent\textbf{Note:}
+This thesis is currently in the \textbf{pre-final phase}. The system described
+is a working prototype only. No actual participant recruitment, pilot study
+execution, or data collection has been conducted at this stage. The participant
+information sheet and ethics checklist below represent the \textit{planned}
+protocol for the forthcoming pilot study to be conducted in the final phase
+(approximately 6 months from now), subject to institutional guidance.
+
+\begin{itemize}
+  \item \textbf{Purpose:} We are evaluating a new AI-assisted system for
+  conducting employment surveys in English, Arabic, Urdu, Hindi, and Tagalog.
+
+  \item \textbf{What participation involves:} You will complete a Labour
+  Force Survey either through a conversational AI interface or through a
+  traditional interviewer-administered survey.
+  The session lasts approximately 20--30 minutes, followed by a brief
+  satisfaction questionnaire.
+
+  \item \textbf{Voluntary participation:} Participation is entirely voluntary.
+  You may withdraw at any point without penalty or explanation.
+
+  \item \textbf{Confidentiality:} All responses are pseudonymised immediately.
+  Your name will not appear in any research output.
+
+  \item \textbf{No real-world consequences:} Your responses will not be shared
+  with any government agency, employer, financial institution, or immigration
+  authority, and cannot influence any benefit, visa, or employment decision.
+
+  \item \textbf{Data storage:} Pseudonymised data stored for 2 years
+  post-publication, then securely deleted.
+  GDPR Art.~15 right of access: you may request a copy of your
+  pseudonymised responses within 30 days.
+\end{itemize}
+
+\section*{D.2 --- Ethics Compliance Checklist}
+
+\begin{table}[htbp]
+\centering
+\caption{Planned ethics compliance checklist for the forthcoming pilot study (pre-final phase).}
+\label{tab:app-ethics}
+\small\renewcommand{\arraystretch}{1.35}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright}p{5.8cm}
+                >{\centering}p{2.0cm}
+                >{\raggedright\arraybackslash}p{4.4cm}}
+\toprule
+\textbf{Requirement} &
+\textbf{Status} &
+\textbf{Evidence / Notes} \\
+\midrule
+Institutional ethics approval & Planned &
+  To be sought before pilot study execution (final phase) \\
+Participant recruitment & Not yet started &
+  Planned for final phase; target $n=30$ college student volunteers \\
+Informed consent form & Drafted &
+  Template in Appendix~D.1; to be finalised before recruitment \\
+Voluntary participation and withdrawal & Planned &
+  Will be stated in consent form and verbal briefing \\
+Data minimisation (only necessary PII) & Designed &
+  System collects only LFS-required fields; no extraneous identifiers \\
+Pseudonymisation at point of collection & Implemented (system) &
+  UUID assignment at OTP auth; offline linking table in prototype \\
+GDPR Art.~15 access right & Implemented (system) &
+  \texttt{data\_access\_logs} per-row PII audit built into prototype \\
+Audit log retention & Implemented (system) &
+  \texttt{audit\_logs} immutable; PostgreSQL WORM policy in prototype \\
+TLS in transit & Implemented (system) &
+  All prototype services behind HTTPS \\
+No deception & Planned &
+  Participants will be informed they interact with AI or human interviewer \\
+No real-world consequences & Planned &
+  To be stated in information sheet and verbal debrief \\
+Data not shared with third parties & Planned &
+  Pilot data to be held by researcher only; no external sharing \\
+Pilot study execution & Pending &
+  Approximately 6 months from thesis submission; final-phase activity \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% ─── APPENDIX E — PROJECT STRUCTURE ─────────────────────────────────────────
+\chapter{Project Structure and Repository}
+\label{app:structure}
+
+The complete system is released as open-source.
+The repository structure is reproduced below for reference.
+
+\begin{lstlisting}[breaklines=true,caption={Project directory structure.}]
+.
+|-- Dockerfile                 # Backend image
+|-- docker/docker-compose.yml  # 5-service stack
+|-- requirements.txt
+|-- alembic.ini
+|
+|-- backend/
+|   |-- main.py                # FastAPI app + CORS
+|   |-- agents/
+|   |   |-- language_processor.py   # Lang detection, dialect normalisation, NER
+|   |   |-- conversation_manager.py # 5-state FSM, 56 fields, skip logic
+|   |   |-- isco_classifier.py      # 4-stage hierarchical ISCO-08 RAG
+|   |   |-- isic_classifier.py      # ISIC Rev.~4 4-level classification
+|   |   |-- isced_classifier.py     # ISCED-2011 level + ISCED-F~2013 field
+|   |   |-- person_register.py      # Person Register pre-fill
+|   |   |-- validation_agent.py     # ILO ICLS-19 rules R01-R10
+|   |   |-- hitl_quality_manager.py # Quality scoring + escalation queue
+|   |   |-- audit_logger.py         # GDPR audit trail
+|   |   |-- emotional_intelligence.py # Abandonment detection
+|   |   |-- semantic_relation.py    # ISCO<->ISIC<->ISCED crosswalk (thesis)
+|   |   |-- report_generator.py     # Bilingual EN+AR report
+|   |   |-- context_memory.py       # Redis-backed session memory
+|   |   `-- survey_orchestrator.py  # Top-level coordinator
+|   |-- api/
+|   |   |-- auth_routes.py     # OTP + JWT endpoints
+|   |   `-- survey_routes.py   # Session + message + HITL endpoints
+|   |-- llm/llm_client.py      # LLM factory: Ollama/GENERAL, Claude/CRITICAL
+|   |-- rag/
+|   |   |-- hierarchical_store.py  # 4-stage hierarchical ISCO RAG
+|   |   `-- load_full_isco.py      # Populate 441 unit groups into Qdrant
+|   `-- evaluation/
+|       |-- evaluate.py        # BM25/Flat/Hierarchical 3-system comparison
+|       `-- semantic_demo.py   # 10-case SRE demo (colour output)
+|
+|-- frontend/
+|   |-- pages/
+|   |   |-- index.js           # Login (email -> OTP -> JWT)
+|   |   |-- chat.js            # Survey chat + quick-reply pills
+|   |   |-- report.js          # Bilingual report + coherence panel
+|   |   `-- supervisor_review.js # HITL dashboard
+|   `-- components/
+|       |-- api.js             # Fetch wrapper
+|       `-- LanguageToggle.js  # EN/AR/UR/HI/TL switcher
+|
+`-- Documentation/
+    |-- README.md
+    `-- Questionaries/
+        `-- LFS_Questionnaire_Complete.docx
+\end{lstlisting}

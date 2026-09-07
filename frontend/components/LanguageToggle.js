@@ -11,10 +11,17 @@ const LANGUAGES = [
   { code: "tl", label: "Filipino" },
 ];
 
-export default function LanguageToggle({ lang, onToggle }) {
+export default function LanguageToggle({ lang, onToggle, languages }) {
   // ar-gulf is a backend dialect tag — display it as Arabic in the selector
   const displayLang = lang === "ar-gulf" ? "ar" : lang;
   const isRtl = displayLang === "ar" || displayLang === "ur";
+  // Optional `languages` prop restricts the offered options to a subset
+  // (e.g. ["en", "ar"]) for a page that genuinely only supports those —
+  // added 2026-08-29 so a page can't offer a language selection that
+  // silently does nothing once picked. Defaults to all 5 supported languages.
+  const options = languages
+    ? LANGUAGES.filter((l) => languages.includes(l.code))
+    : LANGUAGES;
 
   return (
     <select
@@ -25,7 +32,7 @@ export default function LanguageToggle({ lang, onToggle }) {
                  hover:bg-gray-100 transition-colors text-gray-700 bg-white cursor-pointer"
       aria-label="Select language"
     >
-      {LANGUAGES.map(({ code, label }) => (
+      {options.map(({ code, label }) => (
         <option key={code} value={code}>
           {label}
         </option>

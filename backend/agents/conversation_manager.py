@@ -335,6 +335,86 @@ _CORRECTION_FIELD_SCHEMA: dict[str, dict] = {
     "data_confidence":        {"label": "Confidence in Data Privacy",     "values": "very_confident | somewhat_confident | not_confident"},
 }
 
+# Arabic labels for canonical stored enum values (coded fields only — free-text
+# fields like job_title/industry/nationality are left as-is since respondents
+# already type those in their own language). Used by _ACK_AR so acknowledgment
+# sentences don't leak raw English/snake_case tokens (e.g. "employed") into an
+# otherwise-Arabic sentence. Falls back to the pre-existing `v.replace('_',' ')`
+# behaviour for anything not listed here, so coverage gaps degrade to the prior
+# (imperfect but non-broken) behaviour rather than a KeyError.
+_AR_ENUM_LABELS: dict[str, str] = {
+    "yes": "نعم", "no": "لا",
+    "employed": "موظف", "unemployed": "عاطل عن العمل", "not_in_labour_force": "خارج القوى العاملة",
+    "no_formal": "بدون تعليم رسمي", "primary": "ابتدائي", "intermediate": "متوسط",
+    "secondary": "ثانوي", "diploma": "دبلوم", "bachelor": "بكالوريوس",
+    "master": "ماجستير", "phd": "دكتوراه",
+    "male": "ذكر", "female": "أنثى", "prefer_not_to_say": "تفضل عدم الإفصاح",
+    "single": "أعزب", "married": "متزوج", "divorced": "مطلق", "widowed": "أرمل",
+    "abu_dhabi": "أبوظبي", "dubai": "دبي", "sharjah": "الشارقة", "ajman": "عجمان",
+    "umm_al_quwain": "أم القيوين", "ras_al_khaimah": "رأس الخيمة", "fujairah": "الفجيرة",
+    "born_in_uae": "مولود في الإمارات", "less_than_1_year": "أقل من سنة",
+    "1_to_5_years": "من 1 إلى 5 سنوات", "5_to_10_years": "من 5 إلى 10 سنوات",
+    "more_than_10_years": "أكثر من 10 سنوات",
+    "paid_employee": "موظف بأجر", "employer": "صاحب عمل", "self_employed": "عمل حر",
+    "contributing_family_member": "عامل أسري مساهم",
+    "government": "حكومي", "private": "خاص", "semi_government": "شبه حكومي", "ngo": "منظمة غير ربحية",
+    "overemployed": "ساعات عمل زائدة", "underemployed": "ساعات عمل ناقصة", "satisfied": "راضٍ عن الساعات",
+    "full_time": "دوام كامل", "part_time": "دوام جزئي", "seasonal": "موسمي", "temporary": "مؤقت",
+    "permanent": "دائم", "no_contract": "بدون عقد",
+    "fully_remote": "عن بُعد بالكامل", "partially": "جزئيًا عن بُعد", "on_site": "من الموقع",
+    "under_5000": "أقل من 5000", "5000_to_10000": "من 5000 إلى 10000",
+    "10000_to_20000": "من 10000 إلى 20000", "20000_to_30000": "من 20000 إلى 30000",
+    "above_30000": "أكثر من 30000",
+    "housing": "سكن", "transport": "مواصلات", "education": "تعليم", "medical": "طبي",
+    "performance": "أداء", "none": "لا شيء",
+    "yes_performance": "نعم — أداء", "yes_annual": "نعم — سنوية", "yes_other": "نعم — أخرى",
+    "full": "كامل", "partial": "جزئي",
+    "private_scheme": "نظام خاص", "government_scheme": "نظام حكومي",
+    "less_than_1_month": "أقل من شهر", "1_to_6_months": "من 1 إلى 6 أشهر",
+    "6_to_12_months": "من 6 إلى 12 شهرًا", "more_than_1_year": "أكثر من سنة",
+    "any": "أي نوع",
+    "studying": "الدراسة", "housework": "أعمال منزلية", "retired": "متقاعد",
+    "health_condition": "حالة صحية", "other": "أخرى",
+    "resigned": "استقالة", "dismissed": "إنهاء خدمة", "contract_ended": "انتهاء العقد",
+    "business_closed": "إغلاق العمل", "retirement": "التقاعد",
+    "well_matched": "متوافق جيدًا", "over_qualified": "مؤهل أعلى من الوظيفة",
+    "under_qualified": "مؤهل أقل من الوظيفة",
+    "yes_registered": "نعم — مسجل", "yes_informal": "نعم — غير رسمي",
+    "always": "دائمًا", "usually": "غالبًا", "sometimes": "أحيانًا", "rarely": "نادرًا", "never": "أبدًا",
+    "harassment": "تحرش", "discrimination": "تمييز", "wage_theft": "عدم دفع الأجور كاملة",
+    "unsafe_conditions": "ظروف عمل غير آمنة",
+    "prefer_ai": "الذكاء الاصطناعي", "prefer_human": "شخص حقيقي", "no_preference": "لا تفضيل",
+    "very_confident": "واثق جدًا", "somewhat_confident": "واثق نوعًا ما", "not_confident": "غير واثق",
+}
+
+
+def _ar_val(v: object) -> str:
+    """Arabic label for a canonical stored enum value; safe fallback for free text."""
+    s = str(v)
+    return _AR_ENUM_LABELS.get(s, s.replace("_", " "))
+
+
+# Generic (non-field-specific) acknowledgment for Urdu/Hindi/Tagalog, added
+# 2026-08-29 alongside the new follow-up-question translations. Deliberately
+# does NOT attempt per-field phrasing or value translation the way _ACK_EN/
+# _ACK_AR do — building 56 field-specific, value-aware templates per language
+# (plus their own enum-value translation tables) was out of scope for this
+# pass. A generic acknowledgment closes the more serious bug (raw English/
+# snake_case values leaking into a non-English sentence, and mid-conversation
+# language-switching back to English) without overstating translation
+# coverage that doesn't exist yet.
+def _generic_ack_ur(_v: object) -> str:
+    return "ٹھیک ہے — نوٹ کر لیا گیا۔"
+
+
+def _generic_ack_hi(_v: object) -> str:
+    return "ठीक है — नोट कर लिया गया।"
+
+
+def _generic_ack_tl(_v: object) -> str:
+    return "Sige — naitala na."
+
+
 # Value alias map: normalises common spoken variants → canonical stored value.
 # Covers EN + AR + UR + HI + TL surface forms.
 _VALUE_ALIASES: dict[str, dict[str, str]] = {
@@ -1477,6 +1557,800 @@ class ConversationManager:
         ),
     }
 
+    # ── Urdu / Hindi / Tagalog follow-up questions ─────────────────────────────
+    # Added 2026-08-29 to close a real gap: only the greeting
+    # (_greeting_with_first_question) was translated for these three languages;
+    # every follow-up question fell back to _EXACT_QUESTIONS_EN. These 56
+    # entries are machine-drafted translations (by this assistant), matching
+    # _EXACT_QUESTIONS_EN's structure and options exactly. They have NOT been
+    # reviewed by a native speaker of Urdu, Hindi, or Tagalog — treat as a
+    # first draft that should be checked before relying on it for a real
+    # demo or production use, same discipline as every other unverified claim
+    # in this project.
+    _EXACT_QUESTIONS_UR: dict[str, str] = {
+        "employment_status": (
+            "آپ کی موجودہ ملازمت کی صورتحال کیا ہے؟\n"
+            "ایک انتخاب کریں: ملازم / بے روزگار / لیبر فورس سے باہر"
+        ),
+        "education_level": (
+            "آپ کی حاصل کردہ تعلیم کی اعلیٰ ترین سطح کیا ہے؟\n"
+            "ایک انتخاب کریں: کوئی باضابطہ تعلیم نہیں / ابتدائی / ثانوی / ڈپلومہ / "
+            "بیچلر ڈگری / ماسٹر ڈگری / پی ایچ ڈی یا اس سے اعلیٰ"
+        ),
+        "ai_preference": (
+            "آخر میں، کیا آپ اس طرح کے AI اسسٹنٹ کے ذریعے سروے کروانے کو انسانی "
+            "انٹرویو لینے والے کے مقابلے میں ترجیح دیتے ہیں؟\n"
+            "(AI کو ترجیح / انسان کو ترجیح / کوئی ترجیح نہیں)"
+        ),
+        "data_confidence": (
+            "آپ کو کتنا یقین ہے کہ اس سروے میں آپ کا ڈیٹا نجی اور خفیہ رکھا جائے گا؟\n"
+            "(بہت پراعتماد / کسی حد تک پراعتماد / پراعتماد نہیں)"
+        ),
+        "employment_nature": (
+            "آپ کے روزگار کے انتظام کو بہترین طور پر کیا بیان کرتا ہے؟\n"
+            "ایک انتخاب کریں: تنخواہ دار ملازم / آجر (آپ دوسروں کو ملازم رکھتے ہیں) / "
+            "خود روزگار (کوئی ملازم نہیں) / خاندانی کاروبار میں معاون کارکن"
+        ),
+        "employment_sector": (
+            "آپ کا آجر کس شعبے سے تعلق رکھتا ہے؟\n"
+            "ایک انتخاب کریں: سرکاری / نجی / نیم سرکاری / غیر منافع بخش / این جی او"
+        ),
+        "job_title": "آپ کا جاب ٹائٹل کیا ہے؟",
+        "job_duties": (
+            "براہ کرم مختصراً اپنے اس کردار میں اپنے بنیادی کام اور فرائض بیان کریں۔\n"
+            "(مثلاً 'ڈیٹا کا تجزیہ کرنا، رپورٹس بنانا، ڈیش بورڈز تیار کرنا' یا "
+            "'مریضوں کا علاج کرنا، دوا تجویز کرنا')"
+        ),
+        "industry": (
+            "آپ کس صنعت یا شعبے میں کام کرتے ہیں؟\n"
+            "(مثلاً ٹیکنالوجی، صحت کی دیکھ بھال، ایئر لائنز، حکومت، مالیات، تعلیم)"
+        ),
+        "hours_per_week": "آپ عام طور پر ہفتے میں کتنے گھنٹے کام کرتے ہیں؟",
+        "employment_type": (
+            "آپ کا روزگار کا انتظام کیا ہے؟\n"
+            "ایک انتخاب کریں: کل وقتی / جز وقتی / موسمی / عارضی"
+        ),
+        "monthly_wage_range": (
+            "آپ کی تقریباً ماہانہ تنخواہ کی حد کیا ہے؟ (درہم میں)\n"
+            "ایک انتخاب کریں: 5,000 سے کم / 5,000–10,000 / 10,001–20,000 / "
+            "20,001–50,000 / 50,000 سے زیادہ / بتانا نہیں چاہتے"
+        ),
+        "job_search_active": (
+            "گزشتہ چار ہفتوں کے دوران، کیا آپ فعال طور پر نوکری تلاش کر رہے ہیں؟\n"
+            "(ہاں / نہیں)"
+        ),
+        "available_for_work": (
+            "اگر آج کوئی مناسب نوکری پیش کی جائے تو کیا آپ اگلے دو ہفتوں میں کام "
+            "شروع کرنے کے لیے دستیاب ہوں گے؟\n"
+            "(ہاں / نہیں)"
+        ),
+        "unemployment_duration": (
+            "آپ کتنے عرصے سے کام تلاش کر رہے ہیں؟\n"
+            "(مثلاً '2 مہینے'، '6 ہفتے'، 'تقریباً ایک سال')"
+        ),
+        "last_job_title": (
+            "آپ کی سب سے حالیہ جاب ٹائٹل کیا تھی؟\n"
+            "(اگر آپ نے کبھی کام نہیں کیا تو براہ کرم 'کبھی کام نہیں کیا' کہیں۔)"
+        ),
+        "reason_left_job": (
+            "آپ نے اپنی آخری نوکری کیوں چھوڑی یا کھو دی؟\n"
+            "ایک انتخاب کریں: نوکری ختم کر دی گئی / استعفیٰ دیا / کاروبار بند ہو گیا / "
+            "معاہدہ ختم ہوا / دیگر"
+        ),
+        "outside_lf_reason": (
+            "آپ فی الحال کام تلاش نہ کرنے کی بنیادی وجہ کیا ہے؟\n"
+            "ایک انتخاب کریں: ریٹائرڈ / طالب علم / گھریلو خاتون/خاوند / دلبرداشتہ کارکن / "
+            "بیماری یا معذوری / دیگر"
+        ),
+        "gender": (
+            "آپ کی صنف کیا ہے؟\n"
+            "ایک انتخاب کریں: مرد / عورت / بتانا نہیں چاہتے"
+        ),
+        "nationality": (
+            "آپ کی قومیت یا اصل ملک کیا ہے؟\n"
+            "(مثلاً بھارتی، پاکستانی، فلپائنی، اماراتی، مصری، برطانوی، امریکی)"
+        ),
+        "marital_status": (
+            "آپ کی ازدواجی حیثیت کیا ہے؟\n"
+            "ایک انتخاب کریں: غیر شادی شدہ / شادی شدہ / طلاق یافتہ / بیوہ"
+        ),
+        "emirate": (
+            "آپ فی الحال کس امارات میں رہائش پذیر ہیں؟\n"
+            "ایک انتخاب کریں: ابوظہبی / دبئی / شارجہ / عجمان / ام القوین / "
+            "رأس الخیمہ / فجیرہ"
+        ),
+        "uae_residence_duration": (
+            "آپ کتنے عرصے سے متحدہ عرب امارات میں مقیم ہیں؟\n"
+            "ایک انتخاب کریں: امارات میں پیدا ہوئے / 1 سال سے کم / 1–4 سال / "
+            "5–9 سال / 10–19 سال / 20 سال یا زیادہ"
+        ),
+        "vocational_training": (
+            "کیا آپ نے گزشتہ 12 مہینوں میں کوئی پیشہ ورانہ تربیت یا سرٹیفیکیشن "
+            "مکمل کی ہے؟\n"
+            "(ہاں / نہیں)"
+        ),
+        "actual_hours_worked": (
+            "گزشتہ ہفتے آپ نے اپنی بنیادی نوکری میں اصل میں کتنے گھنٹے کام کیا؟\n"
+            "(ایک عدد درج کریں، مثلاً '40')"
+        ),
+        "secondary_job": (
+            "کیا آپ کی اپنی بنیادی نوکری کے علاوہ کوئی اور نوکری یا کاروبار ہے؟\n"
+            "(ہاں / نہیں)"
+        ),
+        "underemployment": (
+            "کیا آپ اپنے موجودہ گھنٹوں سے زیادہ کام کرنا چاہتے ہیں اور کیا آپ اضافی "
+            "کام کے لیے دستیاب ہیں؟\n"
+            "ایک انتخاب کریں: ہاں — مجھے زیادہ گھنٹے چاہئیں / نہیں / پہلے ہی ضرورت "
+            "سے زیادہ کام کر رہا ہوں"
+        ),
+        "contract_type": (
+            "کیا آپ کا ملازمتی معاہدہ مستقل ہے یا عارضی؟\n"
+            "ایک انتخاب کریں: مستقل / مقررہ مدت (1 سال سے کم) / مقررہ مدت (1–3 سال) / "
+            "آزمائشی مدت / کوئی تحریری معاہدہ نہیں"
+        ),
+        "remote_work": (
+            "کیا آپ بنیادی طور پر گھر سے کام کرتے ہیں (ریموٹ/ٹیلی ورک)؟\n"
+            "ایک انتخاب کریں: ہمیشہ / زیادہ تر / جزوی طور پر / کبھی نہیں"
+        ),
+        "salary_allowances": (
+            "کیا آپ کی تنخواہ میں مندرجہ ذیل میں سے کوئی الاؤنس شامل ہے؟\n"
+            "جو لاگو ہو منتخب کریں: رہائش / آمد و رفت / کھانا / تعلیم / کوئی نہیں"
+        ),
+        "health_insurance": (
+            "کیا آپ کا آجر صحت کی انشورنس فراہم کرتا ہے؟\n"
+            "ایک انتخاب کریں: مکمل کوریج / جزوی کوریج / نہیں / میں خود ادائیگی کرتا ہوں"
+        ),
+        "job_search_methods": (
+            "آپ نے روزگار تلاش کرنے کے لیے کون سے طریقے استعمال کیے ہیں؟ "
+            "(براہ کرم بیان کریں)\n"
+            "(مثلاً آن لائن جاب پورٹلز، ذاتی نیٹ ورک، روزگار ایجنسیاں، MOHRE، سوشل میڈیا)"
+        ),
+        "desired_job_type": (
+            "آپ کس قسم کا کام تلاش کر رہے ہیں؟\n"
+            "ایک انتخاب کریں: میرے پچھلے پیشے جیسا / ایک مختلف پیشہ / یہ میری پہلی "
+            "نوکری ہوگی"
+        ),
+        "ever_worked": (
+            "کیا آپ نے کبھی کام کیا ہے؟\n"
+            "ایک انتخاب کریں: ہاں — میری آخری نوکری متحدہ عرب امارات میں تھی / "
+            "ہاں — میری آخری نوکری متحدہ عرب امارات سے باہر تھی / "
+            "نہیں — میں نے کبھی کام نہیں کیا"
+        ),
+        "main_skills": (
+            "آپ کی بنیادی کام سے متعلق مہارتیں کیا ہیں؟ (زیادہ سے زیادہ 3 منتخب کریں)\n"
+            "آپشنز: ڈیجیٹل/آئی ٹی / انتظام / مالیات / انجینئرنگ / صحت کی دیکھ بھال / "
+            "تعلیم / دستکاری/تکنیکی / مہمان نوازی/خدمت / سیلز/مارکیٹنگ / دیگر"
+        ),
+        "qualification_match": (
+            "کیا آپ محسوس کرتے ہیں کہ آپ کی قابلیت آپ کی موجودہ نوکری کی ضروریات سے "
+            "مماثل ہے؟\n"
+            "ایک انتخاب کریں: زیادہ قابل / اچھی طرح مماثل / کم قابل"
+        ),
+        "training_participation": (
+            "کیا آپ نے گزشتہ 12 مہینوں میں کسی پیشہ ورانہ یا تکنیکی تربیت میں حصہ لیا؟\n"
+            "ایک انتخاب کریں: ہاں — آجر کی طرف سے فنڈڈ / ہاں — خود فنڈڈ / "
+            "ہاں — حکومتی پروگرام / نہیں"
+        ),
+        "labour_market_barriers": (
+            "لیبر مارکیٹ میں آپ کو کن اہم رکاوٹوں کا سامنا ہے؟ (جو لاگو ہوں منتخب کریں)\n"
+            "آپشنز: زبان کی رکاوٹ / تجربے کی کمی / قابلیت کا عدم مطابقت / تنخواہ کی "
+            "توقعات / امتیازی سلوک / مقام / کوئی رکاوٹ نہیں / دیگر"
+        ),
+        "platform_work": (
+            "کیا آپ ڈیجیٹل پلیٹ فارمز کے ذریعے کام کرتے ہیں "
+            "(مثلاً Uber، Careem، Talabat، Freelancer، Upwork)؟\n"
+            "ایک انتخاب کریں: ہاں — بطور بنیادی آمدنی / ہاں — بطور اضافی آمدنی / نہیں"
+        ),
+        "online_business": (
+            "کیا آپ کے پاس کوئی آن لائن کاروبار یا ای کامرس سرگرمی ہے یا آپ اسے چلاتے ہیں؟\n"
+            "ایک انتخاب کریں: ہاں — رجسٹرڈ کاروبار / ہاں — غیر رسمی / نہیں"
+        ),
+        "job_satisfaction": (
+            "مجموعی طور پر، آپ اپنی موجودہ نوکری سے کتنے مطمئن ہیں؟\n"
+            "1–5 کی درجہ بندی کریں: 1 = بہت غیر مطمئن / 2 = غیر مطمئن / 3 = غیر جانبدار / "
+            "4 = مطمئن / 5 = بہت مطمئن"
+        ),
+        "work_life_balance": (
+            "کیا آپ محسوس کرتے ہیں کہ آپ کا کام اور زندگی میں مناسب توازن ہے؟\n"
+            "ایک انتخاب کریں: ہاں / کسی حد تک / نہیں"
+        ),
+        "field_of_study": (
+            "آپ کا بنیادی مضمون تعلیم کیا تھا؟\n"
+            "(مثلاً انجینئرنگ، بزنس، طب، کمپیوٹر سائنس، آرٹس)"
+        ),
+        "secondary_job_hours": (
+            "گزشتہ ہفتے آپ نے اپنی ثانوی نوکری/نوکریوں میں کتنے گھنٹے کام کیا؟\n"
+            "(ایک عدد درج کریں، مثلاً '10')"
+        ),
+        "bonuses": (
+            "کیا آپ کو گزشتہ 12 مہینوں میں کوئی بونس یا مراعات ملی؟\n"
+            "ایک انتخاب کریں: ہاں — سالانہ بونس / ہاں — کارکردگی بونس / ہاں — دیگر / نہیں"
+        ),
+        "pension_scheme": (
+            "کیا آپ کسی پنشن فنڈ یا ملازمت کے اختتام پر گریجویٹی اسکیم میں شامل ہیں؟\n"
+            "ایک انتخاب کریں: ہاں — GPSSA (اماراتی شہری) / ہاں — DIFC/ADGM اسکیم / "
+            "ہاں — آجر کی نجی اسکیم / نہیں / یقین نہیں"
+        ),
+        "emiratization_program": (
+            "کیا آپ کسی ایمرٹائزیشن پروگرام (NAFIS، توطین، ابشر) میں رجسٹرڈ ہیں؟\n"
+            "ایک انتخاب کریں: ہاں — NAFIS / ہاں — دیگر حکومتی پروگرام / نہیں"
+        ),
+        "platform_names": (
+            "آپ کن پلیٹ فارمز کے ذریعے کام کرتے ہیں؟\n"
+            "جو لاگو ہوں منتخب کریں: رائیڈ ہیلنگ (Uber/Careem) / فوڈ ڈیلیوری "
+            "(Talabat/Deliveroo) / فری لانس پلیٹ فارمز / پیشہ ورانہ خدمات / "
+            "ای کامرس / دیگر"
+        ),
+        "platform_hours": (
+            "آپ ہفتے میں ان پلیٹ فارمز کے ذریعے کام کرنے میں کتنے گھنٹے صرف کرتے ہیں؟\n"
+            "(ایک عدد درج کریں، مثلاً '20')"
+        ),
+        "last_job_sector": (
+            "آپ کی آخری نوکری کس شعبے میں تھی؟\n"
+            "ایک انتخاب کریں: سرکاری / نجی / نیم سرکاری / غیر منافع بخش / این جی او / "
+            "خود روزگار"
+        ),
+        "highest_previous_salary": (
+            "آپ کی پچھلی ملازمت میں سب سے زیادہ ماہانہ تنخواہ کیا تھی؟ (درہم میں)\n"
+            "ایک انتخاب کریں: 5,000 سے کم / 5,000–10,000 / 10,001–20,000 / "
+            "20,001–50,000 / 50,000 سے زیادہ / بتانا نہیں چاہتے"
+        ),
+        "work_safety": (
+            "کیا آپ ایک محفوظ اور صحت مند کام کے ماحول میں کام کرتے ہیں؟\n"
+            "ایک انتخاب کریں: ہمیشہ / زیادہ تر / کبھی کبھار / شاذ و نادر / کبھی نہیں"
+        ),
+        "workplace_issues": (
+            "کیا آپ نے گزشتہ 12 مہینوں میں اپنے کام کی جگہ پر مندرجہ ذیل میں سے کسی "
+            "کا سامنا کیا؟\n"
+            "جو لاگو ہوں منتخب کریں: ہراسانی / امتیازی سلوک / اجرت کی چوری / "
+            "معاہدے کی خلاف ورزی / کوئی نہیں"
+        ),
+        "question_clarity": (
+            "آپ اس انٹرویو کے سوالات کی وضاحت کو کیسے درجہ دیں گے؟\n"
+            "1–5 کی درجہ بندی کریں: 1 = بہت غیر واضح / 5 = بہت واضح"
+        ),
+        "difficulty_answering": (
+            "کیا آپ کو کسی مخصوص سوال کا جواب دینے میں دشواری ہوئی؟\n"
+            "(نہیں / ہاں — براہ کرم بتائیں کون سے)"
+        ),
+        "survey_comments": (
+            "کیا آپ کے پاس اس سروے کو بہتر بنانے کے لیے کوئی تبصرے یا تجاویز ہیں؟\n"
+            "(یہ اختیاری ہے — بلا جھجھک شیئر کریں یا صرف 'کوئی تبصرہ نہیں' کہہ دیں)"
+        ),
+    }
+    _EXACT_QUESTIONS_HI: dict[str, str] = {
+        "employment_status": (
+            "आपकी वर्तमान रोजगार स्थिति क्या है?\n"
+            "एक चुनें: नियोजित / बेरोजगार / श्रम शक्ति से बाहर"
+        ),
+        "education_level": (
+            "आपकी पूरी की गई उच्चतम शिक्षा का स्तर क्या है?\n"
+            "एक चुनें: कोई औपचारिक शिक्षा नहीं / प्राथमिक / माध्यमिक / डिप्लोमा / "
+            "स्नातक डिग्री / स्नातकोत्तर डिग्री / पीएचडी या उच्चतर"
+        ),
+        "ai_preference": (
+            "अंत में, क्या आप इस तरह के AI सहायक के माध्यम से सर्वेक्षण कराना किसी "
+            "मानव साक्षात्कारकर्ता की तुलना में पसंद करते हैं?\n"
+            "(AI पसंद है / मानव पसंद है / कोई प्राथमिकता नहीं)"
+        ),
+        "data_confidence": (
+            "आपको कितना विश्वास है कि इस सर्वेक्षण में आपका डेटा निजी और गोपनीय "
+            "रखा जाएगा?\n"
+            "(बहुत आश्वस्त / कुछ हद तक आश्वस्त / आश्वस्त नहीं)"
+        ),
+        "employment_nature": (
+            "आपकी रोजगार व्यवस्था का सबसे अच्छा वर्णन क्या है?\n"
+            "एक चुनें: वेतनभोगी कर्मचारी / नियोक्ता (आप दूसरों को नियुक्त करते हैं) / "
+            "स्वरोजगार (कोई कर्मचारी नहीं) / पारिवारिक व्यवसाय में सहयोगी कार्यकर्ता"
+        ),
+        "employment_sector": (
+            "आपका नियोक्ता किस क्षेत्र से संबंधित है?\n"
+            "एक चुनें: सरकारी / निजी / अर्ध-सरकारी / गैर-लाभकारी / एनजीओ"
+        ),
+        "job_title": "आपका पद (जॉब टाइटल) क्या है?",
+        "job_duties": (
+            "कृपया अपनी इस भूमिका में अपने मुख्य कार्यों और कर्तव्यों का संक्षेप में "
+            "वर्णन करें।\n"
+            "(जैसे 'डेटा का विश्लेषण करना, रिपोर्ट बनाना, डैशबोर्ड तैयार करना' या "
+            "'मरीजों का इलाज करना, दवा लिखना')"
+        ),
+        "industry": (
+            "आप किस उद्योग या क्षेत्र में काम करते हैं?\n"
+            "(जैसे प्रौद्योगिकी, स्वास्थ्य सेवा, एयरलाइंस, सरकार, वित्त, शिक्षा)"
+        ),
+        "hours_per_week": "आप आमतौर पर प्रति सप्ताह कितने घंटे काम करते हैं?",
+        "employment_type": (
+            "आपकी रोजगार व्यवस्था क्या है?\n"
+            "एक चुनें: पूर्णकालिक / अंशकालिक / मौसमी / अस्थायी"
+        ),
+        "monthly_wage_range": (
+            "आपकी लगभग मासिक वेतन सीमा क्या है? (AED में)\n"
+            "एक चुनें: 5,000 से कम / 5,000–10,000 / 10,001–20,000 / 20,001–50,000 / "
+            "50,000 से अधिक / बताना नहीं चाहते"
+        ),
+        "job_search_active": (
+            "पिछले चार हफ्तों में, क्या आप सक्रिय रूप से नौकरी की तलाश कर रहे हैं?\n"
+            "(हाँ / नहीं)"
+        ),
+        "available_for_work": (
+            "यदि आज कोई उपयुक्त नौकरी मिले, तो क्या आप अगले दो हफ्तों में काम शुरू "
+            "करने के लिए उपलब्ध होंगे?\n"
+            "(हाँ / नहीं)"
+        ),
+        "unemployment_duration": (
+            "आप कब से काम की तलाश कर रहे हैं?\n"
+            "(जैसे '2 महीने', '6 सप्ताह', 'लगभग एक साल')"
+        ),
+        "last_job_title": (
+            "आपकी सबसे हाल की नौकरी का पद क्या था?\n"
+            "(यदि आपने कभी काम नहीं किया है, तो कृपया 'कभी काम नहीं किया' कहें।)"
+        ),
+        "reason_left_job": (
+            "आपने अपनी पिछली नौकरी क्यों छोड़ी या खोई?\n"
+            "एक चुनें: छंटनी हुई / इस्तीफा दिया / व्यवसाय बंद हो गया / अनुबंध समाप्त "
+            "हुआ / अन्य"
+        ),
+        "outside_lf_reason": (
+            "आप वर्तमान में काम की तलाश न करने का मुख्य कारण क्या है?\n"
+            "एक चुनें: सेवानिवृत्त / छात्र / गृहिणी/गृहस्थ / निराश कार्यकर्ता / "
+            "बीमारी या विकलांगता / अन्य"
+        ),
+        "gender": (
+            "आपका लिंग क्या है?\n"
+            "एक चुनें: पुरुष / महिला / बताना नहीं चाहते"
+        ),
+        "nationality": (
+            "आपकी राष्ट्रीयता या मूल देश क्या है?\n"
+            "(जैसे भारतीय, पाकिस्तानी, फिलिपिनो, अमीराती, मिस्री, ब्रिटिश, अमेरिकी)"
+        ),
+        "marital_status": (
+            "आपकी वैवाहिक स्थिति क्या है?\n"
+            "एक चुनें: अविवाहित / विवाहित / तलाकशुदा / विधवा/विधुर"
+        ),
+        "emirate": (
+            "आप वर्तमान में किस अमीरात में रहते हैं?\n"
+            "एक चुनें: अबू धाबी / दुबई / शारजाह / अजमान / उम्म अल क़ुवैन / "
+            "रास अल खैमाह / फुजैराह"
+        ),
+        "uae_residence_duration": (
+            "आप कब से यूएई में रह रहे हैं?\n"
+            "एक चुनें: यूएई में जन्मे / 1 वर्ष से कम / 1–4 वर्ष / 5–9 वर्ष / "
+            "10–19 वर्ष / 20+ वर्ष"
+        ),
+        "vocational_training": (
+            "क्या आपने पिछले 12 महीनों में कोई व्यावसायिक प्रशिक्षण या पेशेवर "
+            "प्रमाणन पूरा किया है?\n"
+            "(हाँ / नहीं)"
+        ),
+        "actual_hours_worked": (
+            "पिछले सप्ताह आपने अपनी मुख्य नौकरी में वास्तव में कितने घंटे काम किया?\n"
+            "(एक संख्या दर्ज करें, जैसे '40')"
+        ),
+        "secondary_job": (
+            "क्या आपकी मुख्य नौकरी के अलावा कोई अन्य नौकरी या व्यवसाय है?\n"
+            "(हाँ / नहीं)"
+        ),
+        "underemployment": (
+            "क्या आप अपने वर्तमान घंटों से अधिक काम करना चाहते हैं और क्या आप "
+            "अतिरिक्त काम के लिए उपलब्ध हैं?\n"
+            "एक चुनें: हाँ — मुझे अधिक घंटे चाहिए / नहीं / पहले से ही अधिक काम कर रहे हैं"
+        ),
+        "contract_type": (
+            "क्या आपका रोजगार अनुबंध स्थायी है या अस्थायी?\n"
+            "एक चुनें: स्थायी / निश्चित अवधि (1 वर्ष से कम) / निश्चित अवधि (1–3 वर्ष) / "
+            "परिवीक्षा अवधि / कोई लिखित अनुबंध नहीं"
+        ),
+        "remote_work": (
+            "क्या आप मुख्य रूप से घर से काम करते हैं (रिमोट/टेलीवर्क)?\n"
+            "एक चुनें: हमेशा / अधिकतर / आंशिक रूप से / कभी नहीं"
+        ),
+        "salary_allowances": (
+            "क्या आपके वेतन में निम्नलिखित में से कोई भत्ता शामिल है?\n"
+            "जो लागू हों चुनें: आवास / परिवहन / भोजन / शिक्षा / कोई नहीं"
+        ),
+        "health_insurance": (
+            "क्या आपका नियोक्ता स्वास्थ्य बीमा प्रदान करता है?\n"
+            "एक चुनें: पूर्ण कवरेज / आंशिक कवरेज / नहीं / मैं स्वयं भुगतान करता/करती हूँ"
+        ),
+        "job_search_methods": (
+            "आपने रोजगार खोजने के लिए किन तरीकों का उपयोग किया है? (कृपया वर्णन करें)\n"
+            "(जैसे ऑनलाइन जॉब पोर्टल, व्यक्तिगत नेटवर्क, रोजगार एजेंसियां, MOHRE, "
+            "सोशल मीडिया)"
+        ),
+        "desired_job_type": (
+            "आप किस प्रकार का काम खोज रहे हैं?\n"
+            "एक चुनें: मेरे पिछले पेशे जैसा / एक अलग पेशा / यह मेरी पहली नौकरी होगी"
+        ),
+        "ever_worked": (
+            "क्या आपने कभी काम किया है?\n"
+            "एक चुनें: हाँ — मेरी पिछली नौकरी यूएई में थी / हाँ — मेरी पिछली नौकरी "
+            "यूएई के बाहर थी / नहीं — मैंने कभी काम नहीं किया"
+        ),
+        "main_skills": (
+            "आपकी मुख्य कार्य-संबंधी कौशल क्या हैं? (अधिकतम 3 चुनें)\n"
+            "विकल्प: डिजिटल/आईटी / प्रबंधन / वित्त / इंजीनियरिंग / स्वास्थ्य सेवा / "
+            "शिक्षा / व्यापार/तकनीकी / आतिथ्य/सेवा / बिक्री/विपणन / अन्य"
+        ),
+        "qualification_match": (
+            "क्या आपको लगता है कि आपकी योग्यताएं आपकी वर्तमान नौकरी की आवश्यकताओं "
+            "से मेल खाती हैं?\n"
+            "एक चुनें: अधिक योग्य / अच्छी तरह मेल खाता है / कम योग्य"
+        ),
+        "training_participation": (
+            "क्या आपने पिछले 12 महीनों में किसी व्यावसायिक या पेशेवर प्रशिक्षण में "
+            "भाग लिया?\n"
+            "एक चुनें: हाँ — नियोक्ता द्वारा वित्त पोषित / हाँ — स्व-वित्त पोषित / "
+            "हाँ — सरकारी कार्यक्रम / नहीं"
+        ),
+        "labour_market_barriers": (
+            "श्रम बाजार में आपको किन मुख्य बाधाओं का सामना करना पड़ता है? "
+            "(जो लागू हों चुनें)\n"
+            "विकल्प: भाषा की बाधा / अनुभव की कमी / योग्यता में असंगति / वेतन "
+            "अपेक्षाएं / भेदभाव / स्थान / कोई बाधा नहीं / अन्य"
+        ),
+        "platform_work": (
+            "क्या आप डिजिटल प्लेटफॉर्म के माध्यम से काम करते हैं "
+            "(जैसे Uber, Careem, Talabat, Freelancer, Upwork)?\n"
+            "एक चुनें: हाँ — मुख्य आय के रूप में / हाँ — अतिरिक्त आय के रूप में / नहीं"
+        ),
+        "online_business": (
+            "क्या आप कोई ऑनलाइन व्यवसाय या ई-कॉमर्स गतिविधि के मालिक हैं या उसका "
+            "प्रबंधन करते हैं?\n"
+            "एक चुनें: हाँ — पंजीकृत व्यवसाय / हाँ — अनौपचारिक / नहीं"
+        ),
+        "job_satisfaction": (
+            "कुल मिलाकर, आप अपनी वर्तमान नौकरी से कितने संतुष्ट हैं?\n"
+            "1–5 पर रेट करें: 1 = बहुत असंतुष्ट / 2 = असंतुष्ट / 3 = तटस्थ / "
+            "4 = संतुष्ट / 5 = बहुत संतुष्ट"
+        ),
+        "work_life_balance": (
+            "क्या आपको लगता है कि आपके पास कार्य-जीवन का उचित संतुलन है?\n"
+            "एक चुनें: हाँ / कुछ हद तक / नहीं"
+        ),
+        "field_of_study": (
+            "आपका मुख्य अध्ययन क्षेत्र क्या था?\n"
+            "(जैसे इंजीनियरिंग, व्यवसाय, चिकित्सा, कंप्यूटर विज्ञान, कला)"
+        ),
+        "secondary_job_hours": (
+            "पिछले सप्ताह आपने अपनी द्वितीयक नौकरी(यों) में कितने घंटे काम किया?\n"
+            "(एक संख्या दर्ज करें, जैसे '10')"
+        ),
+        "bonuses": (
+            "क्या आपको पिछले 12 महीनों में कोई बोनस या प्रोत्साहन मिला?\n"
+            "एक चुनें: हाँ — वार्षिक बोनस / हाँ — प्रदर्शन बोनस / हाँ — अन्य / नहीं"
+        ),
+        "pension_scheme": (
+            "क्या आप किसी पेंशन फंड या सेवा-समाप्ति उपदान योजना में नामांकित हैं?\n"
+            "एक चुनें: हाँ — GPSSA (यूएई नागरिक) / हाँ — DIFC/ADGM योजना / "
+            "हाँ — नियोक्ता की निजी योजना / नहीं / निश्चित नहीं"
+        ),
+        "emiratization_program": (
+            "क्या आप किसी एमिराटाइजेशन कार्यक्रम (NAFIS, तवतीन, अब्शर) में "
+            "पंजीकृत हैं?\n"
+            "एक चुनें: हाँ — NAFIS / हाँ — अन्य सरकारी कार्यक्रम / नहीं"
+        ),
+        "platform_names": (
+            "आप किन प्लेटफॉर्म के माध्यम से काम करते हैं?\n"
+            "जो लागू हों चुनें: राइड-हेलिंग (Uber/Careem) / फूड डिलीवरी "
+            "(Talabat/Deliveroo) / फ्रीलांस प्लेटफॉर्म / पेशेवर सेवाएं / "
+            "ई-कॉमर्स / अन्य"
+        ),
+        "platform_hours": (
+            "आप प्रति सप्ताह इन प्लेटफॉर्म के माध्यम से काम करने में कितने घंटे "
+            "बिताते हैं?\n"
+            "(एक संख्या दर्ज करें, जैसे '20')"
+        ),
+        "last_job_sector": (
+            "आपकी पिछली नौकरी किस क्षेत्र में थी?\n"
+            "एक चुनें: सरकारी / निजी / अर्ध-सरकारी / गैर-लाभकारी / एनजीओ / स्वरोजगार"
+        ),
+        "highest_previous_salary": (
+            "आपकी पिछली नौकरी में सबसे अधिक मासिक वेतन क्या था? (AED में)\n"
+            "एक चुनें: 5,000 से कम / 5,000–10,000 / 10,001–20,000 / 20,001–50,000 / "
+            "50,000 से अधिक / बताना नहीं चाहते"
+        ),
+        "work_safety": (
+            "क्या आप एक सुरक्षित और स्वस्थ कार्य वातावरण में काम करते हैं?\n"
+            "एक चुनें: हमेशा / अधिकतर / कभी-कभी / शायद ही कभी / कभी नहीं"
+        ),
+        "workplace_issues": (
+            "क्या आपने पिछले 12 महीनों में अपने कार्यस्थल पर निम्नलिखित में से किसी "
+            "का अनुभव किया?\n"
+            "जो लागू हों चुनें: उत्पीड़न / भेदभाव / वेतन की चोरी / अनुबंध का "
+            "उल्लंघन / कोई नहीं"
+        ),
+        "question_clarity": (
+            "आप इस साक्षात्कार में प्रश्नों की स्पष्टता को कैसे आंकेंगे?\n"
+            "1–5 पर रेट करें: 1 = बहुत अस्पष्ट / 5 = बहुत स्पष्ट"
+        ),
+        "difficulty_answering": (
+            "क्या आपको किसी विशिष्ट प्रश्न का उत्तर देने में कठिनाई हुई?\n"
+            "(नहीं / हाँ — कृपया बताएं कौन से)"
+        ),
+        "survey_comments": (
+            "क्या इस सर्वेक्षण को बेहतर बनाने के लिए आपके पास कोई टिप्पणी या "
+            "सुझाव है?\n"
+            "(यह वैकल्पिक है — बेझिझक साझा करें या केवल 'कोई टिप्पणी नहीं' कहें)"
+        ),
+    }
+    _EXACT_QUESTIONS_TL: dict[str, str] = {
+        "employment_status": (
+            "Ano ang kasalukuyan mong katayuan sa trabaho?\n"
+            "Pumili ng isa: Nagtatrabaho / Walang trabaho / Wala sa labor force"
+        ),
+        "education_level": (
+            "Ano ang pinakamataas na antas ng edukasyon na natapos mo?\n"
+            "Pumili ng isa: Walang pormal na edukasyon / Elementarya / Sekondarya / "
+            "Diploma / Bachelor's degree / Master's degree / PhD o mas mataas"
+        ),
+        "ai_preference": (
+            "Panghuli, mas gusto mo bang gawin ang survey sa pamamagitan ng isang "
+            "AI assistant tulad nito kumpara sa isang taong interviewer?\n"
+            "(Mas gusto ang AI / Mas gusto ang tao / Walang preference)"
+        ),
+        "data_confidence": (
+            "Gaano ka kumpiyansa na ang iyong data ay itatago nang pribado at "
+            "kumpidensyal sa survey na ito?\n"
+            "(Lubos na kumpiyansa / Medyo kumpiyansa / Hindi kumpiyansa)"
+        ),
+        "employment_nature": (
+            "Ano ang pinakamahusay na naglalarawan sa iyong kaayusan sa trabaho?\n"
+            "Pumili ng isa: Sinasahurang empleyado / Employer (nagpapatrabaho ka "
+            "sa iba) / Nagsasariling negosyo (walang empleyado) / Kasapi sa "
+            "negosyo ng pamilya"
+        ),
+        "employment_sector": (
+            "Anong sektor kabilang ang iyong employer?\n"
+            "Pumili ng isa: Gobyerno / Pribado / Semi-gobyerno / Non-profit / NGO"
+        ),
+        "job_title": "Ano ang iyong job title?",
+        "job_duties": (
+            "Maikling ilarawan ang iyong mga pangunahing gawain at tungkulin sa "
+            "papel na iyon.\n"
+            "(hal. 'Suriin ang datos, gumawa ng mga ulat, bumuo ng mga dashboard' "
+            "o 'Gamutin ang mga pasyente, magreseta ng gamot')"
+        ),
+        "industry": (
+            "Anong industriya o sektor ka nagtatrabaho?\n"
+            "(hal. teknolohiya, healthcare, mga airline, gobyerno, pananalapi, "
+            "edukasyon)"
+        ),
+        "hours_per_week": "Ilang oras ka karaniwang nagtatrabaho bawat linggo?",
+        "employment_type": (
+            "Ano ang iyong kaayusan sa trabaho?\n"
+            "Pumili ng isa: Full-time / Part-time / Pana-panahon / Kaswal"
+        ),
+        "monthly_wage_range": (
+            "Ano ang tinatayang buwanang saklaw ng suweldo mo? (sa AED)\n"
+            "Pumili ng isa: Mas mababa sa 5,000 / 5,000–10,000 / 10,001–20,000 / "
+            "20,001–50,000 / Higit sa 50,000 / Mas gustong hindi sabihin"
+        ),
+        "job_search_active": (
+            "Sa nakaraang apat na linggo, aktibo ka bang naghahanap ng trabaho?\n"
+            "(Oo / Hindi)"
+        ),
+        "available_for_work": (
+            "Kung may angkop na trabahong ialok ngayon, magagawa mo bang "
+            "magsimula sa loob ng susunod na dalawang linggo?\n"
+            "(Oo / Hindi)"
+        ),
+        "unemployment_duration": (
+            "Gaano katagal ka nang naghahanap ng trabaho?\n"
+            "(hal. '2 buwan', '6 na linggo', 'mga isang taon')"
+        ),
+        "last_job_title": (
+            "Ano ang iyong pinakahuling job title?\n"
+            "(Kung hindi ka pa kailanman nagtrabaho, sabihin lang na 'hindi pa "
+            "kailanman nagtrabaho'.)"
+        ),
+        "reason_left_job": (
+            "Bakit mo iniwan o nawala ang iyong huling trabaho?\n"
+            "Pumili ng isa: Na-redundant / Nagbitiw / Nagsara ang negosyo / "
+            "Natapos ang kontrata / Iba pa"
+        ),
+        "outside_lf_reason": (
+            "Ano ang pangunahing dahilan kung bakit hindi ka kasalukuyang "
+            "naghahanap ng trabaho?\n"
+            "Pumili ng isa: Retirado / Estudyante / Nasa bahay (homemaker) / "
+            "Nawalan ng pag-asang manghanap / Sakit o kapansanan / Iba pa"
+        ),
+        "gender": (
+            "Ano ang iyong kasarian?\n"
+            "Pumili ng isa: Lalaki / Babae / Mas gustong hindi sabihin"
+        ),
+        "nationality": (
+            "Ano ang iyong nasyonalidad o bansang pinagmulan?\n"
+            "(hal. Indian, Pakistani, Pilipino, Emirati, Egyptian, British, American)"
+        ),
+        "marital_status": (
+            "Ano ang iyong katayuan sa kasal?\n"
+            "Pumili ng isa: Walang asawa / May asawa / Diborsyado / Balo"
+        ),
+        "emirate": (
+            "Aling Emirate ka kasalukuyang naninirahan?\n"
+            "Pumili ng isa: Abu Dhabi / Dubai / Sharjah / Ajman / Umm Al Quwain / "
+            "Ras Al Khaimah / Fujairah"
+        ),
+        "uae_residence_duration": (
+            "Gaano katagal ka nang naninirahan sa UAE?\n"
+            "Pumili ng isa: Ipinanganak sa UAE / Mas mababa sa 1 taon / 1–4 na "
+            "taon / 5–9 na taon / 10–19 na taon / 20+ na taon"
+        ),
+        "vocational_training": (
+            "Nakumpleto mo ba ang anumang bokasyonal na pagsasanay o propesyonal "
+            "na sertipikasyon sa nakaraang 12 buwan?\n"
+            "(Oo / Hindi)"
+        ),
+        "actual_hours_worked": (
+            "Ilang oras ka talagang nagtrabaho sa iyong pangunahing trabaho "
+            "noong nakaraang linggo?\n"
+            "(Maglagay ng numero, hal. '40')"
+        ),
+        "secondary_job": (
+            "May iba ka bang trabaho o negosyo bukod sa iyong pangunahing trabaho?\n"
+            "(Oo / Hindi)"
+        ),
+        "underemployment": (
+            "Gusto mo bang magtrabaho nang mas mahabang oras kaysa sa kasalukuyan "
+            "at magagawa mo bang tumanggap ng dagdag na trabaho?\n"
+            "Pumili ng isa: Oo — gusto ko ng mas maraming oras / Hindi / Sobra na "
+            "ang trabaho ko"
+        ),
+        "contract_type": (
+            "Permanente ba o pansamantala ang iyong kontrata sa trabaho?\n"
+            "Pumili ng isa: Permanente / May takdang panahon (mas mababa sa 1 "
+            "taon) / May takdang panahon (1–3 taon) / Panahon ng probasyon / "
+            "Walang nakasulat na kontrata"
+        ),
+        "remote_work": (
+            "Pangunahin ka bang nagtatrabaho mula sa bahay (remote/telework)?\n"
+            "Pumili ng isa: Palagi / Kadalasan / Bahagya / Hindi kailanman"
+        ),
+        "salary_allowances": (
+            "Kasama ba sa iyong suweldo ang alinman sa mga sumusunod na allowance?\n"
+            "Pumili ng lahat na naaangkop: Pabahay / Transportasyon / Pagkain / "
+            "Edukasyon / Wala"
+        ),
+        "health_insurance": (
+            "Nagbibigay ba ang iyong employer ng health insurance?\n"
+            "Pumili ng isa: Buong coverage / Bahagyang coverage / Hindi / Ako "
+            "mismo ang nagbabayad"
+        ),
+        "job_search_methods": (
+            "Anong mga paraan ang ginamit mo sa paghahanap ng trabaho? "
+            "(mangyaring ilarawan)\n"
+            "(hal. online job portals, personal network, mga ahensya ng trabaho, "
+            "MOHRE, social media)"
+        ),
+        "desired_job_type": (
+            "Anong uri ng trabaho ang hinahanap mo?\n"
+            "Pumili ng isa: Kapareho ng aking dating trabaho / Ibang trabaho / "
+            "Ito ang magiging unang trabaho ko"
+        ),
+        "ever_worked": (
+            "Nagtrabaho ka na ba kailanman?\n"
+            "Pumili ng isa: Oo — ang huli kong trabaho ay sa UAE / Oo — ang huli "
+            "kong trabaho ay sa labas ng UAE / Hindi — hindi pa ako kailanman "
+            "nagtrabaho"
+        ),
+        "main_skills": (
+            "Ano ang iyong mga pangunahing kasanayan na may kaugnayan sa "
+            "trabaho? (pumili ng hanggang 3)\n"
+            "Mga pagpipilian: Digital/IT / Pamamahala / Pananalapi / Engineering / "
+            "Healthcare / Edukasyon / Kalakal/Teknikal / Hospitality/Serbisyo / "
+            "Sales/Marketing / Iba pa"
+        ),
+        "qualification_match": (
+            "Sa tingin mo ba ang iyong mga kwalipikasyon ay tumutugma sa mga "
+            "kinakailangan ng iyong kasalukuyang trabaho?\n"
+            "Pumili ng isa: Overqualified / Tumutugmang mabuti / Underqualified"
+        ),
+        "training_participation": (
+            "Nakisali ka ba sa anumang bokasyonal o propesyonal na pagsasanay sa "
+            "nakaraang 12 buwan?\n"
+            "Pumili ng isa: Oo — pinondohan ng employer / Oo — sariling pondo / "
+            "Oo — programa ng gobyerno / Hindi"
+        ),
+        "labour_market_barriers": (
+            "Ano ang mga pangunahing hadlang na kinakaharap mo sa labor market? "
+            "(pumili ng lahat na naaangkop)\n"
+            "Mga pagpipilian: Hadlang sa wika / Kakulangan sa karanasan / Hindi "
+            "pagtutugma ng kwalipikasyon / Inaasahang suweldo / Diskriminasyon / "
+            "Lokasyon / Walang hadlang / Iba pa"
+        ),
+        "platform_work": (
+            "Nagtatrabaho ka ba sa pamamagitan ng mga digital platform "
+            "(hal. Uber, Careem, Talabat, Freelancer, Upwork)?\n"
+            "Pumili ng isa: Oo — bilang pangunahing kita / Oo — bilang karagdagang "
+            "kita / Hindi"
+        ),
+        "online_business": (
+            "May pagmamay-ari ka ba o namamahala ng anumang online business o "
+            "e-commerce activity?\n"
+            "Pumili ng isa: Oo — rehistradong negosyo / Oo — impormal / Hindi"
+        ),
+        "job_satisfaction": (
+            "Sa kabuuan, gaano ka nasisiyahan sa iyong kasalukuyang trabaho?\n"
+            "Mag-rate mula 1–5: 1 = Lubos na hindi nasisiyahan / 2 = Hindi "
+            "nasisiyahan / 3 = Neutral / 4 = Nasisiyahan / 5 = Lubos na nasisiyahan"
+        ),
+        "work_life_balance": (
+            "Sa tingin mo ba mayroon kang angkop na balanse sa trabaho at buhay?\n"
+            "Pumili ng isa: Oo / Medyo / Hindi"
+        ),
+        "field_of_study": (
+            "Ano ang iyong pangunahing larangan ng pag-aaral?\n"
+            "(hal. Engineering, Business, Medisina, Computer Science, Arts)"
+        ),
+        "secondary_job_hours": (
+            "Ilang oras ka nagtrabaho sa iyong pangalawang trabaho noong "
+            "nakaraang linggo?\n"
+            "(Maglagay ng numero, hal. '10')"
+        ),
+        "bonuses": (
+            "Nakatanggap ka ba ng anumang bonus o insentibo sa nakaraang 12 buwan?\n"
+            "Pumili ng isa: Oo — taunang bonus / Oo — bonus sa performance / "
+            "Oo — iba pa / Hindi"
+        ),
+        "pension_scheme": (
+            "Ikaw ba ay naka-enroll sa isang pension fund o end-of-service "
+            "gratuity scheme?\n"
+            "Pumili ng isa: Oo — GPSSA (UAE National) / Oo — DIFC/ADGM scheme / "
+            "Oo — pribadong scheme ng employer / Hindi / Hindi sigurado"
+        ),
+        "emiratization_program": (
+            "Naka-rehistro ka ba sa anumang Emiratization program (NAFIS, "
+            "Tawteen, Absher)?\n"
+            "Pumili ng isa: Oo — NAFIS / Oo — ibang programa ng gobyerno / Hindi"
+        ),
+        "platform_names": (
+            "Anong mga platform ang ginagamit mo sa pagtatrabaho?\n"
+            "Pumili ng lahat na naaangkop: Ride-hailing (Uber/Careem) / "
+            "Paghahatid ng pagkain (Talabat/Deliveroo) / Freelance platforms / "
+            "Propesyonal na serbisyo / E-commerce / Iba pa"
+        ),
+        "platform_hours": (
+            "Ilang oras kada linggo ang ginugugol mo sa pagtatrabaho sa mga "
+            "platform na ito?\n"
+            "(Maglagay ng numero, hal. '20')"
+        ),
+        "last_job_sector": (
+            "Anong sektor ang iyong huling trabaho?\n"
+            "Pumili ng isa: Gobyerno / Pribado / Semi-gobyerno / Non-profit / "
+            "NGO / Nagsasariling negosyo"
+        ),
+        "highest_previous_salary": (
+            "Ano ang pinakamataas na buwanang suweldo na natanggap mo sa iyong "
+            "nakaraang trabaho? (sa AED)\n"
+            "Pumili ng isa: Mas mababa sa 5,000 / 5,000–10,000 / 10,001–20,000 / "
+            "20,001–50,000 / Higit sa 50,000 / Mas gustong hindi sabihin"
+        ),
+        "work_safety": (
+            "Nagtatrabaho ka ba sa ligtas at malusog na kapaligiran sa trabaho?\n"
+            "Pumili ng isa: Palagi / Kadalasan / Minsan / Bihira / Hindi kailanman"
+        ),
+        "workplace_issues": (
+            "Naranasan mo ba ang alinman sa mga sumusunod sa iyong lugar ng "
+            "trabaho sa nakaraang 12 buwan?\n"
+            "Pumili ng lahat na naaangkop: Panliligalig / Diskriminasyon / "
+            "Pagnanakaw sa sahod / Paglabag sa kontrata / Wala"
+        ),
+        "question_clarity": (
+            "Paano mo ira-rate ang kalinawan ng mga tanong sa interview na ito?\n"
+            "Mag-rate mula 1–5: 1 = Hindi malinaw / 5 = Napakalinaw"
+        ),
+        "difficulty_answering": (
+            "Naranasan mo ba ang kahirapan sa pagsagot sa alinmang partikular na "
+            "tanong?\n"
+            "(Hindi / Oo — mangyaring tukuyin kung alin)"
+        ),
+        "survey_comments": (
+            "Mayroon ka bang mga komento o mungkahi upang mapabuti ang survey "
+            "na ito?\n"
+            "(Opsyonal ito — malayang magbahagi o sabihin lang na 'walang komento')"
+        ),
+    }
+
     # Acknowledgment templates for each collected field
     _ACK_EN: dict[str, object] = {
         "employment_status":      lambda v: f"Got it — you are currently {v.replace('_', ' ')}.",
@@ -1548,56 +2422,56 @@ class ConversationManager:
         "highest_previous_salary":    lambda v: "Thank you — previous salary noted.",
     }
     _ACK_AR: dict[str, object] = {
-        "employment_status":      lambda v: f"حسنًا — حالتك الوظيفية: {v}.",
-        "education_level":        lambda v: f"شكرًا — المستوى التعليمي: {v}.",
-        "employment_nature":      lambda v: f"مفهوم — أنت {v.replace('_', ' ')}.",
-        "employment_sector":      lambda v: f"تم التسجيل — قطاع: {v}.",
+        "employment_status":      lambda v: f"حسنًا — حالتك الوظيفية: {_ar_val(v)}.",
+        "education_level":        lambda v: f"شكرًا — المستوى التعليمي: {_ar_val(v)}.",
+        "employment_nature":      lambda v: f"مفهوم — أنت {_ar_val(v)}.",
+        "employment_sector":      lambda v: f"تم التسجيل — قطاع: {_ar_val(v)}.",
         "job_title":              lambda v: f"شكرًا — المسمى الوظيفي: {v[:60]}.",
         "job_duties":             lambda v: "مفهوم — تم تسجيل مهامك الرئيسية.",
         "industry":               lambda v: f"مفهوم — الصناعة: {v}.",
         "hours_per_week":         lambda v: f"ممتاز — {v} ساعة في الأسبوع.",
-        "employment_type":        lambda v: f"تمام — نوع التوظيف: {v}.",
+        "employment_type":        lambda v: f"تمام — نوع التوظيف: {_ar_val(v)}.",
         "monthly_wage_range":     lambda v: "شكرًا — تم تسجيل نطاق الراتب.",
-        "job_search_active":      lambda v: f"حسنًا — البحث عن عمل: {v}.",
-        "available_for_work":     lambda v: f"مفهوم — التوفر: {v}.",
-        "unemployment_duration":  lambda v: f"تم التسجيل — تبحث منذ {v}.",
+        "job_search_active":      lambda v: f"حسنًا — البحث عن عمل: {_ar_val(v)}.",
+        "available_for_work":     lambda v: f"مفهوم — التوفر: {_ar_val(v)}.",
+        "unemployment_duration":  lambda v: f"تم التسجيل — تبحث منذ {_ar_val(v)}.",
         "last_job_title":         lambda v: f"شكرًا — آخر وظيفة: {v[:60]}.",
-        "reason_left_job":        lambda v: f"تم التسجيل — السبب: {v}.",
-        "outside_lf_reason":      lambda v: f"مفهوم — السبب: {v}.",
-        "ai_preference":          lambda v: f"شكرًا — التفضيل: {v}.",
+        "reason_left_job":        lambda v: f"تم التسجيل — السبب: {_ar_val(v)}.",
+        "outside_lf_reason":      lambda v: f"مفهوم — السبب: {_ar_val(v)}.",
+        "ai_preference":          lambda v: f"شكرًا — التفضيل: {_ar_val(v)}.",
         "data_confidence":        lambda v: "شكرًا على ملاحظاتك.",
         # ── Demographics ──────────────────────────────────────────────────────
-        "gender":                 lambda v: f"تم التسجيل — الجنس: {v}.",
+        "gender":                 lambda v: f"تم التسجيل — الجنس: {_ar_val(v)}.",
         "nationality":            lambda v: f"تم التسجيل — الجنسية: {v}.",
-        "marital_status":         lambda v: f"تم التسجيل — الحالة الاجتماعية: {v}.",
-        "emirate":                lambda v: f"حسنًا — تقيم في: {v}.",
-        "uae_residence_duration": lambda v: f"تم التسجيل — مدة الإقامة في الإمارات: {v}.",
-        "vocational_training":    lambda v: f"حسنًا — التدريب المهني: {v}.",
+        "marital_status":         lambda v: f"تم التسجيل — الحالة الاجتماعية: {_ar_val(v)}.",
+        "emirate":                lambda v: f"حسنًا — تقيم في: {_ar_val(v)}.",
+        "uae_residence_duration": lambda v: f"تم التسجيل — مدة الإقامة في الإمارات: {_ar_val(v)}.",
+        "vocational_training":    lambda v: f"حسنًا — التدريب المهني: {_ar_val(v)}.",
         # ── Employed extras ───────────────────────────────────────────────────
         "actual_hours_worked":    lambda v: f"حسنًا — عملت {v} ساعات الأسبوع الماضي.",
-        "secondary_job":          lambda v: f"تم التسجيل — وظيفة إضافية: {v}.",
-        "underemployment":        lambda v: f"تم التسجيل — تفضيل الساعات: {v}.",
-        "contract_type":          lambda v: f"تم التسجيل — نوع العقد: {v}.",
-        "remote_work":            lambda v: f"تم التسجيل — العمل عن بُعد: {v}.",
+        "secondary_job":          lambda v: f"تم التسجيل — وظيفة إضافية: {_ar_val(v)}.",
+        "underemployment":        lambda v: f"تم التسجيل — تفضيل الساعات: {_ar_val(v)}.",
+        "contract_type":          lambda v: f"تم التسجيل — نوع العقد: {_ar_val(v)}.",
+        "remote_work":            lambda v: f"تم التسجيل — العمل عن بُعد: {_ar_val(v)}.",
         "salary_allowances":      lambda v: "شكرًا — تم تسجيل البدلات.",
-        "health_insurance":       lambda v: f"تم التسجيل — التأمين الصحي: {v}.",
+        "health_insurance":       lambda v: f"تم التسجيل — التأمين الصحي: {_ar_val(v)}.",
         # ── Unemployed extras ─────────────────────────────────────────────────
         "job_search_methods":     lambda v: "شكرًا — تم تسجيل طرق البحث عن عمل.",
-        "desired_job_type":       lambda v: f"تم التسجيل — نوع العمل المطلوب: {v}.",
-        "ever_worked":            lambda v: f"تم التسجيل — تاريخ العمل: {v}.",
+        "desired_job_type":       lambda v: f"تم التسجيل — نوع العمل المطلوب: {_ar_val(v)}.",
+        "ever_worked":            lambda v: f"تم التسجيل — تاريخ العمل: {_ar_val(v)}.",
         # ── Skills & Training ─────────────────────────────────────────────────
         "main_skills":            lambda v: "شكرًا — تم تسجيل المهارات.",
-        "qualification_match":    lambda v: f"تم التسجيل — تطابق المؤهلات: {v}.",
-        "training_participation": lambda v: f"تم التسجيل — التدريب: {v}.",
+        "qualification_match":    lambda v: f"تم التسجيل — تطابق المؤهلات: {_ar_val(v)}.",
+        "training_participation": lambda v: f"تم التسجيل — التدريب: {_ar_val(v)}.",
         "labour_market_barriers": lambda v: "شكرًا — تم تسجيل العوائق.",
         # ── Digital Work ──────────────────────────────────────────────────────
-        "platform_work":          lambda v: f"تم التسجيل — العمل عبر المنصات: {v}.",
-        "online_business":        lambda v: f"تم التسجيل — النشاط التجاري الإلكتروني: {v}.",
+        "platform_work":          lambda v: f"تم التسجيل — العمل عبر المنصات: {_ar_val(v)}.",
+        "online_business":        lambda v: f"تم التسجيل — النشاط التجاري الإلكتروني: {_ar_val(v)}.",
         # ── Quality & Feedback ────────────────────────────────────────────────
         "job_satisfaction":           lambda v: f"شكرًا — درجة الرضا الوظيفي: {v}.",
-        "work_safety":                lambda v: f"تم التسجيل — سلامة بيئة العمل: {v}.",
+        "work_safety":                lambda v: f"تم التسجيل — سلامة بيئة العمل: {_ar_val(v)}.",
         "workplace_issues":           lambda v: "شكرًا — تم تسجيل تجربة بيئة العمل.",
-        "work_life_balance":          lambda v: f"تم التسجيل — التوازن بين العمل والحياة: {v}.",
+        "work_life_balance":          lambda v: f"تم التسجيل — التوازن بين العمل والحياة: {_ar_val(v)}.",
         "question_clarity":           lambda v: f"شكرًا — درجة وضوح الأسئلة: {v}.",
         "difficulty_answering":       lambda v: "شكرًا — تم التسجيل.",
         "survey_comments":            lambda v: "شكرًا على تعليقاتك.",
@@ -1605,17 +2479,23 @@ class ConversationManager:
         "field_of_study":             lambda v: f"تم التسجيل — مجال الدراسة: {v[:60]}.",
         # ── Employed extras ───────────────────────────────────────────────────
         "secondary_job_hours":        lambda v: f"حسنًا — {v} ساعات في الوظيفة الإضافية.",
-        "bonuses":                    lambda v: f"تم التسجيل — المكافآت: {v}.",
-        "pension_scheme":             lambda v: f"تم التسجيل — صندوق التقاعد: {v}.",
+        "bonuses":                    lambda v: f"تم التسجيل — المكافآت: {_ar_val(v)}.",
+        "pension_scheme":             lambda v: f"تم التسجيل — صندوق التقاعد: {_ar_val(v)}.",
         # ── Emiratization ─────────────────────────────────────────────────────
-        "emiratization_program":      lambda v: f"تم التسجيل — التوطين: {v}.",
+        "emiratization_program":      lambda v: f"تم التسجيل — التوطين: {_ar_val(v)}.",
         # ── Digital conditional ───────────────────────────────────────────────
         "platform_names":             lambda v: "شكرًا — تم تسجيل المنصات.",
         "platform_hours":             lambda v: f"حسنًا — {v} ساعات أسبوعيًا عبر المنصات.",
         # ── Previous employment ───────────────────────────────────────────────
-        "last_job_sector":            lambda v: f"تم التسجيل — قطاع آخر وظيفة: {v}.",
+        "last_job_sector":            lambda v: f"تم التسجيل — قطاع آخر وظيفة: {_ar_val(v)}.",
         "highest_previous_salary":    lambda v: "شكرًا — تم تسجيل الراتب السابق.",
     }
+    # Generic Urdu/Hindi/Tagalog acknowledgments — see _generic_ack_ur/hi/tl's
+    # docstring-comment above for why these are generic rather than
+    # field-specific like _ACK_EN/_ACK_AR.
+    _ACK_UR: dict[str, object] = dict.fromkeys(_EXACT_QUESTIONS_UR.keys(), _generic_ack_ur)
+    _ACK_HI: dict[str, object] = dict.fromkeys(_EXACT_QUESTIONS_HI.keys(), _generic_ack_hi)
+    _ACK_TL: dict[str, object] = dict.fromkeys(_EXACT_QUESTIONS_TL.keys(), _generic_ack_tl)
 
     # Profession keywords for job title extraction
     _PROFESSION_KEYWORDS_EN = [
@@ -1773,6 +2653,183 @@ class ConversationManager:
         "last_job_sector":           "قطاع آخر وظيفة",
         "highest_previous_salary":   "أعلى راتب شهري سابق (درهم)",
     }
+    # Urdu/Hindi/Tagalog field labels, added 2026-08-29 alongside the
+    # CLARIFYING/VALIDATING/COMPLETING translations below — machine-drafted,
+    # not yet reviewed by a native speaker.
+    _FIELD_LABELS_UR: dict[str, str] = {
+        "employment_status":     "ملازمت کی صورتحال",
+        "education_level":       "تعلیم کی سطح",
+        "employment_nature":     "روزگار کا انتظام (تنخواہ دار/آجر/خود روزگار)",
+        "employment_sector":     "روزگار کا شعبہ (سرکاری/نجی/نیم سرکاری)",
+        "job_title":             "جاب ٹائٹل",
+        "job_duties":            "بنیادی کام اور فرائض",
+        "industry":              "صنعت / شعبہ",
+        "hours_per_week":        "ہفتہ وار معمول کے گھنٹے",
+        "employment_type":       "روزگار کی قسم (کل وقتی/جز وقتی/موسمی)",
+        "monthly_wage_range":    "ماہانہ تنخواہ کی حد (درہم)",
+        "job_search_active":     "فعال طور پر کام تلاش کرنا (ہاں/نہیں)",
+        "available_for_work":    "2 ہفتوں میں کام کے لیے دستیاب (ہاں/نہیں)",
+        "unemployment_duration": "کام کی تلاش کی مدت",
+        "last_job_title":        "آخری جاب ٹائٹل",
+        "reason_left_job":       "آخری نوکری چھوڑنے کی وجہ",
+        "outside_lf_reason":     "کام تلاش نہ کرنے کی وجہ",
+        "ai_preference":         "انٹرویو لینے والے کی ترجیح (AI بمقابلہ انسان)",
+        "data_confidence":       "ڈیٹا کی رازداری پر اعتماد",
+        "gender":                "صنف",
+        "nationality":           "قومیت",
+        "marital_status":        "ازدواجی حیثیت",
+        "emirate":               "رہائشی امارات",
+        "uae_residence_duration":"متحدہ عرب امارات میں قیام کی مدت",
+        "vocational_training":   "پیشہ ورانہ تربیت / سرٹیفیکیشن (گزشتہ 12 ماہ)",
+        "actual_hours_worked":   "گزشتہ ہفتے اصل کام کیے گئے گھنٹے",
+        "secondary_job":         "ثانوی نوکری",
+        "underemployment":       "کم روزگاری / گھنٹوں کی ترجیح",
+        "contract_type":         "معاہدے کی قسم",
+        "remote_work":           "ریموٹ ورک کا انتظام",
+        "salary_allowances":     "تنخواہ کے الاؤنسز",
+        "health_insurance":      "صحت کی انشورنس کوریج",
+        "job_search_methods":    "کام تلاش کرنے کے طریقے",
+        "desired_job_type":      "مطلوبہ کام کی قسم",
+        "ever_worked":           "پچھلا کام کا تجربہ",
+        "main_skills":           "بنیادی کام سے متعلق مہارتیں",
+        "qualification_match":   "قابلیت اور نوکری کی مطابقت",
+        "training_participation":"تربیت میں شرکت (گزشتہ 12 ماہ)",
+        "labour_market_barriers":"لیبر مارکیٹ کی رکاوٹیں",
+        "platform_work":         "پلیٹ فارم / گِگ ورک",
+        "online_business":       "آن لائن کاروبار / ای کامرس",
+        "job_satisfaction":          "ملازمت سے اطمینان (1-5)",
+        "work_safety":               "کام کی جگہ کی حفاظت",
+        "workplace_issues":          "کام کی جگہ کے مسائل (ہراسانی/امتیازی سلوک/وغیرہ)",
+        "work_life_balance":         "کام اور زندگی کا توازن",
+        "question_clarity":          "سوالات کی وضاحت کی درجہ بندی (1-5)",
+        "difficulty_answering":      "مخصوص سوالات کا جواب دینے میں دشواری",
+        "survey_comments":           "سروے کے تبصرے / تجاویز",
+        "field_of_study":            "بنیادی مضمون تعلیم",
+        "secondary_job_hours":       "گزشتہ ہفتے ثانوی نوکری میں کام کیے گئے گھنٹے",
+        "bonuses":                   "بونس / مراعات (گزشتہ 12 ماہ)",
+        "pension_scheme":            "پنشن / سروس کے اختتام پر گریجویٹی اسکیم",
+        "emiratization_program":     "ایمرٹائزیشن پروگرام میں رجسٹریشن",
+        "platform_names":            "کام کے لیے استعمال ہونے والے ڈیجیٹل پلیٹ فارمز",
+        "platform_hours":            "ڈیجیٹل پلیٹ فارمز پر ہفتہ وار گھنٹے",
+        "last_job_sector":           "آخری نوکری کا شعبہ",
+        "highest_previous_salary":   "سب سے زیادہ پچھلی ماہانہ تنخواہ (درہم)",
+    }
+    _FIELD_LABELS_HI: dict[str, str] = {
+        "employment_status":     "रोजगार स्थिति",
+        "education_level":       "शिक्षा स्तर",
+        "employment_nature":     "रोजगार व्यवस्था (वेतनभोगी/नियोक्ता/स्वरोजगार)",
+        "employment_sector":     "रोजगार क्षेत्र (सरकारी/निजी/अर्ध-सरकारी)",
+        "job_title":             "पद (जॉब टाइटल)",
+        "job_duties":            "मुख्य कार्य और कर्तव्य",
+        "industry":              "उद्योग / क्षेत्र",
+        "hours_per_week":        "सामान्य साप्ताहिक घंटे",
+        "employment_type":       "रोजगार प्रकार (पूर्णकालिक/अंशकालिक/मौसमी)",
+        "monthly_wage_range":    "मासिक वेतन सीमा (AED)",
+        "job_search_active":     "सक्रिय रूप से काम खोजना (हाँ/नहीं)",
+        "available_for_work":    "2 सप्ताह में काम के लिए उपलब्ध (हाँ/नहीं)",
+        "unemployment_duration": "काम खोजने की अवधि",
+        "last_job_title":        "अंतिम पद",
+        "reason_left_job":       "अंतिम नौकरी छोड़ने का कारण",
+        "outside_lf_reason":     "काम न खोजने का कारण",
+        "ai_preference":         "साक्षात्कारकर्ता प्राथमिकता (AI बनाम मानव)",
+        "data_confidence":       "डेटा गोपनीयता में विश्वास",
+        "gender":                "लिंग",
+        "nationality":           "राष्ट्रीयता",
+        "marital_status":        "वैवाहिक स्थिति",
+        "emirate":               "निवास अमीरात",
+        "uae_residence_duration":"यूएई में निवास अवधि",
+        "vocational_training":   "व्यावसायिक प्रशिक्षण / प्रमाणन (पिछले 12 महीने)",
+        "actual_hours_worked":   "पिछले सप्ताह वास्तव में काम किए गए घंटे",
+        "secondary_job":         "द्वितीयक नौकरी",
+        "underemployment":       "अल्परोजगार / घंटों की प्राथमिकता",
+        "contract_type":         "अनुबंध प्रकार",
+        "remote_work":           "रिमोट वर्क व्यवस्था",
+        "salary_allowances":     "वेतन भत्ते",
+        "health_insurance":      "स्वास्थ्य बीमा कवरेज",
+        "job_search_methods":    "काम खोजने के तरीके",
+        "desired_job_type":      "वांछित कार्य प्रकार",
+        "ever_worked":           "पिछला कार्य अनुभव",
+        "main_skills":           "मुख्य कार्य-संबंधी कौशल",
+        "qualification_match":   "नौकरी के साथ योग्यता मिलान",
+        "training_participation":"प्रशिक्षण में भागीदारी (पिछले 12 महीने)",
+        "labour_market_barriers":"श्रम बाजार बाधाएं",
+        "platform_work":         "प्लेटफ़ॉर्म / गिग वर्क",
+        "online_business":       "ऑनलाइन व्यवसाय / ई-कॉमर्स",
+        "job_satisfaction":          "नौकरी संतुष्टि (1-5)",
+        "work_safety":               "कार्यस्थल सुरक्षा",
+        "workplace_issues":          "कार्यस्थल के मुद्दे (उत्पीड़न/भेदभाव/आदि)",
+        "work_life_balance":         "कार्य-जीवन संतुलन",
+        "question_clarity":          "प्रश्न स्पष्टता रेटिंग (1-5)",
+        "difficulty_answering":      "विशिष्ट प्रश्नों का उत्तर देने में कठिनाई",
+        "survey_comments":           "सर्वेक्षण टिप्पणियां / सुझाव",
+        "field_of_study":            "मुख्य अध्ययन क्षेत्र",
+        "secondary_job_hours":       "पिछले सप्ताह द्वितीयक नौकरी में काम किए गए घंटे",
+        "bonuses":                   "बोनस / प्रोत्साहन (पिछले 12 महीने)",
+        "pension_scheme":            "पेंशन / सेवा-समाप्ति उपदान योजना",
+        "emiratization_program":     "एमिराटाइजेशन कार्यक्रम पंजीकरण",
+        "platform_names":            "काम के लिए उपयोग किए गए डिजिटल प्लेटफ़ॉर्म",
+        "platform_hours":            "डिजिटल प्लेटफ़ॉर्म पर साप्ताहिक घंटे",
+        "last_job_sector":           "अंतिम नौकरी क्षेत्र",
+        "highest_previous_salary":   "उच्चतम पिछला मासिक वेतन (AED)",
+    }
+    _FIELD_LABELS_TL: dict[str, str] = {
+        "employment_status":     "Katayuan sa Trabaho",
+        "education_level":       "Antas ng Edukasyon",
+        "employment_nature":     "Kaayusan sa Trabaho (sinasahurang empleyado/employer/nagsasarili)",
+        "employment_sector":     "Sektor ng Trabaho (gobyerno/pribado/semi-gobyerno)",
+        "job_title":             "Job Title",
+        "job_duties":            "Mga Pangunahing Gawain at Tungkulin",
+        "industry":              "Industriya / Sektor",
+        "hours_per_week":        "Karaniwang Oras Kada Linggo",
+        "employment_type":       "Uri ng Trabaho (full-time/part-time/pana-panahon)",
+        "monthly_wage_range":    "Saklaw ng Buwanang Suweldo (AED)",
+        "job_search_active":     "Aktibong Naghahanap ng Trabaho (Oo/Hindi)",
+        "available_for_work":    "Available Magsimula sa Loob ng 2 Linggo (Oo/Hindi)",
+        "unemployment_duration": "Tagal ng Paghahanap ng Trabaho",
+        "last_job_title":        "Pinakahuling Job Title",
+        "reason_left_job":       "Dahilan ng Pag-alis sa Huling Trabaho",
+        "outside_lf_reason":     "Dahilan ng Hindi Paghahanap ng Trabaho",
+        "ai_preference":         "Kagustuhan sa Interviewer (AI kumpara sa Tao)",
+        "data_confidence":       "Kumpiyansa sa Privacy ng Data",
+        "gender":                "Kasarian",
+        "nationality":           "Nasyonalidad",
+        "marital_status":        "Katayuan sa Kasal",
+        "emirate":               "Emirate ng Paninirahan",
+        "uae_residence_duration":"Tagal ng Paninirahan sa UAE",
+        "vocational_training":   "Bokasyonal na Pagsasanay / Sertipikasyon (nakaraang 12 buwan)",
+        "actual_hours_worked":   "Aktwal na Oras na Nagtrabaho Noong Nakaraang Linggo",
+        "secondary_job":         "Pangalawang Trabaho",
+        "underemployment":       "Underemployment / Kagustuhan sa Oras",
+        "contract_type":         "Uri ng Kontrata",
+        "remote_work":           "Kaayusan sa Remote Work",
+        "salary_allowances":     "Mga Allowance sa Suweldo",
+        "health_insurance":      "Coverage ng Health Insurance",
+        "job_search_methods":    "Mga Paraan ng Paghahanap ng Trabaho",
+        "desired_job_type":      "Uri ng Trabahong Hinahanap",
+        "ever_worked":           "Naunang Karanasan sa Trabaho",
+        "main_skills":           "Mga Pangunahing Kasanayang Kaugnay sa Trabaho",
+        "qualification_match":   "Pagtutugma ng Kwalipikasyon sa Trabaho",
+        "training_participation":"Paglahok sa Pagsasanay (nakaraang 12 buwan)",
+        "labour_market_barriers":"Mga Hadlang sa Labor Market",
+        "platform_work":         "Platform / Gig Work",
+        "online_business":       "Online Business / E-Commerce",
+        "job_satisfaction":          "Kasiyahan sa Trabaho (1-5)",
+        "work_safety":               "Kaligtasan sa Lugar ng Trabaho",
+        "workplace_issues":          "Mga Isyu sa Lugar ng Trabaho (panliligalig/diskriminasyon/atbp.)",
+        "work_life_balance":         "Balanse ng Trabaho at Buhay",
+        "question_clarity":          "Rating ng Kalinawan ng Tanong (1-5)",
+        "difficulty_answering":      "Kahirapan sa Pagsagot ng mga Tiyak na Tanong",
+        "survey_comments":           "Mga Komento / Mungkahi sa Survey",
+        "field_of_study":            "Pangunahing Larangan ng Pag-aaral",
+        "secondary_job_hours":       "Oras na Nagtrabaho sa Pangalawang Trabaho Noong Nakaraang Linggo",
+        "bonuses":                   "Bonus / Insentibo (nakaraang 12 buwan)",
+        "pension_scheme":            "Pension / End-of-Service Gratuity Scheme",
+        "emiratization_program":     "Rehistro sa Emiratization Program",
+        "platform_names":            "Mga Digital Platform na Ginamit sa Trabaho",
+        "platform_hours":            "Oras Kada Linggo sa Digital Platforms",
+        "last_job_sector":           "Sektor ng Huling Trabaho",
+        "highest_previous_salary":   "Pinakamataas na Naunang Buwanang Suweldo (AED)",
+    }
 
     # ------------------------------------------------------------------
     # Dev stub (used when no LLM is available in development mode)
@@ -1901,13 +2958,122 @@ class ConversationManager:
             "(Employed / Unemployed / Not in the labour force)"
         )
 
+    def _questions_and_ack_for_lang(self, lang: str) -> tuple[dict[str, str], dict[str, object]]:
+        """
+        Return (question dict, acknowledgment dict) for the given language code.
+
+        Covers all 5 supported languages for follow-up questions (added
+        2026-08-29 — previously only ar/ar-gulf had a translated question
+        dict here, so ur/hi/tl silently fell back to English after the
+        first, greeting-only message). Acknowledgments for ur/hi/tl are
+        generic (see _generic_ack_ur/hi/tl) rather than field-specific like
+        en/ar — a smaller, disclosed scope, not a bug.
+        """
+        if lang in ("ar", "ar-gulf"):
+            return self._EXACT_QUESTIONS_AR, self._ACK_AR
+        if lang == "ur":
+            return self._EXACT_QUESTIONS_UR, self._ACK_UR
+        if lang == "hi":
+            return self._EXACT_QUESTIONS_HI, self._ACK_HI
+        if lang == "tl":
+            return self._EXACT_QUESTIONS_TL, self._ACK_TL
+        return self._EXACT_QUESTIONS_EN, self._ACK_EN
+
+    # Static (non-field-specific) UI strings for CLARIFYING/VALIDATING/
+    # COMPLETING, keyed by language then by string id. Added 2026-08-29
+    # alongside the field-label translations above, closing the last
+    # disclosed gap: these states previously fell back to English for
+    # ur/hi/tl even after the follow-up questions were translated.
+    # ur/hi/tl entries are machine-drafted and not yet reviewed by a native
+    # speaker, same caveat as everywhere else in this pass.
+    _STATIC_UI: dict[str, dict[str, str]] = {
+        "ar": {
+            "collecting_done": "شكرًا! دعني أراجع إجاباتك معك.",
+            "clarify_repeat": "آسف على الالتباس! أحتاج فقط إلى معرفة: {guidance}",
+            "clarify_first": "لم أفهم إجابتك بشكل صحيح. أحتاج إلى معرفة: {guidance}",
+            "no_data": "(لا بيانات)",
+            "correction_rejected": "عذرًا، لم أفهم القيمة الجديدة بوضوح. هل يمكنك إعادة ذكر: {label}؟",
+            "correction_applied": "تم التحديث! إليك الملخص المحدّث:\n{summary}\n\nهل جميع المعلومات صحيحة الآن؟ (نعم / لا، أريد تصحيح شيء)",
+            "correction_no_target": "لا مشكلة — ما الذي تريد تصحيحه؟ اذكر الحقل والقيمة الصحيحة، مثال: \"مستوى التعليم يجب أن يكون بكالوريوس\".",
+            "validating_summary": "إليك ملخص ما جمعناه:\n{summary}\n\nهل جميع المعلومات صحيحة؟ (نعم / لا، أريد تصحيح شيء)",
+            "completing": "شكرًا جزيلًا على وقتك ومشاركتك في مسح القوى العاملة! إجاباتك ستساهم في أبحاث سوق العمل وصنع القرار. نتمنى لك يومًا سعيدًا!",
+            "fallback": "شكرًا على إجابتك.",
+        },
+        "ur": {
+            "collecting_done": "شکریہ! اب مجھے آپ کے جوابات کا جائزہ لینے دیں۔",
+            "clarify_repeat": "الجھن کے لیے معذرت! مجھے صرف یہ جاننا ہے: {guidance}",
+            "clarify_first": "مجھے آپ کا جواب ٹھیک سے سمجھ نہیں آیا۔ مجھے یہ جاننا ہے: {guidance}",
+            "no_data": "(کوئی ڈیٹا نہیں)",
+            "correction_rejected": "معذرت، مجھے نئی قیمت واضح طور پر سمجھ نہیں آئی۔ کیا آپ دوبارہ بتا سکتے ہیں: {label}؟",
+            "correction_applied": "ٹھیک ہے، میں نے اسے اپ ڈیٹ کر دیا۔ یہ رہا آپ کا اپ ڈیٹ شدہ خلاصہ:\n{summary}\n\nکیا اب سب کچھ درست ہے؟ (ہاں / نہیں، میں کچھ درست کرنا چاہتا ہوں)",
+            "correction_no_target": "کوئی مسئلہ نہیں — آپ کیا درست کرنا چاہتے ہیں؟ فیلڈ اور درست قیمت بتائیں، مثلاً: \"تعلیم کی سطح بیچلر ہونی چاہیے\"۔",
+            "validating_summary": "یہ رہا ہمارا جمع کردہ خلاصہ:\n{summary}\n\nکیا سب معلومات درست ہیں؟ (ہاں / نہیں، میں کچھ درست کرنا چاہتا ہوں)",
+            "completing": "لیبر فورس سروے میں آپ کے وقت اور شرکت کے لیے بہت شکریہ! آپ کے جوابات لیبر مارکیٹ کی تحقیق اور پالیسی فیصلوں میں مددگار ثابت ہوں گے۔ آپ کا دن اچھا گزرے!",
+            "fallback": "آپ کے جواب کا شکریہ۔",
+        },
+        "hi": {
+            "collecting_done": "धन्यवाद! अब मुझे आपके उत्तरों की समीक्षा करने दें।",
+            "clarify_repeat": "भ्रम के लिए क्षमा करें! मुझे बस यह जानना है: {guidance}",
+            "clarify_first": "मुझे आपका उत्तर ठीक से समझ नहीं आया। मुझे यह जानना है: {guidance}",
+            "no_data": "(कोई डेटा नहीं)",
+            "correction_rejected": "क्षमा करें, मुझे नया मान स्पष्ट रूप से समझ नहीं आया। क्या आप फिर से बता सकते हैं: {label}?",
+            "correction_applied": "ठीक है, मैंने इसे अपडेट कर दिया है। यह रहा आपका अपडेटेड सारांश:\n{summary}\n\nक्या अब सब कुछ सही है? (हाँ / नहीं, मैं कुछ ठीक करना चाहता/चाहती हूँ)",
+            "correction_no_target": "कोई बात नहीं — आप क्या ठीक करना चाहते हैं? फ़ील्ड और सही मान बताएं, जैसे: \"शिक्षा स्तर स्नातक होना चाहिए\"।",
+            "validating_summary": "यह रहा हमारा एकत्रित सारांश:\n{summary}\n\nक्या सारी जानकारी सही है? (हाँ / नहीं, मैं कुछ ठीक करना चाहता/चाहती हूँ)",
+            "completing": "श्रम बल सर्वेक्षण में आपके समय और भागीदारी के लिए बहुत धन्यवाद! आपके उत्तर महत्वपूर्ण श्रम बाजार अनुसंधान और नीति निर्णयों में योगदान देंगे। आपका दिन शुभ हो!",
+            "fallback": "आपके उत्तर के लिए धन्यवाद।",
+        },
+        "tl": {
+            "collecting_done": "Salamat! Hayaan mo akong suriin ang iyong mga sagot.",
+            "clarify_repeat": "Paumanhin sa kalituhan! Kailangan ko lang malaman: {guidance}",
+            "clarify_first": "Hindi ko naunawaan nang tama ang iyong sagot. Kailangan kong malaman: {guidance}",
+            "no_data": "(walang datos)",
+            "correction_rejected": "Paumanhin, hindi ko naunawaan nang malinaw ang bagong value. Maaari mo bang ulitin: {label}?",
+            "correction_applied": "Sige, na-update ko na iyon para sa iyo. Narito ang iyong na-update na buod:\n{summary}\n\nTama na ba ang lahat ngayon? (oo / hindi, gusto kong itama ang isang bagay)",
+            "correction_no_target": "Walang problema — ano ang gusto mong itama? Sabihin ang field at ang tamang value, hal. \"dapat bachelor ang antas ng edukasyon\".",
+            "validating_summary": "Narito ang buod ng nakolekta natin:\n{summary}\n\nTama ba ang lahat? (oo / hindi, gusto kong itama ang isang bagay)",
+            "completing": "Maraming salamat sa iyong oras at pakikilahok sa Labour Force Survey! Ang iyong mga sagot ay makakatulong sa mahahalagang pananaliksik sa labor market at mga desisyon sa patakaran. Magandang araw sa iyo!",
+            "fallback": "Salamat sa iyong sagot.",
+        },
+        "en": {
+            "collecting_done": "Great, I've collected all the information I need. Let me review it with you.",
+            "clarify_repeat": "I apologise for the confusion! I just need to know: {guidance}",
+            "clarify_first": "I didn't quite catch that. I need to know: {guidance}",
+            "no_data": "(no data)",
+            "correction_rejected": "Sorry, I didn't quite catch that clearly. Could you give me your {label} again?",
+            "correction_applied": "Got it, I've updated that for you. Here's your updated summary:\n{summary}\n\nIs everything correct now? (yes / no, I'd like to correct something)",
+            "correction_no_target": "No problem — what would you like to correct? Tell me the field and the correct value, e.g. \"education level should be bachelor\".",
+            "validating_summary": "Here's a summary of what I've collected:\n{summary}\n\nIs everything correct? (yes / no, I'd like to correct something)",
+            "completing": "Thank you so much for your time and participation in the Labour Force Survey! Your responses will contribute to important labour market research and policy decisions. Have a wonderful day!",
+            "fallback": "Thank you for your response.",
+        },
+    }
+
+    def _lang_key(self, lang: str) -> str:
+        """Normalise a raw language code to one of the 5 supported UI keys."""
+        if lang in ("ar", "ar-gulf"):
+            return "ar"
+        if lang in ("ur", "hi", "tl"):
+            return lang
+        return "en"
+
+    def _field_labels_for_lang(self, lang: str) -> dict[str, str]:
+        lk = self._lang_key(lang)
+        return {
+            "ar": self._FIELD_LABELS_AR,
+            "ur": self._FIELD_LABELS_UR,
+            "hi": self._FIELD_LABELS_HI,
+            "tl": self._FIELD_LABELS_TL,
+            "en": self._FIELD_LABELS_EN,
+        }[lk]
+
     def _dev_stub_response(self, ctx: ConversationContext) -> str:
         """Rule-based fallback used when no LLM is configured (dev mode only)."""
         lang = ctx.language
         state = ctx.state
-        is_ar = lang in ("ar", "ar-gulf")
-        ack_map = self._ACK_AR if is_ar else self._ACK_EN
-        questions = self._EXACT_QUESTIONS_AR if is_ar else self._EXACT_QUESTIONS_EN
+        lk = self._lang_key(lang)
+        ui = self._STATIC_UI[lk]
+        questions, ack_map = self._questions_and_ack_for_lang(lang)
 
         if state == ConversationState.GREETING:
             return self._greeting_with_first_question(ctx)
@@ -1928,81 +3094,80 @@ class ConversationManager:
                             ack = fn(str(ctx.collected_data[prev_field])) + "\n\n"
                     return ack + question
 
-            if is_ar:
-                return "شكرًا! دعني أراجع إجاباتك معك."
-            return "Great, I've collected all the information I need. Let me review it with you."
+            return ui["collecting_done"]
 
         if state == ConversationState.CLARIFYING:
             fld = ctx.clarification_target
             count = ctx.clarification_count
-            labels = self._FIELD_LABELS_AR if is_ar else self._FIELD_LABELS_EN
+            labels = self._field_labels_for_lang(lang)
             guidance = labels.get(fld, fld or "your previous answer")
-            if is_ar:
-                if count and count >= 2:
-                    return f"آسف على الالتباس! أحتاج فقط إلى معرفة: {guidance}"
-                return f"لم أفهم إجابتك بشكل صحيح. أحتاج إلى معرفة: {guidance}"
-            else:
-                if count and count >= 2:
-                    return f"I apologise for the confusion! I just need to know: {guidance}"
-                return f"I didn't quite catch that. I need to know: {guidance}"
+            if count and count >= 2:
+                return ui["clarify_repeat"].format(guidance=guidance)
+            return ui["clarify_first"].format(guidance=guidance)
 
         if state == ConversationState.VALIDATING:
-            labels = self._FIELD_LABELS_AR if is_ar else self._FIELD_LABELS_EN
+            # Self-healing stray-field purge, added 2026-09-02: a real, live
+            # session reported by a user was still showing a bogus "Job
+            # Title" field (job_title) alongside the real "Most Recent Job
+            # Title" (last_job_title) for an UNEMPLOYED respondent, even
+            # after the underlying wrong-field-injection bug in
+            # _llm_extract_correction had already been fixed and deployed.
+            # Root cause: that session was corrupted by the OLD, buggy code
+            # in an earlier turn, before the fix existed -- the fix stops
+            # NEW corruption, but nothing ever cleaned up data already sitting
+            # in ctx.collected_data from before the fix. This purge is
+            # deliberately unconditional and defensive: it runs every time
+            # the VALIDATING summary is built and drops any key that isn't
+            # part of _get_field_order()'s current output for this
+            # respondent's data, regardless of how it got there (this exact
+            # historical bug, a future bug, or a legitimate employment_status
+            # change mid-session leaving the old path's fields behind) --
+            # rather than only fixing the one known cause.
+            _real_fields = set(self._get_field_order(ctx.collected_data))
+            _stray = set(ctx.collected_data.keys()) - _real_fields
+            for _k in _stray:
+                _logger.info("Purging stray field from collected_data (not in respondent's real path): %s", _k)
+                del ctx.collected_data[_k]
+
+            labels = self._field_labels_for_lang(lang)
+            # Fixed 2026-09-02: this previously printed the raw stored value
+            # verbatim for every language except Arabic -- confirmed live,
+            # e.g. "Interviewer Preference (AI vs Human): prefer_human" and
+            # "Confidence in Data Privacy: somewhat_confident" shown with the
+            # underscore un-replaced, in English. The turn-by-turn
+            # acknowledgments (_ACK_EN) already did `v.replace('_', ' ')` for
+            # exactly these fields; this final review summary just never got
+            # the same treatment. ur/hi/tl get the same underscore-to-space
+            # fallback as English (no per-language enum-value tables exist
+            # for those three, same disclosed scope as _ACK_UR/HI/TL above).
+            def _fmt_val(v: object) -> str:
+                if lk == "ar":
+                    return _ar_val(v)
+                s = str(v)
+                return s.replace("_", " ") if "_" in s else s
+
             lines = [
-                f"  • {labels.get(k, k)}: {v}"
+                f"  • {labels.get(k, k)}: {_fmt_val(v)}"
                 for k, v in ctx.collected_data.items()
             ]
-            summary = "\n".join(lines) or ("(no data)" if not is_ar else "(لا بيانات)")
+            summary = "\n".join(lines) or ui["no_data"]
             if ctx.correction_rejected_field:
                 fld = ctx.correction_rejected_field
                 ctx.correction_rejected_field = None
                 label = labels.get(fld, fld)
-                if is_ar:
-                    return f"عذرًا، لم أفهم القيمة الجديدة بوضوح. هل يمكنك إعادة ذكر: {label}؟"
-                return f"Sorry, I didn't quite catch that clearly. Could you give me your {label.lower()} again?"
+                return ui["correction_rejected"].format(label=label)
             if ctx.correction_applied:
                 ctx.correction_applied = False
-                if is_ar:
-                    return (
-                        f"تم التحديث! إليك الملخص المحدّث:\n{summary}\n\n"
-                        "هل جميع المعلومات صحيحة الآن؟ (نعم / لا، أريد تصحيح شيء)"
-                    )
-                return (
-                    f"Got it, I've updated that for you. Here's your updated summary:\n{summary}\n\n"
-                    "Is everything correct now? (yes / no, I'd like to correct something)"
-                )
+                return ui["correction_applied"].format(summary=summary)
             if ctx.correction_no_target:
                 ctx.correction_no_target = False
-                if is_ar:
-                    return "لا مشكلة — ما الذي تريد تصحيحه؟ اذكر الحقل والقيمة الصحيحة، مثال: \"مستوى التعليم يجب أن يكون بكالوريوس\"."
-                return (
-                    "No problem — what would you like to correct? "
-                    "Tell me the field and the correct value, e.g. \"education level should be bachelor\"."
-                )
-            if is_ar:
-                return (
-                    f"إليك ملخص ما جمعناه:\n{summary}\n\n"
-                    "هل جميع المعلومات صحيحة؟ (نعم / لا، أريد تصحيح شيء)"
-                )
-            return (
-                f"Here's a summary of what I've collected:\n{summary}\n\n"
-                "Is everything correct? (yes / no, I'd like to correct something)"
-            )
+                return ui["correction_no_target"]
+            return ui["validating_summary"].format(summary=summary)
 
         if state == ConversationState.COMPLETING:
-            if is_ar:
-                return (
-                    "شكرًا جزيلًا على وقتك ومشاركتك في مسح القوى العاملة! "
-                    "إجاباتك ستساهم في أبحاث سوق العمل وصنع القرار. "
-                    "نتمنى لك يومًا سعيدًا!"
-                )
-            return (
-                "Thank you so much for your time and participation in the "
-                "Labour Force Survey! Your responses will contribute to important "
-                "labour market research and policy decisions. Have a wonderful day!"
-            )
+            return ui["completing"]
 
-        return "Thank you for your response." if not is_ar else "شكرًا على إجابتك."
+        return ui["fallback"]
 
     # ------------------------------------------------------------------
     # Task construction
@@ -2022,8 +3187,7 @@ class ConversationManager:
         if next_field is None:
             return ""
 
-        is_ar_lang = lang in ("ar", "ar-gulf")
-        qs = self._EXACT_QUESTIONS_AR if is_ar_lang else self._EXACT_QUESTIONS_EN
+        qs, ack_map = self._questions_and_ack_for_lang(lang)
         question_text = qs.get(next_field, "")
         if not question_text:
             return ""
@@ -2031,7 +3195,6 @@ class ConversationManager:
         idx = field_order.index(next_field)
         prev_field = field_order[idx - 1] if idx > 0 else None
 
-        ack_map = self._ACK_AR if is_ar_lang else self._ACK_EN
         ack_instruction = ""
         if prev_field and prev_field in ctx.collected_data:
             fn = ack_map.get(prev_field)
@@ -3083,6 +4246,48 @@ class ConversationManager:
             for c in corrections
         )
 
+    @staticmethod
+    def correction_schema_for(collected_data: dict) -> tuple[set[str], str, dict]:
+        """
+        Shared by _llm_extract_correction and main.py's startup pre-warm
+        (added 2026-09-02, refactored out at the same time so both use the
+        exact same logic rather than a duplicated copy): given a
+        respondent's collected_data, returns (valid_fields, schema_block,
+        correction_schema) -- the path-restricted field set (see
+        _llm_extract_correction's docstring for why job_title-style
+        cross-path leakage and employment_status are excluded), the
+        human-readable schema text embedded in the LLM prompt, and the
+        JSON-Schema dict passed to Ollama for grammar-constrained decoding.
+        """
+        path_fields = set(ConversationManager._get_field_order(collected_data))
+        valid_fields = set(_CORRECTION_FIELD_SCHEMA.keys()) & path_fields
+        valid_fields.discard("employment_status")
+
+        schema_block = "\n".join(
+            f"  {k} ({v['label']}): {v['values']}"
+            for k, v in _CORRECTION_FIELD_SCHEMA.items()
+            if k in valid_fields
+        )
+        correction_schema = {
+            "type": "object",
+            "properties": {
+                "corrections": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "field": {"type": "string", "enum": sorted(valid_fields)},
+                            "value": {"type": "string"},
+                        },
+                        "required": ["field", "value"],
+                    },
+                },
+            },
+            "required": ["corrections"],
+        }
+        return valid_fields, schema_block, correction_schema
+
     def _llm_extract_correction(self, ctx: "ConversationContext", text: str) -> bool:
         """Parse any free-text correction and overwrite collected_data via direct LLM call.
 
@@ -3092,14 +4297,37 @@ class ConversationManager:
         default model -- see _CORRECTION_TIMEOUT's own comment).  Falls back to
         Anthropic API if Ollama is unreachable.  Returns True if ≥1 field updated.
         Handles all 60+ fields, all 5 languages, implicit + multi-field corrections.
-        """
-        valid_fields = set(_CORRECTION_FIELD_SCHEMA.keys())
 
-        # Compact schema — one line per field
-        schema_block = "\n".join(
-            f"  {k} ({v['label']}): {v['values']}"
-            for k, v in _CORRECTION_FIELD_SCHEMA.items()
-        )
+        `valid_fields` is restricted to the respondent's actual field path (via
+        _get_field_order), not the full 56-field schema -- fixed 2026-09-02
+        after a real, reproduced bug: an unemployed respondent's correction
+        naming "Most Recent Job Title" (last_job_title, a real field on the
+        unemployed path) was written to "job_title" instead -- a field that
+        only exists on the EMPLOYED path and should never appear for this
+        respondent at all. Restricting both the prompt's shown schema and the
+        post-parse validation to the real path prevents the LLM from ever
+        having "job_title" as an option to confuse with "last_job_title" for
+        an unemployed respondent, rather than just making the mix-up less
+        likely.
+        """
+        # employment_status is deliberately excluded from the LLM's
+        # guessable set by correction_schema_for() -- a real, reproduced
+        # misfire on this exact garbled input had the LLM silently flip
+        # employment_status "unemployed" -> "employed" (the message
+        # mentions "working", which is enough for a small local model to
+        # misread as an employment-status claim) while making zero attempt
+        # on the field actually named. This is the single highest-
+        # consequence field in the whole schema -- it redetermines the
+        # respondent's entire remaining question path -- so it gets a
+        # stricter bar than "the LLM guessed it": _extract_correction's
+        # regex/alias path (which already runs first, unconditionally,
+        # before this method is even called) is the only way
+        # employment_status gets corrected from here on. An explicit
+        # "change employment status to employed" still works exactly as
+        # before; an indirect/ambiguous mention no longer risks a silent,
+        # structurally significant misfire.
+        valid_fields, schema_block, correction_schema = self.correction_schema_for(ctx.collected_data)
+
         current_data = json.dumps(
             {k: v for k, v in ctx.collected_data.items() if v},
             ensure_ascii=False,
@@ -3118,15 +4346,53 @@ class ConversationManager:
             "  Examples: 'I am from India' → nationality=Indian, "
             "'actually part-time' → employment_type=part_time, "
             "'private sector' → employment_sector=private, "
-            "'أنا هندي' → nationality=Indian.\n"
+            "'أنا هندي' → nationality=Indian, "
+            "'Most Recent Job Title should be Statistician' → last_job_title=Statistician "
+            "(the respondent is naming the FIELD SCHEMA's label text, e.g. 'Last Job Title', "
+            "not typing the exact key -- match it to the field whose label they mean, "
+            "don't skip it just because they didn't say the literal key).\n"
             "- For enum fields use the exact accepted value (snake_case).\n"
             "- For free-text fields (job_title, nationality, industry…) use the respondent's words.\n"
+            # An explicit script-preservation instruction was tried here
+            # (2026-09-02) and reverted the same day: it measurably regressed
+            # Hindi/Urdu reliability with this specific small local model --
+            # reproduced 2/2 confidently WRONG English words for Hindi
+            # ("Sociologist" instead of "Statistician") and 2/2 silent no-ops
+            # for Urdu, neither of which happened with this plainer
+            # instruction (which correctly extracted "Statistician" for both
+            # languages in the original, pre-change test). A correct English
+            # translation the model can actually produce reliably beats an
+            # aspirational instruction it can't follow consistently.
+            "- CRITICAL: only include fields the correction message actually changes. "
+            "Do NOT re-list fields from CURRENT DATA that are staying the same, even to "
+            "confirm they're correct -- a real, reproduced bug (2026-09-02) is the model "
+            "echoing back every field in CURRENT DATA as if all of them were being "
+            "corrected, which produces oversized output that gets cut off mid-JSON. "
+            "A single correction message usually changes 1-2 fields; correcting most or "
+            "all fields at once is a sign the output is wrong, not that the respondent "
+            "meant to.\n"
             "- Output ONLY valid JSON, no extra text:\n"
             '{"corrections":[{"field":"<key>","value":"<value>"}]}\n'
             "- If nothing is clearly corrected: {\"corrections\":[]}"
         )
 
-        raw = self._call_ollama_json(prompt) or self._call_anthropic_json(prompt)
+        # correction_schema (grammar-constrained: `field` can only be one of
+        # this respondent's actual valid_fields, array capped at 5 items) was
+        # already built above by correction_schema_for() -- see that
+        # method's docstring for why.
+        #
+        # CORRECTION_LLM_PROVIDER, added 2026-09-04 for the cloud-hosting
+        # migration: defaults to "ollama" so local dev on the laptop is
+        # completely unchanged. The hosted deployment (no local Ollama
+        # available at all) sets CORRECTION_LLM_PROVIDER=groq. Both
+        # _call_ollama_json and _call_groq_json return the same raw JSON
+        # string, so every line of parsing below this point is identical
+        # regardless of provider.
+        provider = os.getenv("CORRECTION_LLM_PROVIDER", "ollama").strip().lower()
+        if provider == "groq":
+            raw = self._call_groq_json(prompt, schema=correction_schema) or self._call_anthropic_json(prompt)
+        else:
+            raw = self._call_ollama_json(prompt, schema=correction_schema) or self._call_anthropic_json(prompt)
         if not raw:
             return False
 
@@ -3166,43 +4432,126 @@ class ConversationManager:
 
     # ── Low-level LLM helpers (bypass CrewAI for speed-critical calls) ─────────
 
-    # The correction prompt embeds the full ~60-field schema (~5,200 chars).
-    # CORRECTED 2026-08-19: this constant's comment previously claimed it was
-    # measured against "llama3.2:1b", but the actual shipped default -- both
-    # llm_client.py's code fallback and .env.example -- is bare "llama3.2",
-    # which resolves to the 3B :latest model (2.0GB), not the 1B model
-    # (1.3GB) the old 45s figure was tuned against. No documentation anywhere
-    # in this repo (README, .env.example, Documentation/) states 1B was ever
-    # the intended production default -- the :1b references that do exist
-    # are all scoped to a separate, unrelated WISCO evaluation harness's own
-    # --reranker-model flag, not this component.
+    # History of this constant, most recent correction first:
     #
-    # Re-measured directly against the real default (bare "llama3.2", 3B),
-    # 5 real sequential calls with this exact prompt: cold start (model not
-    # yet resident in Ollama) took 78.0s; once warm, calls took 4.7-6.1s.
-    # The 45s figure was failing consistently because it only ever budgeted
-    # for a warm call, not a cold start -- confirmed directly: both the
-    # default model and an alternative (qwen2.5:3b) failed 3/3 real
-    # end-to-end correction calls at the old 45s timeout, each apparently
-    # hitting a cold start. 100s applies the same ~29% headroom margin over
-    # the measured 78s cold-start worst case that the original 45s-over-35s
-    # figure used. This does not fix the underlying cold-start cost itself --
-    # setting Ollama's keep_alive on this call to keep the model resident
-    # between requests would reduce how often the cold-start path is hit at
-    # all, but that is a separate, unimplemented improvement, not part of
-    # this fix.
+    # 2026-09-02: the two factual claims below this line are stale as of
+    # today's changes and are being corrected here rather than rewritten
+    # from scratch, per this project's own "verify before restating"
+    # discipline. (1) The prompt no longer embeds the full ~60-field
+    # schema -- schema_block in _llm_extract_correction is now filtered to
+    # `valid_fields` (the respondent's real field-order path, typically
+    # ~15-25 fields depending on employed/unemployed/OLF path), so the real
+    # prompt is meaningfully smaller than "~5,200 chars" for most
+    # respondents. (2) This call no longer uses the shared OLLAMA_MODEL --
+    # it has its own OLLAMA_CORRECTION_MODEL default (qwen2.5:3b), which is
+    # NOT the "bare llama3.2, 3B" the 78s/4.7-6.1s figures below were
+    # measured against. Real, repeated timings observed today against the
+    # new qwen2.5:3b default + path-filtered schema ranged roughly 40-60s
+    # per call across English/Arabic/Urdu/Hindi/Tagalog test corrections
+    # (not re-measured as a formal cold/warm split like the entry below) --
+    # comfortably inside the existing 100s budget, so the timeout value
+    # itself is left unchanged; only the claims about what it was measured
+    # against are corrected.
+    #
+    # 2026-08-19 entry (model-identity correction, now itself partly
+    # superseded by the note above): this constant's comment previously
+    # claimed it was measured against "llama3.2:1b", but the actual shipped
+    # default at the time -- both llm_client.py's code fallback and
+    # .env.example -- was bare "llama3.2", resolving to the 3B :latest
+    # model (2.0GB), not the 1B model (1.3GB) the old 45s figure was tuned
+    # against. Re-measured directly against that real default (bare
+    # "llama3.2", 3B): 5 real sequential calls with that era's full-schema
+    # prompt -- cold start (model not yet resident in Ollama) took 78.0s;
+    # once warm, calls took 4.7-6.1s. The 45s figure was failing
+    # consistently because it only ever budgeted for a warm call, not a
+    # cold start. 100s applied a ~29% headroom margin over that measured
+    # 78s cold-start worst case. Setting Ollama's keep_alive on this call to
+    # keep a model resident between requests would reduce how often the
+    # cold-start path is hit at all -- still a separate, unimplemented
+    # improvement, not part of any fix so far.
     _CORRECTION_TIMEOUT = 100  # seconds
 
-    def _call_ollama_json(self, prompt: str) -> str | None:
-        """POST to Ollama /api/chat with format=json. Returns raw response string or None."""
+    def _call_ollama_json(self, prompt: str, schema: dict | None = None) -> str | None:
+        """POST to Ollama /api/chat with format=json (or a constrained JSON Schema).
+        Returns raw response string or None.
+
+        `schema`, added 2026-09-02: Ollama >=0.5 supports passing a real JSON
+        Schema as `format` instead of the bare string "json" -- the server
+        does grammar-constrained decoding against it, so the model is
+        structurally unable to emit tokens that violate the schema (e.g. an
+        enum'd field name outside the allowed set, or more array items than
+        maxItems permits). This installation is 0.33.2, well past that
+        floor (confirmed via GET /api/version). Prompt instructions alone
+        were tried first for the over-long-response bug this fixes and
+        proved unreliable against this small local model -- constraining the
+        grammar itself doesn't depend on the model choosing to comply.
+        Optional and additive: omitted, this call behaves exactly as before
+        (loose "format": "json").
+        """
         ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        model = os.getenv("OLLAMA_MODEL", "llama3.2")
+        # OLLAMA_CORRECTION_MODEL, added 2026-09-02: this call's own model
+        # choice, deliberately separate from the shared OLLAMA_MODEL used by
+        # llm_client.py's general TaskType routing (that default is left
+        # alone -- Module J's own finding was explicitly "a measurement, not
+        # a decision" for the shared routing). This one narrow call is
+        # different: three repeated, reproduced tests against the exact
+        # failing correction from this session's bug report showed
+        # llama3.2 (the OLLAMA_MODEL default) never once correctly mapped
+        # "Most Recent Job Title" to last_job_title -- either silently
+        # flipping employment_status from a misread, or echoing 5 unrelated
+        # unchanged fields as noise. The same 3 runs against qwen2.5:3b
+        # (already installed locally, already the model Module J's own
+        # ablation found consistently stronger, and the model this project's
+        # corrective-RAG-retry work already uses successfully for a similarly
+        # structured extraction task) got the correct field and value clean,
+        # 3/3. Broadened the same day: re-tested across all 5 supported
+        # languages (en/ar/ur/hi/tl), 2 real end-to-end runs each with
+        # qwen2.5:3b as this call's model -- 10/10 correctly identified
+        # last_job_title with the correct value and zero wrong-field
+        # injection in any language. Deliberately does NOT fall through to
+        # OLLAMA_MODEL if unset --
+        # this repo's real .env pins OLLAMA_MODEL=llama3.2:1b (confirmed by
+        # reading it directly), the exact model that failed the reproduction
+        # above, so chaining through it would have silently defeated this
+        # fix in the real deployment. Defaults straight to qwen2.5:3b
+        # instead; still overridable via OLLAMA_CORRECTION_MODEL for an
+        # environment that hasn't pulled it.
+        model = os.getenv("OLLAMA_CORRECTION_MODEL", "qwen2.5:3b")
         payload = json.dumps({
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
-            "format": "json",
-            "options": {"temperature": 0.0, "num_predict": 512},
+            "format": schema if schema is not None else "json",
+            # num_predict raised 512 -> 1024, 2026-09-02: 512 was tight enough
+            # that a real (buggy) full-dataset echo truncated mid-JSON rather
+            # than failing cleanly. Schema-constrained calls (maxItems-capped)
+            # shouldn't need this much headroom, but it's kept as a shared
+            # safety margin for any future non-schema caller too.
+            "options": {"temperature": 0.0, "num_predict": 1024},
+            # keep_alive, added 2026-09-02, raised 30m -> 24h the same week
+            # after a real, live-confirmed gap: 30m keeps the model resident
+            # across one continuous survey session, but this demo's real
+            # usage pattern is sporadic (a team testing it a few times a day
+            # over several days), and the backend process itself stays up
+            # across all of that -- so the 30m TTL was expiring long before
+            # the next real correction attempt, even though the server never
+            # restarted. Confirmed directly: GET /api/ps returned an empty
+            # model list (nothing resident) after a ~2-day gap with the
+            # server continuously up, reproducing the exact "slow again"
+            # report. 24h means any correction used at least once a day
+            # keeps it effectively always warm; a genuinely idle stretch
+            # longer than that still frees the memory rather than pinning it
+            # forever. Real, disclosed cost: this model is ~2.0GiB
+            # (confirmed via its Ollama manifest size) on a machine this
+            # project has already documented as memory-constrained (as low
+            # as ~300MB free observed elsewhere in this project's own
+            # history) -- keeping it resident for up to 24h at a stretch is
+            # a real, deliberate trade of memory headroom for response-time
+            # reliability, not a free win. See main.py's startup pre-warm
+            # for the matching load-at-boot half of this fix (keep_alive
+            # alone doesn't help if the model was never loaded in the first
+            # place).
+            "keep_alive": "24h",
         }).encode()
         try:
             req = urllib.request.Request(
@@ -3216,6 +4565,89 @@ class ConversationManager:
                 return body.get("message", {}).get("content", "")
         except Exception as exc:
             _logger.debug("Ollama correction call failed: %s", exc)
+            return None
+
+    def _call_groq_json(self, prompt: str, schema: dict | None = None) -> str | None:
+        """POST to Groq's OpenAI-compatible chat completions endpoint, with
+        real JSON-Schema strict-mode structured output when `schema` is
+        given. Returns raw response string or None.
+
+        Added as part of the cloud-hosting migration (2026-09-04): the
+        hosted deployment has no local Ollama to call, so
+        CORRECTION_LLM_PROVIDER=groq routes _llm_extract_correction here
+        instead. Deliberately mirrors _call_ollama_json's own low-level,
+        no-CrewAI-overhead style (raw urllib, no new dependency) rather than
+        going through llm_client.py's CrewAI/LiteLLM `LLM` class -- that
+        class is built for the general TaskType routing chain, not this
+        method's speed-critical, schema-constrained use.
+
+        Model is openai/gpt-oss-120b -- already the model this project's
+        ISCO-08 reranking work (backend/llm/llm_client.py) uses successfully
+        via Groq's free tier, and (confirmed via a live web search against
+        Groq's own docs before writing this) the only model family Groq's
+        strict-mode structured output currently supports.
+
+        Groq's strict mode has stricter requirements than the JSON Schema
+        `correction_schema_for()` builds for Ollama: every object needs
+        `additionalProperties: false` and *every* property (not just the
+        ones semantically required) listed in `required`. This function
+        adapts the schema at the call site rather than changing
+        correction_schema_for()'s own output, so the Ollama path (still the
+        local-dev default) is completely unaffected.
+        """
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            return None
+
+        groq_schema = None
+        if schema is not None:
+            item_props = schema["properties"]["corrections"]["items"]["properties"]
+            groq_schema = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "corrections_response",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "corrections": {
+                                "type": "array",
+                                "maxItems": schema["properties"]["corrections"]["maxItems"],
+                                "items": {
+                                    "type": "object",
+                                    "properties": item_props,
+                                    "required": list(item_props.keys()),
+                                    "additionalProperties": False,
+                                },
+                            },
+                        },
+                        "required": ["corrections"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+
+        payload = json.dumps({
+            "model": "openai/gpt-oss-120b",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0,
+            "response_format": groq_schema if groq_schema is not None else {"type": "json_object"},
+        }).encode()
+        try:
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=self._CORRECTION_TIMEOUT) as resp:
+                body = json.loads(resp.read())
+                return body["choices"][0]["message"]["content"]
+        except Exception as exc:
+            _logger.debug("Groq correction call failed: %s", exc)
             return None
 
     def _call_anthropic_json(self, prompt: str) -> str | None:

@@ -99,6 +99,31 @@ _FIELD_LABELS: dict[str, dict[str, str]] = {
     "employment_type":   {"en": "Employment type",      "ar": "نوع التوظيف"},
 }
 
+# Arabic labels for this module's own small set of coded field values.
+# Added 2026-08-29 alongside the same fix in conversation_manager.py's
+# _AR_ENUM_LABELS/_ar_val (not imported from there to avoid a circular
+# import -- conversation_manager.py already imports ContextMemory from this
+# module). Scope is deliberately tiny: of _ALL_FIELDS' 5 fields, only
+# employment_status/employment_type are coded enums; job_title/industry are
+# free text and hours_per_week is numeric, so none of those need a value
+# translation. Without this, _build_fallback_summary's Arabic summary would
+# insert the raw English value (e.g. "employed") into an Arabic sentence --
+# the same bug class already fixed in conversation_manager.py, though this
+# method currently has no live caller (confirmed by grep), so the practical
+# impact today is nil.
+_AR_VALUE_LABELS: dict[str, str] = {
+    "employed": "موظف", "unemployed": "عاطل عن العمل",
+    "not_in_labour_force": "خارج القوى العاملة",
+    "full_time": "دوام كامل", "part_time": "دوام جزئي",
+    "seasonal": "موسمي", "temporary": "مؤقت",
+}
+
+
+def _ar_field_value(v: object) -> str:
+    s = str(v)
+    return _AR_VALUE_LABELS.get(s, s)
+
+
 # State display labels for summaries.
 _STATE_LABELS: dict[str, dict[str, str]] = {
     "greeting":       {"en": "greeting",           "ar": "الترحيب"},
@@ -598,7 +623,7 @@ class ContextMemory:
                 for k, v in sorted(mem.collected_fields.items())
             ]
             parts_ar = [
-                f"{_FIELD_LABELS.get(k, {}).get('ar', k)}: {v}"
+                f"{_FIELD_LABELS.get(k, {}).get('ar', k)}: {_ar_field_value(v)}"
                 for k, v in sorted(mem.collected_fields.items())
             ]
             s1_en = "Collected so far — " + "; ".join(parts_en) + "."

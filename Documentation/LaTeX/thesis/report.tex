@@ -1,0 +1,263 @@
+\documentclass[12pt,a4wide]{report}
+
+\usepackage{amsthm,amssymb,mathrsfs,setspace}%amsmath, latexsym,footmisc
+
+\usepackage[nottoc,notlof,notlot]{tocbibind}
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\sectionmark}[1]{\markright{\thesection\ #1}}
+
+% ── Additional packages for thesis content ───────────────────────
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf,textfont=it,
+              justification=centering,skip=6pt}
+\usepackage{booktabs,array,longtable,tabularx,multirow}
+\usepackage{seqsplit}
+\renewcommand{\arraystretch}{1.3}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{basicstyle=\small\ttfamily,breaklines=true,
+        frame=single,backgroundcolor=\color{gray!8},
+        showstringspaces=false}
+\usepackage{tikz}
+\usetikzlibrary{positioning,fit}
+\usepackage{enumitem}
+\usepackage[hidelinks,
+  pdftitle={Multilingual Conversational AI for Labour Force Surveys},
+  pdfauthor={Sivarama Krishnan Subbiah}]{hyperref}
+\usepackage{url}
+\urlstyle{same}
+\usepackage[numbers,sort&compress]{natbib}
+\setlength{\emergencystretch}{3em}
+
+% ── Theorem environments ─────────────────────────────────────────
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{notation}[theorem]{Notation}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\renewcommand{\baselinestretch}{1.5}
+\setlength{\headheight}{15pt}
+
+\begin{document}
+
+% --------------- Title page -----------------------
+\begin{titlepage}
+\enlargethispage{4cm}
+
+\begin{center}
+
+\vspace*{-0.5cm}
+
+\textbf{\Large MULTILINGUAL CONVERSATIONAL AI FOR LABOUR FORCE SURVEYS:
+A MULTI-AGENT RAG SYSTEM WITH CREWAI FRAMEWORK}\\[10pt]
+
+\vspace*{2cm}
+
+                         A Project Report Submitted \\
+                     in Partial Fulfilment of the Requirements  \\
+                     for the Degree of  \\
+                          \vspace{3mm}
+                   {\Large \bf Master of Technology } \\
+                   in \\
+                   {\large \bf Artificial Intelligence and Data Science } \\
+                      \vspace{5mm}
+                   {\em  by} \\ \vspace{2mm}
+             {\large \bf Sivarama Krishnan Subbiah} \\
+{\large \bf (Roll No. 2024MCS110007)}\\[0.2in]
+
+\vfill
+
+\begin{figure}[h]
+  \begin{center}
+  \includegraphics[width=6cm, height=3cm]{logo2.jpg}
+  \end{center}
+\end{figure}
+\vspace*{0.1cm}
+
+{\em\large to }\\
+{\bf\large INDIAN INSTITUTE OF INFORMATION TECHNOLOGY}\\
+{\bf\large KOTTAYAM-686635, INDIA}\\
+{\it\large 2026}
+\end{center}
+
+\end{titlepage}
+
+\clearpage
+% --------------- Declaration page -----------------------
+\pagenumbering{roman} \setcounter{page}{2}
+\begin{center}
+{\large{\bf{DECLARATION}}}
+\end{center}
+
+\noindent I, \textbf{Sivarama Krishnan Subbiah} (\textbf{Roll No: 2024MCS110007}),
+hereby declare that, this report entitled
+\textbf{``Multilingual Conversational AI for Labour Force Surveys:
+A Multi-Agent RAG System with CrewAI Framework''} submitted to Indian
+Institute of Information Technology Kottayam towards partial
+requirement of {\bf Master of Technology} in \textbf{Artificial Intelligence
+and Data Science}
+is an original work carried out by me under the supervision of
+\textbf{Dr.\ Goutam Mali} and has not formed the basis for the award
+of any degree or diploma, in this or any other institution or
+university. I have sincerely tried to uphold the academic ethics
+and honesty. Whenever an external information or statement or
+result is used then, that have been duly acknowledged and cited.
+
+\vspace{4cm}
+
+\noindent Kottayam-686635 \hfill \textbf{Sivarama Krishnan Subbiah}
+
+\noindent 2026
+
+\clearpage
+
+% --------------- Certificate page -----------------------
+\pagenumbering{roman} \setcounter{page}{3}
+\begin{center}
+{\large{\bf{CERTIFICATE}}}
+\end{center}
+
+\noindent This is to certify that the work contained in this
+project report entitled \textbf{``Multilingual Conversational AI for
+Labour Force Surveys: A Multi-Agent RAG System with CrewAI Framework''}
+submitted by \textbf{Sivarama Krishnan Subbiah}
+(\textbf{Roll No: 2024MCS110007}) to Indian Institute of Information
+Technology Kottayam towards partial requirement of {\bf Master of Technology}
+in \textbf{Artificial Intelligence and Data Science}
+has been carried out by him under my supervision and that it has not been
+submitted elsewhere for the award of any degree.
+
+\vspace{4cm}
+
+\noindent Kottayam-686635  \hfill (Dr.\ Goutam Mali)
+
+\noindent 2026 \hfill Project Supervisor
+
+\clearpage
+
+% --------------- Abstract page -----------------------
+\begin{center}
+{\Large{\bf{ABSTRACT}}}
+\end{center}
+
+%% Fully rewritten 2026-08-28. The original abstract stated a fabricated
+%% 85.3% ISCO-08 accuracy figure (documented elsewhere in this project as
+%% a previously-corrected fabricated baseline), a false claim that
+%% hierarchical retrieval outperformed flat retrieval (the real, published
+%% result is the opposite), a citation to an ILO correspondence table
+%% confirmed not to exist, and several other unverified figures. Every
+%% number below traces to this thesis's own Chapter 6.
+
+Labour Force Surveys (LFS) are the primary data collection mechanism for
+employment statistics worldwide, yet conventional field-interview methods
+carry real, documented burdens: item nonresponse, inconsistent occupation
+coding, difficulty handling multilingual and code-switched speech, and
+substantial per-interview cost.
+
+This thesis constructs and empirically evaluates a multilingual
+conversational AI system administering a Labour Force Survey questionnaire
+in five languages (English, Arabic MSA, Gulf Arabic dialect, Urdu, Hindi,
+Tagalog) through a 13-module CrewAI agent architecture with no hierarchical
+agent delegation, coordinated directly by the system's own API layer.
+
+The central technical contribution is the \textbf{Semantic Relation
+Engine} --- a deterministic three-way crosswalk between ISCO-08
+(occupation), ISIC Rev.~4 (industry), and ISCED~2011/ISCED-F~2013
+(education), producing a calibrated SemanticCoherence score with a
+genuine three-tier, gap-based severity mechanism and a separate
+confidence-adjustment band, validated on a 61-case set with zero
+mismatches and verified to escalate HIGH-severity violations to a live
+human-review queue with 100\% reliability across three independent runs.
+The crosswalk tables are hand-built, disclosed explicitly as not sourced
+from an official ILO/UNESCO correspondence document --- a real, exhaustive
+search of the complete official ISCO-08 structure document confirmed no
+such table exists.
+
+Both hierarchical (four-stage, parent-filtered) and flat (single-collection)
+ISCO-08 retrieval were implemented and evaluated end-to-end against WISCO,
+a real external benchmark, on a full 18,747-case heldout split.
+\textbf{Flat retrieval outperformed hierarchical retrieval by 10.84
+percentage points} (21.19\% vs.\ 10.35\%, McNemar exact
+$p \approx 1.86\times10^{-301}$) --- the opposite of the design assumption
+this thesis originally made, reported here as a genuine, tested finding.
+Building on the better configuration, two further, independently additive
+improvements --- a larger multilingual embedding model and real
+official-text catalogue enrichment sourced from the primary ILO document
+--- together produced this thesis's best-tested, headline result of
+\textbf{40.95\% exact 4-digit accuracy}, nearly double the original
+21.19\% baseline, with the largest gains in non-English languages (up to
++23 percentage points for Arabic). Six independent checks, across
+different LLM providers and two genuinely different mechanisms (candidate
+reranking and query reformulation), consistently found that LLM-based
+reranking of retrieval candidates did not improve accuracy further ---
+retrieval quality, not generation quality, is this task's real accuracy
+ceiling.
+
+The system also classifies industry (ISIC Rev.~4) and education
+(ISCED/ISCED-F~2013). No real, labelled evaluation dataset exists for
+either standard; a disclosed, taxonomy-grounded synthetic benchmark
+(LLM-generated text grounded in real official category definitions, with
+gold labels fixed by construction) produced a real, if explicitly
+non-equivalent-to-real-respondent-data, result: 82.85\% accuracy for flat
+retrieval versus 13.14\% for the existing keyword-based pipeline
+($n=449$, McNemar $p \approx 5.5\times10^{-83}$). A companion test found
+that Gulf Arabic dialect normalisation made no measurable difference to
+downstream classification accuracy on genuinely dialectal generated text
+--- another real negative finding, reported rather than omitted.
+
+\textbf{A randomised pilot study ($n=30$, 15 per arm) is planned but had
+not been submitted for ethics approval as of the writing of this thesis.
+No pilot data exists, and no claim in this thesis rests on it.}
+
+\vspace{6pt}
+\noindent\textbf{Keywords:} Labour Force Survey; conversational AI;
+multi-agent systems; CrewAI; retrieval-augmented generation; ISCO-08;
+ISIC Rev.4; ISCED-F 2013; Semantic Relation Engine; multilingual NLP;
+code-switching; human-in-the-loop; official statistics.
+
+\clearpage
+
+
+\tableofcontents
+\clearpage
+\listoffigures
+\listoftables
+
+
+\newpage
+
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ====== Main chapters ===========================================
+
+\input chapter1.tex
+
+\input chapter2.tex
+
+\input chapter3.tex
+
+\input chapter4.tex
+
+\input chapter5.tex
+
+\input chapter6.tex
+
+\input chapter7.tex
+
+\input appendices.tex
+
+\bibliographystyle{plainnat}
+\bibliography{bib}
+
+\end{document}
