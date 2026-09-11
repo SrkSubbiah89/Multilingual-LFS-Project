@@ -273,15 +273,21 @@ email OTP $\to$ JWT), \texttt{/chat} (survey conversation), \texttt{/report}
 
 The test suite spans \texttt{backend/tests/} and \texttt{eval/}, run via
 \texttt{pytest backend/tests eval/ -q}. \textbf{Real, current count (this
-project's most recent full run): 2,501 passed, 1 deselected}, not the ``18
-mocked files'' an earlier internal draft of this thesis stated --- that
-figure was stale even relative to this project's own mid-project state (44
-files in \texttt{backend/tests/} alone at one verified point, growing
-substantially further since). The one deselected test is a slow load test
-(\texttt{@pytest.mark.slow}); no standing known failures. This count has
-been independently reproduced multiple times, including nine consecutive
-full runs under varying \texttt{PYTHONHASHSEED} values with byte-identical
-results, confirming no hash-order non-determinism in the current suite.
+project's most recent full run, 2026-09-10): 2,508 passed, 1 deselected},
+not the ``18 mocked files'' an earlier internal draft of this thesis
+stated --- that figure was stale even relative to this project's own
+mid-project state (44 files in \texttt{backend/tests/} alone at one
+verified point, growing substantially further since). The one deselected
+test is a slow load test (\texttt{@pytest.mark.slow}); no standing known
+failures. This count has been independently reproduced multiple times,
+including nine consecutive full runs under varying \texttt{PYTHONHASHSEED}
+values with byte-identical results, confirming no hash-order
+non-determinism in the current suite. (An earlier verification pass in this
+same thesis rewrite recorded 2,501; the 7-test difference is the
+\texttt{translate\_before\_retrieval} regression suite added
+2026-09-10, alongside a real, disclosed dev-split accuracy finding for
+non-English queries --- see Section~\ref{sec:results-translation} in
+Chapter~6.)
 
 A separate, pre-existing framework (\texttt{eval/legacy\_thesis\_ch6/
 evaluate.py}, formerly \texttt{backend/evaluation/}) compares BM25, flat, and

@@ -139,6 +139,79 @@ independent tests, different LLM providers, and two genuinely different
 mechanisms (candidate reranking and query reformulation) --- a robust
 result, reported as such.
 
+\subsection{Does Retrieval Grounding Matter More Than Raw LLM Knowledge?
+Zero-Shot Classification and a Query-Translation Fix}
+\label{sec:results-translation}
+
+A natural follow-on question, prompted directly during a late-stage review
+of this work (2026-09-10): if a large cloud model does not help as a
+\emph{reranker} on top of retrieval, could it replace retrieval entirely?
+Groq's \texttt{gpt-oss-120b} was asked to classify job descriptions
+directly to a 4-digit ISCO-08 code with \emph{no} candidate list and no
+retrieval step at all --- genuinely untested territory in this project,
+distinct from every reranking check above.
+
+\textbf{Result: 18.83\% ($n=324$) --- below the 21.19\% flat-retrieval
+baseline.} Read plainly: an LLM's general knowledge alone, without being
+handed the actual catalogue to search over, is \emph{worse} than simple
+retrieval. This is informative in itself: it demonstrates that the
+engineered retrieval architecture this thesis builds is doing real,
+necessary work, not something a sufficiently large model would render
+unnecessary.
+
+Investigating \emph{why} retrieval-grounded classification underperforms
+for non-English queries specifically led to a second, genuinely positive
+finding. The enriched catalogue's embedding text (Section~\ref{sec:res-isco})
+is English-sourced --- official ILO definitions and example
+job titles. A non-English query therefore embeds further from its true
+catalogue match than an English translation of the same query would,
+even though the embedding model itself is multilingual. Translating
+non-English \texttt{job\_title} text to English via a local model
+(\texttt{qwen2.5:3b}, no API cost) immediately before embedding, with no
+other change to the retrieval pipeline, was tested on a 60-case
+stratified dev-split sample (15 cases each of Arabic, Hindi, Urdu,
+Tagalog):
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrr}
+\toprule
+Language & Original-language query & Translated to English first \\
+\midrule
+Arabic & 40.0\% & 60.0\% \\
+Hindi & 40.0\% & 66.7\% \\
+Urdu & 26.7\% & 33.3\% \\
+Tagalog & 26.7\% & 53.3\% \\
+\midrule
+\textbf{Overall} & \textbf{33.3\%} & \textbf{53.3\%} \\
+\bottomrule
+\end{tabular}
+\caption{Query translation before embedding, 60-case dev-split preview.
+$+20$pp overall, McNemar exact $p=0.0018$ (13 cases flipped
+wrong$\to$correct, 1 flipped correct$\to$wrong).}
+\end{table}
+
+This has been implemented, not left as an isolated evaluation script:
+\texttt{ISCOClassifier} gained an additive, opt-in constructor parameter,
+\texttt{translate\_before\_retrieval} (default \texttt{False} --- zero
+behavioural change for every existing caller, the same discipline applied
+to every other addition in this codebase), with 7 new regression tests
+and the full 2,508-test suite green.
+
+\textbf{Honest status, stated plainly rather than overclaimed}: this is a
+\emph{dev-split preview}, not a heldout-confirmed result, per this
+project's own dev-selects/heldout-confirms discipline (every headline
+number in Section~\ref{sec:res-isco} above comes only from the 18,747-case
+heldout split). All 14,929 non-English heldout cases have already been
+translated and a merged, ready-to-run input file prepared; the final
+full-scale retrieval pass is currently blocked by a real, reproducible
+memory-exhaustion segmentation fault loading \texttt{multilingual-e5-large}
+on the development machine used for this thesis --- the same class of
+environment-level constraint already disclosed for the synthetic
+ISIC/ISCED-F benchmark's own blocked re-run. The 60-case result is
+reported as exactly what it is: a real, statistically significant,
+promising preview finding, pending full-scale confirmation.
+
 % ------------------------------------------------------------
 \section{ISIC Rev.~4 / ISCED-F 2013 Classification}
 \label{sec:res-isic-isced}
