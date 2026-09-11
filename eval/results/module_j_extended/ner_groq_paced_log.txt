@@ -1,0 +1,16 @@
+ar1 lang=ar tp=3 fp=1 fn=1 latency=2.4s n_pred=4
+ar-gulf1 lang=ar-gulf tp=4 fp=0 fn=0 latency=1.4s n_pred=4
+ur1 lang=ur tp=4 fp=0 fn=0 latency=1.3s n_pred=4
+hi1 lang=hi tp=4 fp=0 fn=0 latency=1.8s n_pred=4
+tl1 lang=tl tp=4 fp=0 fn=0 latency=1.4s n_pred=4
+en2 lang=en tp=2 fp=1 fn=1 latency=1.8s n_pred=3
+en3 lang=en tp=2 fp=2 fn=1 latency=1.5s n_pred=4
+ar2 lang=ar tp=3 fp=0 fn=0 latency=1.5s n_pred=3
+ar3 lang=ar tp=2 fp=2 fn=1 latency=1.8s n_pred=4
+ar-gulf2 lang=ar-gulf tp=3 fp=2 fn=1 latency=2.0s n_pred=5
+ur2 lang=ur tp=3 fp=0 fn=0 latency=1.4s n_pred=3
+ur3 lang=ur tp=3 fp=1 fn=0 latency=2.4s n_pred=4
+hi2 lang=hi tp=3 fp=0 fn=0 latency=1.6s n_pred=3
+hi3 lang=hi tp=3 fp=1 fn=0 latency=1.4s n_pred=4
+tl2 lang=tl tp=2 fp=2 fn=1 latency=1.3s n_pred=4
+tl3 lang=tl tp=1 fp=3 fn=2 latency=1.6s n_pred=4

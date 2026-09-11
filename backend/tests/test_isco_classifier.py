@@ -17,8 +17,17 @@ from backend.agents.isco_classifier import (
     _HIGH_CONFIDENCE_THRESHOLD,
     _detect_script,
 )
-from backend.rag.hierarchical_store import UnitCandidate
+from backend.rag.hierarchical_store import HierarchicalResult, UnitCandidate
 from backend.rag.vector_store import OccupationMatch
+
+
+def make_hierarchical_result(code="2512", label_en="Software Developers",
+                              label_ar="مطورو البرمجيات", confidence=0.95) -> HierarchicalResult:
+    return HierarchicalResult(
+        code=code, label_en=label_en, label_ar=label_ar, confidence=confidence,
+        stage_confidences={"stage1": confidence, "stage2": confidence,
+                            "stage3": confidence, "stage4": confidence},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -437,3 +446,112 @@ class TestEnableLlmTrueUnchanged:
         get_llm.assert_called_once()
         get_llm_strict.assert_not_called()
         assert clf._agent_available is True
+
+
+class TestTranslateBeforeRetrieval:
+    """2026-09-10: translate_before_retrieval is an additive, opt-in
+    constructor param (default False). These tests guard the three real
+    behaviours: default-off is a no-op, English is never translated even
+    when enabled, and non-English text is translated via get_llm_strict
+    with graceful fallback on failure."""
+
+    def test_default_false_never_translates(self, monkeypatch, mock_store):
+        clf = _make_clf(monkeypatch, mock_store)
+        assert clf._translate_before_retrieval is False
+        translate_spy = MagicMock(wraps=clf._translate_to_english)
+        monkeypatch.setattr(clf, "_translate_to_english", translate_spy)
+
+        fake_hierarchical = MagicMock()
+        fake_hierarchical.search.return_value = make_hierarchical_result()
+        clf._hierarchical_store = fake_hierarchical
+        clf._force_flat_only = False
+
+        clf._classify_hierarchical("مهندس برمجيات", "", "ar", top_k=5)
+
+        translate_spy.assert_not_called()
+        called_query = fake_hierarchical.search.call_args[0][0]
+        assert called_query == "مهندس برمجيات"
+
+    def test_constructor_flag_stored_correctly(self, monkeypatch, mock_store):
+        clf_off = _make_clf(monkeypatch, mock_store)
+        assert clf_off._translate_before_retrieval is False
+
+        monkeypatch.setattr("backend.agents.isco_classifier.get_llm_strict", MagicMock(return_value=MagicMock()))
+        monkeypatch.setattr("backend.agents.isco_classifier.get_llm", MagicMock(return_value=MagicMock()))
+        monkeypatch.setattr("backend.agents.isco_classifier.Agent", MagicMock())
+        monkeypatch.setattr("backend.agents.isco_classifier.Task", MagicMock())
+        monkeypatch.setattr(
+            "backend.agents.isco_classifier.get_hierarchical_store",
+            lambda: (_ for _ in ()).throw(RuntimeError("no hierarchical store in tests")),
+        )
+        monkeypatch.setattr("backend.agents.isco_classifier.get_vector_store", lambda **kw: mock_store)
+        clf_on = ISCOClassifier(translate_before_retrieval=True)
+        assert clf_on._translate_before_retrieval is True
+
+    def test_non_english_translated_via_get_llm_strict(self, monkeypatch, mock_store):
+        clf = _make_clf(monkeypatch, mock_store)
+        fake_llm = MagicMock()
+        fake_llm.call.return_value = "software engineer"
+        get_llm_strict = MagicMock(return_value=fake_llm)
+        monkeypatch.setattr("backend.agents.isco_classifier.get_llm_strict", get_llm_strict)
+
+        result = clf._translate_to_english("مهندس برمجيات", "ar")
+
+        assert result == "software engineer"
+        get_llm_strict.assert_called_once_with("ollama/qwen2.5:3b", temperature=0.0)
+        fake_llm.call.assert_called_once()
+        prompt = fake_llm.call.call_args[0][0][0]["content"]
+        assert "مهندس برمجيات" in prompt
+
+    def test_translation_failure_falls_back_to_original_text(self, monkeypatch, mock_store):
+        clf = _make_clf(monkeypatch, mock_store)
+        get_llm_strict = MagicMock(side_effect=RuntimeError("ollama unreachable"))
+        monkeypatch.setattr("backend.agents.isco_classifier.get_llm_strict", get_llm_strict)
+
+        result = clf._translate_to_english("मुझे नहीं पता", "hi")
+
+        assert result == "मुझे नहीं पता"  # graceful fallback, never raises
+
+    def test_empty_translation_response_falls_back_to_original(self, monkeypatch, mock_store):
+        clf = _make_clf(monkeypatch, mock_store)
+        fake_llm = MagicMock()
+        fake_llm.call.return_value = "   "
+        monkeypatch.setattr("backend.agents.isco_classifier.get_llm_strict", MagicMock(return_value=fake_llm))
+
+        result = clf._translate_to_english("original text", "ur")
+
+        assert result == "original text"
+
+    def test_classify_hierarchical_translates_before_building_query(self, monkeypatch, mock_store):
+        clf = _make_clf(monkeypatch, mock_store)
+        clf._translate_before_retrieval = True
+        translate_spy = MagicMock(return_value="translated text")
+        monkeypatch.setattr(clf, "_translate_to_english", translate_spy)
+
+        fake_hierarchical = MagicMock()
+        fake_hierarchical.search.return_value = make_hierarchical_result()
+        clf._hierarchical_store = fake_hierarchical
+        clf._force_flat_only = False
+
+        clf._classify_hierarchical("عامل بناء", "", "ar", top_k=5)
+
+        translate_spy.assert_called_once_with("عامل بناء", "ar")
+        called_query = fake_hierarchical.search.call_args[0][0]
+        assert called_query == "translated text"
+
+    def test_classify_hierarchical_skips_translation_for_english(self, monkeypatch, mock_store):
+        clf = _make_clf(monkeypatch, mock_store)
+        clf._translate_before_retrieval = True
+        translate_spy = MagicMock(return_value="should never be used")
+        monkeypatch.setattr(clf, "_translate_to_english", translate_spy)
+
+        fake_hierarchical = MagicMock()
+        fake_hierarchical.search.return_value = make_hierarchical_result()
+        clf._hierarchical_store = fake_hierarchical
+        clf._force_flat_only = False
+
+        clf._classify_hierarchical("construction worker", "", "en", top_k=5)
+
+        translate_spy.assert_not_called()
+        called_query = fake_hierarchical.search.call_args[0][0]
+        assert called_query == "construction worker"

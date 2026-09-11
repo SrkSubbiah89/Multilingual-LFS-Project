@@ -493,6 +493,7 @@ class ISCOClassifier:
         isco_catalogue_profile: str = LEGACY_PROFILE,
         enable_corrective_retry: bool = False,
         use_gap_aware_confidence: bool = False,
+        translate_before_retrieval: bool = False,
     ) -> None:
         """
         Parameters
@@ -632,6 +633,23 @@ class ISCOClassifier:
             to production HITL escalation volume if ever enabled, so it is
             never on by default and must be an explicit, informed choice,
             not something switched on incidentally.
+        translate_before_retrieval : bool, default False
+            2026-09-10 finding: the official ISCO-08 catalogue's enriched
+            embedding text is English-sourced (ILO definitions/examples),
+            so a non-English query embeds further from its true match than
+            an English translation of the same query does. A 60-case
+            dev-split preview (never heldout -- see this project's own
+            dev-selects/heldout-confirms discipline) showed a real,
+            McNemar-significant gain (33.3%->53.3%, p=0.0018) from
+            translating non-English job_title text to English via a local
+            Ollama model (qwen2.5:3b) immediately before embedding, with no
+            other change to the retrieval pipeline. When True, English
+            queries are never translated (no-op, no extra call); non-English
+            queries are translated via a local LLM call, falling back to the
+            original text on any translation failure (never blocks
+            classification). Default False reproduces every existing
+            caller's exact prior behaviour -- this is a real, disclosed
+            preview-stage finding, not yet a heldout-confirmed default.
         """
         self._disable_keyword_map   = disable_keyword_map
         self._beam                  = beam
@@ -648,6 +666,7 @@ class ISCOClassifier:
         self._isco_catalogue_profile = isco_catalogue_profile
         self._enable_corrective_retry = enable_corrective_retry
         self._use_gap_aware_confidence = use_gap_aware_confidence
+        self._translate_before_retrieval = translate_before_retrieval
         # Task 21: force_flat_only means "call search_flat_only() on the
         # official-profile HierarchicalISCOStore" -- distinct from the
         # legacy force_flat=True path (self._flat_store, legacy VectorStore).
@@ -832,6 +851,31 @@ class ISCOClassifier:
     # Hierarchical classification
     # ------------------------------------------------------------------
 
+    def _translate_to_english(self, text: str, lang: str) -> str:
+        """Translate *text* to English via a local Ollama model
+        (qwen2.5:3b -- fast, no daily quota, and this task doesn't need
+        Groq's exact-classification-knowledge advantage, only competent
+        general translation). Falls back to the original *text* on any
+        failure (unreachable Ollama, timeout, empty response) so a
+        translation problem degrades to prior (untranslated) behaviour
+        rather than ever blocking classification. Only called when
+        translate_before_retrieval=True and lang != "en" -- see that
+        constructor parameter's docstring for the evidence behind this."""
+        try:
+            llm = get_llm_strict("ollama/qwen2.5:3b", temperature=0.0)
+            prompt = (
+                "Translate this job/occupation description to English. "
+                f"Respond with ONLY the translation, nothing else.\n\nText: {text}"
+            )
+            translated = llm.call([{"role": "user", "content": prompt}]).strip()
+            return translated or text
+        except Exception as exc:
+            _logger.warning(
+                "ISCOClassifier: translate_before_retrieval failed for lang=%r (%s); "
+                "using original text.", lang, exc,
+            )
+            return text
+
     def _classify_hierarchical(
         self,
         job_title: str,
@@ -852,6 +896,11 @@ class ISCOClassifier:
         richer representation.  The major-group keyword hint still anchors
         stage 1, preventing semantic drift regardless of the enriched text.
         """
+        if self._translate_before_retrieval and lang and lang != "en":
+            job_title = self._translate_to_english(job_title, lang)
+            if trace is not None:
+                trace["translated_before_retrieval"] = True
+
         # Build enriched embedding query: job_title + context keywords.
         # Strip boilerplate tokens ("language=en") so they don't add noise.
         context_clean = " ".join(

@@ -1,0 +1,434 @@
+[
+  {
+    "id": "en2",
+    "language": "en",
+    "tp": 2,
+    "fp": 1,
+    "fn": 1,
+    "latency_s": 1.8,
+    "gold": [
+      {
+        "text": "Fatima",
+        "label": "PERSON"
+      },
+      {
+        "text": "unemployed",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "healthcare",
+        "label": "INDUSTRY"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "Fatima",
+        "label": "PERSON"
+      },
+      {
+        "text": "unemployed",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "healthcare sector",
+        "label": "INDUSTRY"
+      }
+    ]
+  },
+  {
+    "id": "en3",
+    "language": "en",
+    "tp": 2,
+    "fp": 2,
+    "fn": 1,
+    "latency_s": 1.5,
+    "gold": [
+      {
+        "text": "primary school teacher",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "40 hours a week",
+        "label": "HOURS"
+      },
+      {
+        "text": "Dubai",
+        "label": "LOCATION"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "primary school teacher",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "40 hours",
+        "label": "HOURS"
+      },
+      {
+        "text": "a week",
+        "label": "DURATION"
+      },
+      {
+        "text": "Dubai",
+        "label": "LOCATION"
+      }
+    ]
+  },
+  {
+    "id": "ar2",
+    "language": "ar",
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "latency_s": 1.5,
+    "gold": [
+      {
+        "text": "فاطمة",
+        "label": "PERSON"
+      },
+      {
+        "text": "عاطلة عن العمل",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "قطاع الصحة",
+        "label": "INDUSTRY"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "فاطمة",
+        "label": "PERSON"
+      },
+      {
+        "text": "عاطلة عن العمل",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "قطاع الصحة",
+        "label": "INDUSTRY"
+      }
+    ]
+  },
+  {
+    "id": "ar3",
+    "language": "ar",
+    "tp": 2,
+    "fp": 2,
+    "fn": 1,
+    "latency_s": 1.8,
+    "gold": [
+      {
+        "text": "معلمة",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "أربعين ساعة أسبوعيًا",
+        "label": "HOURS"
+      },
+      {
+        "text": "دبي",
+        "label": "LOCATION"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "معلمة",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "أربعين ساعة",
+        "label": "HOURS"
+      },
+      {
+        "text": "أسبوعيًا",
+        "label": "DURATION"
+      },
+      {
+        "text": "دبي",
+        "label": "LOCATION"
+      }
+    ]
+  },
+  {
+    "id": "ar-gulf2",
+    "language": "ar-gulf",
+    "tp": 3,
+    "fp": 2,
+    "fn": 1,
+    "latency_s": 2.0,
+    "gold": [
+      {
+        "text": "ممرضة",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "مستشفى الملك فهد",
+        "label": "ORGANIZATION"
+      },
+      {
+        "text": "جدة",
+        "label": "LOCATION"
+      },
+      {
+        "text": "اثنين وخمسين ساعة بالأسبوع",
+        "label": "HOURS"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "ممرضة",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "مستشفى الملك فهد",
+        "label": "ORGANIZATION"
+      },
+      {
+        "text": "جدة",
+        "label": "LOCATION"
+      },
+      {
+        "text": "اثنين وخمسين ساعة",
+        "label": "HOURS"
+      },
+      {
+        "text": "بالأسبوع",
+        "label": "DURATION"
+      }
+    ]
+  },
+  {
+    "id": "ur2",
+    "language": "ur",
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "latency_s": 1.4,
+    "gold": [
+      {
+        "text": "فاطمہ",
+        "label": "PERSON"
+      },
+      {
+        "text": "بے روزگار",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "صحت کے شعبے",
+        "label": "INDUSTRY"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "فاطمہ",
+        "label": "PERSON"
+      },
+      {
+        "text": "بے روزگار",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "صحت کے شعبے",
+        "label": "INDUSTRY"
+      }
+    ]
+  },
+  {
+    "id": "ur3",
+    "language": "ur",
+    "tp": 3,
+    "fp": 1,
+    "fn": 0,
+    "latency_s": 2.4,
+    "gold": [
+      {
+        "text": "استاد",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "دبئی",
+        "label": "LOCATION"
+      },
+      {
+        "text": "چالیس گھنٹے",
+        "label": "HOURS"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "استاد",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "دبئی",
+        "label": "LOCATION"
+      },
+      {
+        "text": "چالیس گھنٹے",
+        "label": "HOURS"
+      },
+      {
+        "text": "ہفتے میں",
+        "label": "DURATION"
+      }
+    ]
+  },
+  {
+    "id": "hi2",
+    "language": "hi",
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "latency_s": 1.6,
+    "gold": [
+      {
+        "text": "फातिमा",
+        "label": "PERSON"
+      },
+      {
+        "text": "बेरोजगार",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "स्वास्थ्य क्षेत्र",
+        "label": "INDUSTRY"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "फातिमा",
+        "label": "PERSON"
+      },
+      {
+        "text": "बेरोजगार",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "स्वास्थ्य क्षेत्र",
+        "label": "INDUSTRY"
+      }
+    ]
+  },
+  {
+    "id": "hi3",
+    "language": "hi",
+    "tp": 3,
+    "fp": 1,
+    "fn": 0,
+    "latency_s": 1.4,
+    "gold": [
+      {
+        "text": "शिक्षिका",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "दुबई",
+        "label": "LOCATION"
+      },
+      {
+        "text": "चालीस घंटे",
+        "label": "HOURS"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "शिक्षिका",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "दुबई",
+        "label": "LOCATION"
+      },
+      {
+        "text": "चालीस घंटे",
+        "label": "HOURS"
+      },
+      {
+        "text": "हफ्ते में",
+        "label": "DURATION"
+      }
+    ]
+  },
+  {
+    "id": "tl2",
+    "language": "tl",
+    "tp": 2,
+    "fp": 2,
+    "fn": 1,
+    "latency_s": 1.3,
+    "gold": [
+      {
+        "text": "Fatima",
+        "label": "PERSON"
+      },
+      {
+        "text": "walang trabaho",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "sektor ng kalusugan",
+        "label": "INDUSTRY"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "Fatima",
+        "label": "PERSON"
+      },
+      {
+        "text": "unemployed",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "job seeking",
+        "label": "EMPLOYMENT_STATUS"
+      },
+      {
+        "text": "sektor ng kalusugan",
+        "label": "INDUSTRY"
+      }
+    ]
+  },
+  {
+    "id": "tl3",
+    "language": "tl",
+    "tp": 1,
+    "fp": 3,
+    "fn": 2,
+    "latency_s": 1.6,
+    "gold": [
+      {
+        "text": "guro",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "apatnapung oras kada linggo",
+        "label": "HOURS"
+      },
+      {
+        "text": "Dubai",
+        "label": "LOCATION"
+      }
+    ],
+    "predicted": [
+      {
+        "text": "teacher",
+        "label": "JOB_TITLE"
+      },
+      {
+        "text": "apatnapung oras",
+        "label": "HOURS"
+      },
+      {
+        "text": "kada linggo",
+        "label": "DURATION"
+      },
+      {
+        "text": "Dubai",
+        "label": "LOCATION"
+      }
+    ]
+  }
+]
