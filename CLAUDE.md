@@ -303,6 +303,80 @@ pytest==9.0.2
 pytest-asyncio==1.3.0
 ```
 
+### Cloud-hosting migration, 2026-09-04 through 2026-09-08
+
+Prompted by a real, direct stability concern: the project had been running
+on a personal laptop, exposed only via free ephemeral tunnels (ngrok,
+Cloudflare quick tunnel), with a documented history of the whole stack
+dying when the laptop went idle. Migrated to a free-tier cloud stack
+instead of continuing to patch the tunnel setup — full plan and rationale
+in the (now-superseded, migration itself completed) plan document; this
+section records what was actually built and verified.
+
+**The real architectural gap found while migrating**: every one of 9 files
+that constructed a `QdrantClient` did so as `QdrantClient(host=..., port=
+...)` directly — bare host/port, no way to authenticate against a hosted
+instance at all. Consolidated into one shared factory,
+`make_qdrant_client()` (`backend/rag/__init__.py`): connects to Qdrant
+Cloud when `QDRANT_URL`/`QDRANT_API_KEY` are set, otherwise preserves each
+caller's exact prior local host/port behaviour byte-for-byte. A
+`client_cls` override parameter was added after the first version broke
+several existing tests that monkeypatch each module's own `QdrantClient`
+name (`backend.rag.vector_store.QdrantClient`, etc.) — a real regression,
+caught by the existing test suite, fixed same-session.
+
+**Free-text correction feature, LLM provider**: `conversation_manager.py`
+gained `_call_groq_json()` and `_call_gemini_json()` as siblings to the
+existing `_call_ollama_json()`/`_call_anthropic_json()`, plus a
+`CORRECTION_LLM_PROVIDER` env var (default `"ollama"`, so local dev is
+byte-for-byte unchanged) — the hosted deployment sets this to `"groq"`
+since free hosting tiers can't carry a locally-hosted Ollama model. Real
+bugs found and fixed while building this: Cloudflare's WAF blocking raw
+`urllib`'s default User-Agent (HTTP 403, fixed with a normal-looking
+header), and Groq's real 8000-tokens-per-minute rate limit requiring
+retry-with-backoff (already a documented constraint elsewhere in this
+file for other tasks; same fix pattern reused here).
+
+**Provisioned, live, and verified**: Supabase (Postgres, free tier, no
+forced expiry — unlike Render's free Postgres, which self-deletes after
+90 days), Upstash (Redis, free tier), Qdrant Cloud (free tier, 1GB). A
+`render.yaml` Blueprint was added so the backend deploys from the
+existing root `Dockerfile` with no manual dashboard configuration; all 26
+required environment variables (13 fixed/non-secret values declared
+directly in the file, 1 auto-generated `JWT_SECRET`, 12 real secrets set
+once via the Render API rather than typed into the dashboard by hand) are
+live on the deployed service.
+
+**Qdrant Cloud collection rebuild — real, partial, and honestly blocked,
+not silently incomplete**: of the 43 collections documented in the
+"Environment & deployment" table above, **21 are live and verified on
+Qdrant Cloud** — every e5-small-based collection (4 legacy ISCO-08, 5
+`official_ilo2021_v1`, 5 `official_ilo2021_v1_enriched`, 4 `isic_rev4_*`,
+3 `iscedf2013_*`), confirmed via a real point-count check against the live
+cluster. **The remaining 22 (every e5-large-dependent collection,
+including the ones behind the 40.95% headline ISCO-08 result) are
+blocked** by the same class of memory-exhaustion segmentation fault
+already documented elsewhere in this file for other e5-large loads on
+this specific development machine — reproduced once during the rebuild
+attempt (confirmed clean, no partial/corrupted collection left behind),
+not retried repeatedly per this project's own "stop retrying the same
+crash" discipline. Real path forward, not attempted in this pass: free
+several GB on the dev machine and retry, or run the identical, already-
+tested build scripts against `QDRANT_URL`/`QDRANT_API_KEY` from different
+hardware.
+
+**Backend deployment itself — attempted, a real bug found, not yet
+fully resolved**: the first Render deploy crashed with `psycopg2.
+OperationalError: ... Network is unreachable` — Supabase's direct-
+connection hostname resolves to an IPv6-only address, and Render's free
+tier has no outbound IPv6 connectivity. Fixed by switching to Supabase's
+Session Pooler connection string (IPv4-compatible, same credentials,
+different host/port) — a well-known, documented Supabase/Render
+interaction, not a configuration mistake. After that fix the deploy
+progressed further but has not yet been confirmed fully healthy end-to-
+end on the hosted URL as of this writing; the local/native `start.bat`
+path remains the verified-working demo path in the meantime.
+
 ## Database (PostgreSQL, 11 tables — confirmed exact names)
 
 `users`, `otp_codes`, `survey_sessions`, `survey_responses`, `audit_logs`,
@@ -1272,6 +1346,61 @@ dedicated passing tests.
   to Gemini instead of reaching Claude and failing later, silently, at
   actual inference time. 10 new tests; full suite passes with zero
   regressions.
+- **Does retrieval grounding matter more than raw LLM knowledge? Zero-shot
+  classification and a query-translation fix, 2026-09-10**: prompted
+  directly by "can we improve the ISCO-08 number further." First tested
+  whether a large cloud model could replace retrieval entirely — Groq
+  `openai/gpt-oss-120b` asked to classify job descriptions straight to a
+  4-digit ISCO-08 code with no candidate list and no retrieval step at
+  all, genuinely untested territory (every prior Groq test in this
+  project used it as a *reranker* on top of retrieval, never as the
+  primary classifier). **Result: 18.83% (n=324, real dev-split cases) —
+  below the 21.19% flat-retrieval baseline.** Read plainly: an LLM's
+  general knowledge alone, without the actual catalogue to search over,
+  is worse than simple retrieval — informative in itself, since it shows
+  the retrieval architecture is doing real, necessary work.
+
+  Investigating *why* retrieval-grounded classification underperforms for
+  non-English queries specifically led to a second, genuinely positive
+  finding: the enriched catalogue's embedding text is English-sourced
+  (official ILO definitions/examples), so a non-English query embeds
+  further from its true match than an English translation of the same
+  query would, even though the embedding model itself is multilingual.
+  Translating non-English `job_title` text to English via a local model
+  (`qwen2.5:3b`, no API cost, no daily quota unlike Groq) immediately
+  before embedding, with no other change to the retrieval pipeline, was
+  tested on a 60-case stratified dev-split sample (15 cases each of
+  Arabic, Hindi, Urdu, Tagalog): **33.3% → 53.3% overall (+20pp), McNemar
+  exact p=0.0018** (13 cases flipped wrong→correct, 1 flipped
+  correct→wrong). Per-language: Arabic 40.0%→60.0%, Hindi 40.0%→66.7%,
+  Urdu 26.7%→33.3%, Tagalog 26.7%→53.3%.
+
+  **Implemented, not left as an isolated eval script**: `ISCOClassifier`
+  gained an additive, opt-in constructor parameter,
+  `translate_before_retrieval` (default `False` — zero behavioural change
+  for every existing caller, same discipline as every other addition in
+  this codebase). Non-English queries are translated via
+  `_translate_to_english()` (a new method, same local-Ollama pattern as
+  everywhere else), falling back to the original text on any translation
+  failure so a translation problem degrades to prior behaviour rather
+  than ever blocking classification; English queries are always a no-op.
+  7 new regression tests (`TestTranslateBeforeRetrieval` in
+  `test_isco_classifier.py`); full suite re-run: 2,508 passed, 1
+  deselected, zero regressions.
+
+  **Honest status, not yet a production default**: this is a *dev-split
+  preview*, not a heldout-confirmed result, per this project's own
+  dev-selects/heldout-confirms discipline — every headline ISCO-08 number
+  above comes only from the 18,747-case heldout split. All 14,929
+  non-English heldout cases have already been translated locally (no
+  quota cost) and a merged, ready-to-run input file prepared
+  (`eval/results/wisco_groq_zeroshot/heldout_translated_full.csv`); the
+  final full-scale retrieval pass is currently blocked by the same
+  real, reproducible memory-exhaustion segmentation fault documented
+  above for the synthetic ISIC/ISCED-F re-run — not yet resolved, not
+  silently retried into a fabricated-looking success. New scripts:
+  `eval/wisco_translate_and_classify.py`,
+  `eval/wisco_groq_zeroshot_classify.py`.
 
 ## The actual published WISCO evaluation result — read this before citing any accuracy number
 
@@ -1453,6 +1582,13 @@ this project's own already-documented memory-exhaustion mistake" entry
 above) and still passed clean; the pytest suite itself does not load
 real embedding models, so it was the concurrently-run live evaluation
 that degraded, not this suite. Same 1 deselected slow test throughout.
+
+**2026-09-10**: real, full re-run after the cloud-hosting migration (see
+new "Cloud-hosting migration" section below) and the
+`translate_before_retrieval` addition (see "Knowledge base construction"
+below) → **2,508 passed, 1 deselected**, zero failures. +7 tests over the
+2,501 baseline (`TestTranslateBeforeRetrieval` in
+`test_isco_classifier.py`). Same 1 deselected slow test throughout.
 
 ## Citation policy — unchanged, still correct
 

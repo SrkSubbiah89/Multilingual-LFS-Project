@@ -2,7 +2,7 @@
 
 **Project Documentation — Business & Technical**
 M.Tech Thesis · IIIT Kottayam · Supervisor: Dr. Goutam Mali
-**Last updated: 2026-08-24, against commit `18244c6`.**
+**Last updated: 2026-09-11, against commit `4f6f78f`.**
 
 This is a **self-contained** description of the project, written so a
 reader with no prior context — a business stakeholder, a technical
@@ -179,7 +179,7 @@ OTP-based authentication rather than storing passwords.
 | Cloud LLM providers | Anthropic Claude 3.5 Sonnet, Google Gemini, Groq, OpenRouter — all opt-in, fail-closed if unconfigured |
 | Embedding model | `intfloat/multilingual-e5-small` (default, 384-dim) / `multilingual-e5-large` (1024-dim, evaluated, not yet default) |
 | Containerization | Docker Compose (infra services); backend/frontend run natively in development |
-| Testing | pytest (2,384 tests as of this document's date — see §15) |
+| Testing | pytest (2,508 tests as of this document's date — see §15) |
 
 **Why this stack, briefly**: FastAPI + CrewAI gives typed, testable agent
 boundaries without committing to a heavyweight orchestration framework
@@ -223,6 +223,60 @@ Two distinct, deliberately different contracts exist side by side:
   so it's explicitly excluded via `LLM_FALLBACK_EXCLUDE=anthropic` in
   `.env`, and the chain goes straight to Gemini instead of reaching
   Claude and failing later. 10 tests cover this behaviour.
+
+### 8.2 Cloud-hosting migration, 2026-09-04
+
+Everything above describes a local dev machine (Docker Compose services on
+`localhost`). A real migration toward a cloud-hosted deployment started
+2026-09-04, prompted by the practical need to demo/host this system
+somewhere other than one laptop:
+
+- **`make_qdrant_client()`** — a single shared factory
+  (`backend/rag/__init__.py`) now used by every one of the 9 call sites
+  that previously built `QdrantClient(host=..., port=...)` directly
+  (`vector_store.py`, `hierarchical_store.py`,
+  `standard_hierarchical_store.py`, `load_full_isco.py`, and 5
+  `build_official_isco08_collections*.py` / `build_standard_hierarchical_
+  collections.py` build scripts — several of these scripts' own
+  docstrings previously said outright "local-only... no remote URL/token
+  option exists"). If `QDRANT_URL` is set, it connects to that URL with
+  `QDRANT_API_KEY` — the Qdrant Cloud path; otherwise it preserves every
+  caller's exact prior local host/port behaviour, byte-for-byte. A
+  `client_cls` override keeps every existing test's `QdrantClient`
+  monkeypatch working (a real regression the first version of this
+  function caused, then fixed the same day).
+- **Free-text correction no longer requires a local Ollama model.**
+  `ConversationManager` gained Groq and Gemini raw-JSON correction
+  fallbacks, selected via `CORRECTION_LLM_PROVIDER` (`render.yaml` sets
+  this to `groq` in production) — no free hosting tier can realistically
+  run a local LLM, so this closes a real deployment blocker for the
+  free-text correction feature specifically, independent of the main
+  `get_llm(TaskType.GENERAL)` fallback chain in §8.1.
+- **`render.yaml`** — a Render Blueprint for the backend: builds from the
+  existing root `Dockerfile`, wires the fixed non-secret config
+  (`APP_ENV`, `LFS_FAST_MODE`, `CORRECTION_LLM_PROVIDER=groq`,
+  `LLM_FALLBACK_EXCLUDE=anthropic`, CORS origins for the deployed
+  frontend), auto-generates `JWT_SECRET`, and prompts once for real
+  secrets (`DATABASE_URL`, `REDIS_URL`, `QDRANT_URL`, `QDRANT_API_KEY`,
+  and every LLM/notification provider key) — zero manual dashboard
+  configuration needed beyond pasting those values in.
+- **Qdrant collection migration status, real but partial**: of the 43
+  local collections (see the Qdrant row in the environment table in
+  `CLAUDE.md`), the plain e5-small-based collections have been rebuilt
+  live on Qdrant Cloud (21 of 43 as of this document's date); the
+  e5-large-dependent collections (`*_e5large`, `*_enriched_e5large`, and
+  the flat `enriched_e5large` collections) are **still blocked** by the
+  same reproducible out-of-memory segfault documented in §12.7 below —
+  loading a `multilingual-e5-large` `SentenceTransformer` on this dev
+  machine to build/verify a collection is the same operation that crashes
+  the ISIC/ISCED-F full-scale re-evaluation and the ISCO-08 translation
+  heldout confirmation. This is a real, current, partial migration, not a
+  completed one — stated plainly rather than rounded up.
+
+This is infrastructure work, not a production cutover: the system still
+runs against the local Docker Compose stack by default (`QDRANT_URL`
+unset), and nothing in §17's open production-default decisions changes
+because of it.
 
 ## 9. System architecture
 
@@ -313,12 +367,34 @@ ISCO-08 — `classify(text, method=ISIC_FLAT_RETRIEVAL /
 ISCEDF_FLAT_RETRIEVAL)`, matching ISCO-08's own best-tested (flat)
 configuration rather than only its underperforming hierarchical one.
 Production `classify(text)` still defaults to the legacy keyword/LLM
-pipeline for both — this is implementation parity, not a default switch,
-and not an accuracy claim (no labelled ISIC/ISCED-F evaluation data
-exists yet). See `CLAUDE.md`'s "Knowledge base construction" log and
+pipeline for both — this is implementation parity, not a default switch.
+See `CLAUDE.md`'s "Knowledge base construction" log and
 `Documentation/Conference_I_Reviewer_2/
 ISIC_ISCEDF_HIERARCHICAL_RETRIEVAL_IMPLEMENTATION.md` for the full
 writeup.
+
+**2026-08-25, same effort continued**: `ISIC_FLAT_RETRIEVAL`/
+`ISCEDF_FLAT_RETRIEVAL` were then upgraded from plain e5-large to a new
+`enriched_e5large` profile — real official-source text (UN Statistics
+Division's ISIC Rev.4 structure publication, UNESCO UIS's ISCED-F 2013
+detailed field descriptions), the same enrichment discipline already
+applied to the ISCO-08 catalogue (§12.4). Building it live-caught and
+fixed a genuine magnet-effect regression: 13 ISIC codes and 2 ISCED-F
+codes already present in `_ISIC_DATA`/`_ISCED_FIELDS` turned out **not to
+exist in the official standard at all** (e.g. `"7311 Advertising
+agencies"` vs. the real official `"7310 Advertising"`) — once every other
+code's text got richer, these already-thin non-standard entries started
+wrongly capturing unrelated queries. Fixed by excluding those 13+2 codes
+from the enriched flat collections entirely (121/61 points, not
+134/63) — not a real coverage loss, since the excluded codes never
+corresponded to a real official code in the first place. This is now
+genuinely, not just architecturally, the same recipe ISCO-08's own
+best-tested config uses. See §12.5 for the resulting accuracy number.
+
+**2026-09, same recipe, a different problem**: retrieval quality for
+*non-English* queries turned out to depend on more than the catalogue
+text alone — see §12.6 for the query-translation-before-embedding
+finding on `ISCOClassifier`.
 
 ### 10.2 Semantic Relation Engine (SRE)
 
@@ -693,6 +769,175 @@ signal, not the statistical certainty of the full-scale retrieval
 results. Real artifacts: `eval/results/dev_selection/
 corrective_retry_check_ollama/` and `corrective_retry_check_ollama_off/`.
 
+### 12.5 ISIC Rev.4 / ISCED-F 2013 — a real, synthetic, incomplete accuracy number now exists
+
+Directly closes what was, until this update, the one major status-table
+gap in this document (§16): "ISIC/ISCED-F accuracy not yet evaluated."
+WISCO (every ISCO-08 number above) is occupation-only — no industry or
+field-of-study gold labels exist in it, and no real respondent data
+exists yet either (Module E hasn't run). Rather than leave this
+permanently unmeasured, a **synthetic, taxonomy-grounded benchmark** was
+built: every row is an LLM-generated (Groq `gpt-oss-120b`), casually-
+worded respondent answer, grounded in the real official ISIC/ISCED-F
+definition text (§12's enrichment work above) and explicitly instructed
+to paraphrase rather than echo official terminology, across all 6
+language codes this project supports (en, ar, ar-gulf, hi, ur, tl).
+
+**Read this number for what it honestly is, not more**: it measures
+whether each method recovers the class its own generating prompt was
+built from — a real, useful signal in the current absence of respondent
+data, but not equivalent to WISCO's external validation. It is not cited
+as pilot-grade or WISCO-equivalent evidence anywhere in this project.
+
+**Result, clean 372-case run** (`eval/run_synthetic_isic_iscedf_eval.py`,
+Wilson 95% CI, McNemar exact test), legacy keyword/LLM pipeline vs.
+`flat_retrieval` (the `enriched_e5large` recipe from §12 above):
+
+| | n | legacy keyword/LLM | flat_retrieval (enriched_e5large) | McNemar p |
+|---|---:|---:|---:|---:|
+| Overall | 372 | 13.98% [10.82%, 17.87%] | **83.06%** [78.92%, 86.53%] | 9.37×10⁻⁶⁸ |
+| ISIC | 254 | 12.99% | 80.71% | 2.89×10⁻⁴⁴ |
+| ISCED-F | 118 | 16.10% | 88.14% | 1.14×10⁻²⁴ |
+| en | 66 | 31.82% | 86.36% | 5.63×10⁻⁹ |
+| ar | 58 | 17.24% | 84.48% | 3.82×10⁻¹¹ |
+| ar-gulf | 48 | 22.92% | 79.17% | 4.63×10⁻⁷ |
+| hi | 69 | 1.45% | 84.06% | 2.08×10⁻¹⁶ |
+| ur | 68 | 4.41% | 83.82% | 1.58×10⁻¹⁵ |
+| tl | 63 | 9.52% | 79.37% | 1.14×10⁻¹³ |
+
+The legacy keyword pipeline is essentially non-functional on
+Hindi/Urdu/Tagalog (1–10%, since `_ISIC_DATA`/`_ISCED_FIELDS`'s hand-built
+keyword field has virtually no non-English coverage), while multilingual
+`flat_retrieval` stays in a consistent 79–88% band across all 6
+languages — the same directional story as ISCO-08's own e5-large result,
+now with a real number behind it for these two standards.
+
+**A genuine bonus finding**: the `ar-gulf` rows in this same dataset are
+real synthetic Gulf-dialect text (confirmed via genuine Khaleeji markers,
+e.g. "إحنا" vs. MSA "نحن") — the first data of any kind, real or
+synthetic, this project has had to test `LanguageProcessor`'s 79-term
+Gulf-normalisation dictionary against, closing a Module G gap that had
+been fully blocked (WISCO's own Arabic data has zero dialectal content).
+Result: 13.11% marker-detection rate, and classification accuracy
+**byte-identical with and without normalization** (80.33% both ways,
+n=61, McNemar b=c=0, p=1) — extending this project's repeated "extra
+processing doesn't move the needle" pattern (6 reranking nulls, 1
+corrective-retry null) to dialect normalization.
+
+**Coverage, honestly incomplete, and why**: the clean, citable 372-case
+run above is the smallest of several successive coverage passes. Groq's
+free-tier 200,000-tokens-per-day ceiling (hit and confirmed via the API's
+own error message each time) capped generation in stages — 372 → 449 →
+694 → and finally **1,091 of the 1,092-row target (99.9% coverage)** by
+2026-08-28, essentially complete coverage of all matched codes × 6
+languages. Along the way, an automated quality checker
+(`eval/validate_synthetic_benchmark_quality.py`) caught a real bug: 2 of
+the 449 rows were plain LLM safety-filter refusal text ("I'm sorry, but I
+can't help with that."), silently accepted because the generator's only
+prior acceptance check was `len(text) >= 3`. Fixed (retry-on-refusal in
+the generator, independent refusal-pattern detection in the checker); the
+2 bad rows were regenerated. **The 1,091-row dataset has not yet been
+re-evaluated for accuracy at that scale** — every attempt has hit the
+same real, reproducible out-of-memory segfault described in §12.7 below,
+loading `multilingual-e5-large` on this dev machine. The clean 372-case
+result above (known to include the 2 now-fixed refusal rows, 0.45% of
+that sample — a real but small, disclosed contamination) therefore
+remains the last valid, citable number for this benchmark as of this
+document's date.
+
+### 12.6 Query translation before embedding — a real, tested, not-yet-confirmed-at-scale finding
+
+A natural follow-on question, 2026-09: if an LLM reranker doesn't help on
+top of retrieval (§12's repeated null result), could a large cloud model
+replace retrieval entirely? Groq `gpt-oss-120b` was asked to classify job
+descriptions directly to a 4-digit ISCO-08 code with **no** candidate
+list and no retrieval step — genuinely different from every reranking
+check above. **Result: 18.83% (n=324) — below the 21.19% flat-retrieval
+baseline.** An LLM's general knowledge alone, without the actual
+catalogue to search over, underperforms simple retrieval — real evidence
+that the retrieval architecture this thesis builds is doing necessary
+work, not something a large-enough model would make redundant.
+
+Investigating *why* retrieval-grounded classification underperforms for
+non-English queries specifically led to a genuinely positive finding: the
+enriched catalogue's embedding text (§12.4) is English-sourced — official
+ILO definitions and example job titles — so a non-English query embeds
+further from its true catalogue match than an English translation of the
+same query would, even with a multilingual embedding model. Translating
+non-English `job_title` text to English via a local model
+(`qwen2.5:3b`, no API cost/quota) immediately before embedding, with no
+other pipeline change, was tested on a 60-case stratified dev-split
+sample (15 cases each of Arabic, Hindi, Urdu, Tagalog):
+
+| Language | Original-language query | Translated to English first |
+|---|---:|---:|
+| Arabic | 40.0% | 60.0% |
+| Hindi | 40.0% | 66.7% |
+| Urdu | 26.7% | 33.3% |
+| Tagalog | 26.7% | 53.3% |
+| **Overall** | **33.3%** | **53.3%** |
+
+**+20pp overall, McNemar exact p=0.0018** (13 cases flipped
+wrong→correct, 1 flipped correct→wrong). Implemented, not left as an
+isolated script: `ISCOClassifier` gained `translate_before_retrieval`, an
+additive, opt-in constructor parameter (default `False` — zero
+behavioural change for every existing caller, same discipline as every
+other addition in this codebase), with 7 new regression tests.
+
+**Honest status**: this is a **dev-split preview**, not a
+heldout-confirmed result, per this project's own dev-selects/heldout-
+confirms discipline — every headline ISCO-08 number in §12 above comes
+only from the 18,747-case heldout split. All 14,929 non-English heldout
+cases have already been translated and a merged input file prepared; the
+full-scale confirmation run is currently blocked by the same real,
+reproducible out-of-memory segfault as §12.5's and §12.7's blocked
+re-evaluations. Reported as exactly what it is: a real, statistically
+significant, promising preview, pending full-scale confirmation — **not**
+yet added to §12's main ISCO-08 results table above, which is reserved
+for heldout-confirmed rows only.
+
+### 12.7 A real, current, environment-level memory blocker — investigated, partially fixed, not fully resolved
+
+Several results above (§12.5's 1,091-row re-evaluation, §12.6's full
+heldout translation confirmation, §8.2's remaining Qdrant Cloud
+collection rebuilds) are blocked by the same real constraint, disclosed
+here once rather than repeated at each site: this dev machine has ~8GB
+total RAM, and loading a `multilingual-e5-large` `SentenceTransformer`
+— now a routine operation across several parts of this pipeline — pushes
+it to the edge. What was first a recoverable Windows paging-file error
+("The paging file is too small," confirmed via `wmic`/`docker stats` to
+be genuine RAM exhaustion, not a code bug) hardened, on later attempts,
+into a real **segmentation fault** during model load, before this
+project's own code ever runs.
+
+**Root-caused, not just retried**: every crash happened immediately after
+TensorFlow's own import warnings — TensorFlow is not a declared
+dependency anywhere in this project, but `sentence-transformers`'
+underlying `transformers` library auto-imports it as a side effect when
+both PyTorch and TensorFlow are present on a machine, at a real,
+confirmed memory cost. **Fixed permanently**: `backend/rag/__init__.py`
+now sets `os.environ.setdefault("USE_TF", "0")` before its own first
+`sentence_transformers` import — verified directly that `tensorflow` no
+longer appears in `sys.modules` after importing `backend.rag`. This is a
+real, safe, permanent memory-footprint reduction, and the full test
+suite re-ran clean immediately after (2,501 passed, 1 deselected, zero
+regressions — see §15).
+
+**Retried after the fix — still segfaulted a third time**, at a lower
+peak memory than before but still not enough headroom on this specific
+machine at this specific time (free memory measured between ~386MB and
+~1.6GB across three attempts, this session's own IDE/Docker/browser
+processes accounting for the rest of an 8GB machine, none safely
+closable unilaterally). **Conclusion, stated plainly**: this is a real,
+current, environment-level blocker on this specific dev machine, not
+something further code changes alone can route around. The `USE_TF=0`
+fix is real and kept — it measurably helped — but did not fully resolve
+it. Two real paths forward, neither yet taken: free several GB by closing
+other applications before retrying, or run the identical, already-tested
+evaluation commands on different, less memory-constrained hardware (the
+cloud migration in §8.2 is a step toward exactly that, independent of
+whether it was originally motivated by this).
+
 ## 13. Data model & API surface
 
 **Database**: PostgreSQL, 11 tables — `users`, `otp_codes`,
@@ -724,7 +969,7 @@ running instance.
 
 ## 15. Testing
 
-**2,384 tests pass** as of this document's date (`pytest backend/tests
+**2,508 tests pass** as of this document's date (`pytest backend/tests
 eval/ -q`, a real full run, not a collection count), covering agent
 logic, the RAG retrieval engine, database models, API routes, and the
 evaluation harness itself. Tests are hermetic — no live Qdrant/Ollama/
@@ -739,13 +984,35 @@ during a documentation-completeness audit (1,535 `backend/tests` + 841
 `eval/`, 98 files; `CLAUDE.md` had independently drifted to the same
 stale 2,282 and was corrected to match) → still 2,376 after the same-day
 `backend/evaluation/` reorg relocated a 16-test file (1,519 + 857) →
-**2,384**, the current, real, full-run-confirmed number, after Module H
-added `backend/tests/test_orchestration_correctness.py` (8 tests:
-1,527 `backend/tests` + 857 `eval/`). This last correction was itself
-found late — both this section and `CLAUDE.md`'s still said 2,376 for a
-short while after Module H shipped, caught only by a direct "is
-everything completely implemented" follow-up check, not at the time of
-the Module H commit itself.
+**2,384**, after Module H added `backend/tests/
+test_orchestration_correctness.py` (8 tests: 1,527 `backend/tests` + 857
+`eval/`). This last correction was itself found late — both this section
+and `CLAUDE.md`'s still said 2,376 for a short while after Module H
+shipped, caught only by a direct "is everything completely implemented"
+follow-up check, not at the time of the Module H commit itself.
+
+**Continued, real, full-run-confirmed progression since 2026-08-24** (see
+`CLAUDE.md`'s "Testing" section for each run's exact duration and the
+matching "Knowledge base construction" entry describing what each batch
+of new tests covers): **2,384 → 2,407** (ISIC/ISCED-F e5-large profile
+parity, 2026-08-25) **→ 2,429** (ISIC/ISCED-F flat retrieval, same day)
+**→ 2,455** (real official-source enrichment + magnet-effect fix, same
+day) **→ 2,474** (synthetic ISIC/ISCED-F benchmark + Gulf Arabic A/B
+test, 2026-08-27 — re-run 9 more times with different `PYTHONHASHSEED`
+values the same day, byte-identical every time, confirming no
+hash-order flakiness anywhere in the suite) **→ 2,479** (line-by-line
+code review fixes — the flat-collection `KeyError` fix, test-mock
+profile assertions, git-ignored-fixture skip guards, same day) **→
+2,481** (second, independent code-review pass — 2 stale docstrings, 1
+stale comment, 2 version-skew silent-degradation fixes in
+`isic_classifier.py`/`isced_classifier.py`, same day) **→ 2,501**
+(synthetic-benchmark refusal-pattern bug fix + the new
+`validate_synthetic_benchmark_quality.py` tool, 2026-08-28) **→ 2,508**
+(current — 7 new regression tests for `ISCOClassifier`'s
+`translate_before_retrieval` parameter, §12.6, 2026-09-10). Zero
+regressions at any step; the same 1 deselected slow test
+(`backend/tests/load_test.py`, `@pytest.mark.slow`) throughout the entire
+history above.
 
 ### 15.1 `backend/evaluation/` was found undocumented, then moved to `eval/legacy_thesis_ch6/`
 
@@ -782,16 +1049,18 @@ number in this document comes from `eval/`'s main harness, never from
 | Area | Status |
 |---|---|
 | Core conversational survey flow (11 sections, skip logic, multilingual) | Built and tested |
-| ISCO-08 classification (flat + hierarchical + optional reranking) | Built, tested, **evaluated at scale** (§12, rows 2–3) |
-| ISIC Rev.4 / ISCED-F 2013 classification | Built and tested; hierarchical retrieval live since 2026-08-23; corrective-retry parity with ISCO-08 added 2026-08-24; a real non-determinism bug in the keyword scorers found and fixed the same day (below); **accuracy not yet evaluated** against a labelled test set; catalogue coverage is 134/419 ISIC classes and 63/~80 ISCED-F fields |
+| ISCO-08 classification (flat + hierarchical + optional reranking) | Built, tested, **evaluated at scale**; headline result now **40.95%** (enriched catalogue + e5-large, flat, full 18,747-case heldout — §12 row 17), nearly double the original 21.19% baseline |
+| ISIC Rev.4 / ISCED-F 2013 classification | Built and tested; hierarchical retrieval live since 2026-08-23; flat retrieval + real official-source enrichment live since 2026-08-25; corrective-retry parity with ISCO-08 added 2026-08-24; a real non-determinism bug in the keyword scorers found and fixed the same day (below); **a real, synthetic, non-pilot-grade accuracy number now exists** — 83.06% flat retrieval vs. 13.98% legacy keyword/LLM (n=372 clean run, §12.5) — not a WISCO-equivalent external validation; catalogue coverage is 134/419 ISIC classes and 63/~80 ISCED-F fields (121/61 in the enriched flat collections after excluding 13+2 disclosed non-standard codes) |
 | Semantic Relation Engine (cross-standard consistency) | Built, tested, validated (§12.3) |
 | HITL escalation | Built, wired into the live API, verified (§12.3) |
 | Local-first, automatic cloud-fallback LLM routing | Built and tested (§8.1) — 2026-08-24 |
+| Cloud-hosting migration (Qdrant Cloud, Render Blueprint, cloud-provider free-text correction) | **Real, partial** (§8.2) — shared `make_qdrant_client()` factory and `render.yaml` built 2026-09-04; e5-small collections rebuilt live on Qdrant Cloud, e5-large-dependent collections still blocked by the memory constraint in §12.7 |
+| Query translation before embedding (`ISCOClassifier.translate_before_retrieval`) | **Real, tested, dev-split preview only** (§12.6) — 33.3%→53.3%, McNemar p=0.0018, n=60; full 18,747-case heldout confirmation blocked by the same memory constraint (§12.7) |
 | Real-world pilot (n=30, the actual planned field validation) | **Not started.** No ethics application submitted. This is not a coding task and is the single highest-priority open item in the project. |
-| CrewAI orchestration-correctness evaluation | **Done, 2026-08-24** — `backend/tests/test_orchestration_correctness.py`, 8 tests (§18 item 5) |
+| CrewAI orchestration-correctness evaluation | **Done, 2026-08-24** — `backend/tests/test_orchestration_correctness.py`, 8 tests (§18 item 6) |
 | Real Claude 3.5 Sonnet cost/latency measurement | Not obtained — every attempt so far has hit zero API credit. |
-| Full-scale WISCO evaluation, e5-large retrieval, no reranking | **Done, 2026-08-24** — full 18,747-case heldout, +8.50pp over e5-small (§12 row 4) |
-| Full-scale WISCO evaluation with reranking enabled | Still not run at full 18,747-case scale (500-case samples exist; see §12, rows 10–11) — blocked by real API rate limits, not effort; see §12's reranking-null-result, already proven at n=500 on the stronger retrieval base |
+| Full-scale WISCO evaluation, e5-large retrieval, no reranking | **Done, 2026-08-24** — full 18,747-case heldout, +8.50pp over e5-small (§12 row 4); superseded as the headline result by the combined enrichment+e5-large row 17 (40.95%) |
+| Full-scale WISCO evaluation with reranking enabled | Still not run at full 18,747-case scale (500- and 642-case samples exist; see §12, rows 10–13) — blocked by real API rate limits, not effort; see §12's reranking-null-result, already proven at n=500/642 on the stronger retrieval base |
 
 ### 16.1 A real production non-determinism bug, found and fixed
 
@@ -842,9 +1111,20 @@ scoped to the field dimension only; level stays deterministic. Default
 3. **Thesis framing.** Given the real accuracy numbers, the strongest
    framing is methodology-first ("a rigorous comparative study of RAG
    design choices, with a genuine negative result on hierarchy and a
-   genuine positive one on embedding scale") rather than
-   accuracy-first ("a system that classifies occupations well"). The
-   evidence base supports the first framing far more comfortably.
+   genuine positive one on embedding scale and catalogue enrichment")
+   rather than accuracy-first ("a system that classifies occupations
+   well"). The evidence base supports the first framing far more
+   comfortably.
+4. **Production default: catalogue enrichment + combined enriched/e5-large
+   profile.** Evidence is now the strongest of any configuration decision
+   in this project (§12 row 17: +19.75pp over the original baseline, full
+   18,747-case scale, Wilson CIs non-overlapping with every prior
+   configuration); not yet switched.
+5. **`translate_before_retrieval` for non-English queries.** Real,
+   McNemar-significant dev-split preview evidence (§12.6: +20pp,
+   n=60); genuinely not yet a production-readiness decision — the
+   full-scale heldout confirmation this needs is currently blocked by the
+   memory constraint in §12.7, not by lack of a decision.
 
 ## 18. Next steps
 
@@ -857,10 +1137,12 @@ scoped to the field dimension only; level stays deterministic. Default
 
 **Inside code — ranked by how directly each moves the thesis forward:**
 
-2. **Decide the two production defaults** (§17, items 1–2) — flat vs.
-   hierarchical, e5-small vs. e5-large. Both now have full-scale,
-   statistically decisive evidence (§12 rows 2–4); this is purely a
-   sign-off, not more measurement.
+2. **Decide the production defaults** (§17, items 1–2 and the new items
+   4–5 added this update) — flat vs. hierarchical, e5-small vs. e5-large,
+   catalogue enrichment, and (once heldout-confirmed) query translation.
+   The first three now have full-scale, statistically decisive evidence
+   (§12 rows 2–4 and 17); this is purely a sign-off, not more
+   measurement.
 3. ~~**Use the new validation split (§11.1) for real.**~~ — **done,
    2026-08-24.** Ran the reranking on/off check (§12 row 13) against it —
    the first real, non-dry-run use of the split for its intended purpose.
@@ -869,11 +1151,26 @@ scoped to the field dimension only; level stays deterministic. Default
    benefit — conclusion from rows 5–11 unchanged. Next genuinely open use
    of this split: extending the e5-large upgrade question to ISIC/ISCED-F,
    or a real reranker-threshold sweep, whenever either becomes relevant.
-4. **Evaluate ISIC/ISCED-F accuracy** against a real labelled test set —
-   the one major gap in §16's status table. The hierarchical-retrieval
-   infrastructure is live; no accuracy number exists yet for it, unlike
-   ISCO-08.
-5. ~~**Module H (CrewAI orchestration-correctness evaluation)**~~ —
+4. ~~**Evaluate ISIC/ISCED-F accuracy against a labelled test set.**~~ —
+   **partially done, 2026-08-26/28.** No real respondent data exists for
+   these standards (unchanged), so a synthetic, taxonomy-grounded
+   benchmark was built instead — real, disclosed, non-pilot-grade result:
+   83.06% flat retrieval vs. 13.98% legacy pipeline, n=372 clean run
+   (§12.5). Coverage was later expanded to 1,091/1,092 rows (99.9%), but
+   that larger set **has not yet been re-evaluated for accuracy** — every
+   attempt has hit the real memory blocker in §12.7. Next genuinely open
+   step here: re-run `eval/run_synthetic_isic_iscedf_eval.py` against the
+   1,091-row set once more memory is available (locally or via the cloud
+   migration in §8.2).
+5. **Clear the memory blocker (§12.7)** enough to run three still-pending
+   full-scale confirmations: the 1,091-row ISIC/ISCED-F re-evaluation
+   (item 4), the full 18,747-case heldout confirmation of
+   `translate_before_retrieval` (§12.6), and the remaining Qdrant Cloud
+   collection rebuilds (§8.2). All three are blocked by the identical,
+   already-root-caused constraint, not three separate problems — solving
+   memory headroom once (locally or by finishing the cloud migration)
+   should unblock all three at once.
+6. ~~**Module H (CrewAI orchestration-correctness evaluation)**~~ —
    **done, 2026-08-24.** `backend/tests/test_orchestration_correctness.py`
    (8 tests): asserts the real per-turn agent call order matches
    `survey_routes.py`'s own documented Stage sequence, that agents whose
@@ -884,7 +1181,7 @@ scoped to the field dimension only; level stays deterministic. Default
    (`EmotionalIntelligence` and `LanguageProcessor` both silently skip
    under `LFS_FAST_MODE`) that a code comment alone hadn't made obvious.
    No production code changed.
-6. **Refresh `Documentation/Conference_I_Reviewer_2/REVIEWER_RESPONSE_IMPLEMENTATION_MATRIX.md`**
+7. **Refresh `Documentation/Conference_I_Reviewer_2/REVIEWER_RESPONSE_IMPLEMENTATION_MATRIX.md`**
    against everything in §12 and §16 — it's dated 2026-08-10 and predates
    all of this document's newer findings.
 
@@ -970,6 +1267,33 @@ forensic-level detail on any one topic:
 
 ## 21. Change log
 
+- **2026-09-11 (this update)** — Brought this document current against
+  ~2.5 weeks of `CLAUDE.md` history it had fallen behind on (last full
+  update was 2026-08-24; two arithmetic-only fixes landed 2026-09-11
+  ahead of this pass but did not bring it current). Added: §8.2
+  (cloud-hosting migration — shared `make_qdrant_client()` factory,
+  Groq/Gemini free-text-correction fallback, `render.yaml` Render
+  Blueprint, partial Qdrant Cloud collection migration); §12.5 (a real,
+  synthetic, disclosed-as-non-pilot-grade ISIC/ISCED-F accuracy number,
+  83.06% vs. 13.98%, n=372, plus the Gulf Arabic dialect-normalization
+  bonus finding); §12.6 (query-translation-before-embedding finding on
+  `ISCOClassifier`, 33.3%→53.3% dev-split preview, McNemar p=0.0018, and
+  the Groq zero-shot-classification-underperforms-retrieval finding that
+  led to it); §12.7 (the real, root-caused, partially-fixed
+  out-of-memory-segfault blocker now shared by three still-pending
+  full-scale confirmations). Updated the test count throughout
+  (2,384 → 2,508) with the full intermediate progression, §16's status
+  table (ISIC/ISCED-F accuracy, cloud migration, query translation),
+  §17's open decisions (2 new items), and §18's next steps (marked the
+  ISIC/ISCED-F evaluation gap partially closed, added the shared
+  memory-blocker item). §10.1 extended with the 2026-08-25 official-source
+  enrichment + magnet-effect-fix note. One number in §8.2 (21 of 43
+  Qdrant collections rebuilt on Qdrant Cloud) is carried over from the
+  briefing for this update rather than independently re-derived from a
+  file in this repository — everything else added here traces to a
+  specific `CLAUDE.md` entry, a specific commit message
+  (`fee87e9`, `df8c72e`, `68b3909`, `bfe9d09`, `4f6f78f`), or
+  `Documentation/LaTeX/thesis/chapter6.tex`'s already-verified numbers.
 - **2026-08-24 (final update, part 2)** — Ported corrective RAG retry to
   ISIC/ISCED (§16.1), closing the "same logic across ISCO-08/ISIC/ISCED"
   gap. While doing that, found and fixed a real production non-
