@@ -179,7 +179,7 @@ OTP-based authentication rather than storing passwords.
 | Cloud LLM providers | Anthropic Claude 3.5 Sonnet, Google Gemini, Groq, OpenRouter — all opt-in, fail-closed if unconfigured |
 | Embedding model | `intfloat/multilingual-e5-small` (default, 384-dim) / `multilingual-e5-large` (1024-dim, evaluated, not yet default) |
 | Containerization | Docker Compose (infra services); backend/frontend run natively in development |
-| Testing | pytest (2,376 tests as of this document's date) |
+| Testing | pytest (2,384 tests as of this document's date — see §15) |
 
 **Why this stack, briefly**: FastAPI + CrewAI gives typed, testable agent
 boundaries without committing to a heavyweight orchestration framework
@@ -239,7 +239,7 @@ flowchart TD
     GM -.down?.-> GQ[4th: Groq]
     GQ -.down?.-> OR[5th: OpenRouter]
 
-    subgraph Agents [backend/agents/ — 12 construct a crewai.Agent]
+    subgraph Agents [backend/agents/ — 13 construct a crewai.Agent]
         LP[LanguageProcessor]
         CM[ConversationManager]
         ISCO[ISCOClassifier]
@@ -263,7 +263,7 @@ flowchart TD
 **Important correction versus older planning documents**: earlier
 project drafts described a "10-agent CrewAI system" with
 `Process.hierarchical` and a manager agent delegating to workers. **That
-architecture was never built.** The real system has 12 modules that
+architecture was never built.** The real system has 13 modules that
 construct a `crewai.Agent` (all with `allow_delegation=False`), called
 directly by orchestration code (`backend/api/survey_routes.py`) — never
 through CrewAI's own delegation mechanism. If you see a reference to

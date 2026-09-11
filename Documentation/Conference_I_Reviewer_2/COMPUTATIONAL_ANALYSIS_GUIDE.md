@@ -45,13 +45,25 @@ manifest schema and the dev/held-out split discipline.
   or `nvidia-smi`), OS/Python version, full installed-dependency snapshot
   (`importlib.metadata`), git commit, dataset hash
 
+**Update (2026-08-25, after this guide was originally written): peak
+process memory and end-to-end latency are no longer in the "honestly not
+measured" state below.** `eval/run_eval.py`'s `_peak_rss_mb()` (line
+~1443) turns out to be a real, already-populated `psutil`-based sample on
+every run — this had simply never been extracted and reported before.
+Real measured figures now exist, e.g. the retrieval-only enriched +
+e5-large config (18,747 cases): peak RSS 1822.9MB max / 1243.3MB mean,
+end-to-end latency mean 208.1ms; see `CLAUDE.md`'s Module I entry and
+`REVIEWER_RESPONSE_IMPLEMENTATION_MATRIX.md`'s 2026-08-25 update to row 4
+for the full figures. GPU memory and retrieval-call-count remain
+genuinely unmeasured, as described below.
+
 **Honestly not measured (both `None` + a `<field>_unavailable_reason`
-string):**
-- **Peak process memory** — `CaseResult.peak_memory_mb` is a declared
-  field `eval/run_eval.py` never actually populates. (A separate,
-  unrelated `psutil`-based peak-RSS sampler exists in `eval/dev_sweep.py`
-  for its own K-sweep eligibility checks, but its value never reaches a
-  `CaseResult` row, so `eval/manifest.py` cannot read it from there.)
+string) as of this guide's original writing:**
+- ~~**Peak process memory** — `CaseResult.peak_memory_mb` is a declared
+  field `eval/run_eval.py` never actually populates.~~ **Superseded, see
+  the update note above** — it is populated and real figures exist.
+  (A separate, unrelated `psutil`-based peak-RSS sampler also exists in
+  `eval/dev_sweep.py` for its own K-sweep eligibility checks.)
 - **Peak GPU memory during the run** — the hardware probe reports total
   device capacity (`torch.cuda`/`nvidia-smi`), not peak usage during
   inference; there is no per-run GPU memory sampler in this codebase.
@@ -77,7 +89,9 @@ chart, once multiple such runs exist.
 
 ## Extending the manifest (future work, not done in this pass)
 
-To close the peak-memory/GPU/retrieval-count gaps: `eval.ablation_runner.
+**The peak-memory gap described below is closed — see the 2026-08-25
+update note above.** GPU memory and retrieval-count remain open. To close
+those: `eval.ablation_runner.
 run_config()` returns a mutable `ExperimentRunManifest` object before
 writing it — a caller can measure peak RSS via `psutil.Process().
 memory_info().rss` (same pattern as `eval/dev_sweep.py`'s `_peak_rss_mb()`)

@@ -68,7 +68,7 @@ evaluation hardening" work:
   during this task** — its existence and approximate contents were
   recorded (from a prior audit this session,
   `AI_HANDOFF_PROJECT_STATE.md` §3) for the record only.
-- Critically: **four files exist independently on both `conference1-b2-evaluation`
+- Critically: **five files exist independently on both `conference1-b2-evaluation`
   and in this snapshot, with different content on each**:
   `eval/dev_set_schema.md`, `eval/validate_dev_set.py`, `eval/dev_sweep.py`,
   `eval/test_run_eval_b2.py`, and `requirements.txt`. A future merge

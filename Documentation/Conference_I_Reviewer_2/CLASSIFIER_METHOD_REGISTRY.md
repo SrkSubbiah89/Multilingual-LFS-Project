@@ -34,8 +34,12 @@ would go stale the moment `REGISTRY` changes).
 - **`category`** is one of `deterministic` / `retrieval` / `llm` / `hybrid`
   — never guessed; it reflects what the code actually does for that method.
 - **`affects_hitl_escalation`** is the most reviewer-relevant, least
-  obvious field. It is **grep-verified against `survey_orchestrator.py`**,
-  not assumed: only `ISCOClassifier`'s per-response confidence and
+  obvious field. It is **grep-verified against the live production path,
+  `backend/api/survey_routes.py`** (an earlier module,
+  `backend/agents/survey_orchestrator.py`, also computed this value but was
+  never imported by the live API and was removed from the codebase
+  2026-08-21 — see `method_registry.py`'s own docstring), not assumed: only
+  `ISCOClassifier`'s per-response confidence and
   `HITLQualityManager`'s own scoring feed the production escalation
   decision. `ValidationAgent.rule_violations` and
   `SemanticRelationEngine`'s `SemanticCoherence` are attached to

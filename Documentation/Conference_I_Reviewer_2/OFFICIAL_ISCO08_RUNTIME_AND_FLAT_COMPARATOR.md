@@ -318,3 +318,18 @@ accuracy claim is made or supported by anything built here.
 
 None of steps 3-6 were performed in this task; step 3's tooling is now
 implementation-ready but was never executed.
+
+**Post-Task-22 update: steps 3-6 above have since been completed.**
+Tasks 23-37.1 (2026-08-10) built and populated the five official
+collections for real, ran the official-profile Tier-1 evaluation to
+completion on the full 18,747-case WISCO v2 heldout split (both flat and
+strict hierarchical, no LLM reranking), and produced the first citable
+ISCO-08 accuracy number against this catalogue: 21.1927% flat vs.
+10.3537% strict hierarchical (McNemar p ≈ 1.86×10⁻³⁰¹). This section
+above must be read as history describing the state through Task 22, not
+current status — see `OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md` (the
+canonical result) and `WISCO_LEAKAGE_AUDIT_AND_RUN_PLAN.md`'s own
+"Post-execution update" sections for the full account of what actually
+happened next. Step 1-2 (the catalogue-correction human review and
+source-data fix) remain not started as of that later work — the Tier-1
+run above used the verified-but-uncorrected catalogue.

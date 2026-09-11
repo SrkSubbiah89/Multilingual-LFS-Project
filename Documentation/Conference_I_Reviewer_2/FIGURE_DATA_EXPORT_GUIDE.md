@@ -21,6 +21,17 @@ evaluation runs (`export_evaluation_results.py`,
 `"no_manifests_found": true` / `"no_coverage_reports_found": true` export
 when no real run/report exists yet — never fabricated rows.
 
+**Update (2026-08-25): this is no longer the default state.**
+`eval/build_manifests_from_existing_runs.py` (new) built real
+`ExperimentRunManifest` files from real prior CSVs (including the
+18,747-case WISCO headline result), and both exports were re-run against
+them — `generated/figure_data/evaluation_results.json` and
+`latency_scalability.json` now report `"no_manifests_found": false` with
+3 real runs each, not the empty placeholder described below. The
+`"no_manifests_found"` behaviour itself is unchanged and still applies
+whenever a fresh export finds nothing — this note just corrects which
+state this repository's own `generated/` currently shows.
+
 ## What each export is for, and how to turn it into a figure
 
 ### `classifier_hierarchy.{json,csv}`

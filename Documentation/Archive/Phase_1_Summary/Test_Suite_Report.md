@@ -1,3 +1,11 @@
+> **ARCHIVED — SUPERSEDED.** This is a 2026-08-02 point-in-time snapshot
+> (1,178 tests, 25 files) moved here 2026-08-24 alongside
+> `Phase_1_Summary.md` — see `Documentation/Archive/README.md`. The test
+> suite has grown substantially since (2,500+ tests as of the current
+> `CLAUDE.md`). Do not cite the counts below as current.
+
+---
+
 # Test Suite Report — Multilingual LFS Conversational AI
 
 **M.Tech Thesis | IIIT Kottayam 2026 | ILO ICLS-19 Standard**

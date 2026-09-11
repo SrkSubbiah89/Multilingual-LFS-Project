@@ -170,10 +170,26 @@ sources, too imprecise to record as exact).
 
 ## What this means for the abstract, right now
 
-**No coverage percentage is supportable for any of the four standards
-today** — no catalogue has ever been imported in this repository, so
-`eval/verified_catalogue_counts.yaml` does not exist and every
-`coverage_percentage` in every generated report is `null`. See the
+**Update (Task 20, 2026-08-08, after this guide was originally written):
+ISCO-08 is no longer in the "nothing importable" state below.** A real
+official ILO ISCO-08 catalogue was imported and validated with zero
+issues (`eval/verified_catalogue_counts.yaml` now has a real entry:
+`{major: 10, submajor: 43, minor: 130, unit: 436}`) — see
+`STANDARDS_SOURCE_PROVENANCE.md` and
+`ISCO08_PRIMARY_CATALOGUE_RECONCILIATION.md`. This project's own legacy
+ISCO-08 catalogue (`backend/rag/load_full_isco.py`) was subsequently
+corrected to exactly 436 unit groups (see `CLAUDE.md`'s "Knowledge base
+construction" section, fixed 2026-08-12) — a real, verified, citable
+ISCO-08 coverage figure now exists where none did when this guide was
+written. **ISIC Rev.4, ISCED 2011, and ISCED-F 2013 remain exactly as
+described below** — no catalogue has been imported for any of those
+three, so `coverage_percentage` stays `null` for all of them.
+
+No coverage percentage was supportable for any of the four standards as
+of this guide's original writing — no catalogue had ever been imported
+in this repository, so `eval/verified_catalogue_counts.yaml` did not
+exist and every `coverage_percentage` in every generated report was
+`null`. See the
 `generated/coverage_audit_isic_rev4_*.md` report for ISIC's real
 `implemented_count` per level (as of the last run in this session: 21
 sections, 68 divisions, 118 groups, 134 classes implemented in
