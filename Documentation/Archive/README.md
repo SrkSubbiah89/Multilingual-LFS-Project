@@ -3,14 +3,25 @@
 Superseded documents, kept for history rather than deleted.
 
 - `Implementation_Gap_Analysis_v1.docx`, `Implementation_Gap_Analysis_v2.docx`,
-  `gap_text.txt` — earlier drafts of the gap-analysis document, describing a
-  much earlier project state (113 ISCO entries, 2 languages, no HITL). The
-  current version (v3's content, no longer version-suffixed) lives at
-  `Documentation/Implementation/Implementation_Gap_Analysis.docx`. Git commit
-  history doesn't distinguish which draft is genuinely latest (all four files
-  were added in a single commit); filesystem modification times and the `_v3`
-  naming convention agree on v3 being the most recent, and that determination
-  is what this archive move is based on.
+  `Implementation_Gap_Analysis_v3.docx` (moved here 2026-09-11, see below),
+  `gap_text.txt` — drafts of the gap-analysis document, all describing a much
+  earlier project state (113 ISCO entries, 2 languages, no HITL, 832 tests).
+  None of the four is current; there is no non-archived version of this
+  document. For real, current project state, see `CLAUDE.md` (repo root) and
+  `Documentation/PROJECT_FLOW_AND_STATUS.md`.
+  **Correction, 2026-09-11**: this note previously said "the current version
+  (v3's content) lives at `Documentation/Implementation/Implementation_Gap_
+  Analysis.docx`" — checked directly (full text extracted and diffed against
+  CLAUDE.md) during a pre-review documentation audit, and that claim was
+  false: v3's actual content is essentially the same stale draft as v1/v2
+  (113 ISCO entries, English+Arabic only, 832 tests — all wrong relative to
+  the real 436/5-languages/2,508-test current state). The `_v3` filename and
+  its non-archived location had suggested it was genuinely current without
+  that ever having been verified against its real content. Moved here and
+  renamed `_v3` for consistency with its siblings; the empty
+  `Documentation/Implementation/` folder was left to disappear naturally
+  (git does not track empty directories) rather than removed as a separate
+  action.
 - `ARCHIVED_ORIGINAL_KICKOFF_PROMPT.md` — the very first project-planning
   prompt (March 2026), moved here 2026-08-24. It used to live at
   `Documentation/CLAUDE.md` — the same filename as the real, current
