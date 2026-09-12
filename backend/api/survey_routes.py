@@ -10,6 +10,16 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env", override=F
 
 _FAST_MODE = os.getenv("LFS_FAST_MODE", "false").lower() in ("1", "true", "yes")
 
+# Real, opt-in cross-standard coordination (2026-09-12) -- default False
+# reproduces every existing turn's behaviour exactly. See
+# backend/agents/cross_standard_coordinator.py (backward: ISIC/ISCED ->
+# revise an uncertain ISCO primary) and ISICClassifier's
+# use_cross_classification_hints (forward: ISCO -> bias ISIC's own
+# ambiguous-match tie-break) for what this actually does when enabled.
+_COORDINATED_CLASSIFICATION = os.getenv(
+    "ENABLE_COORDINATED_CLASSIFICATION", "false"
+).lower() in ("1", "true", "yes")
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session, joinedload
@@ -142,7 +152,9 @@ def _get_hitl_quality_manager() -> HITLQualityManager:
 def _get_isic_classifier() -> ISICClassifier:
     global _isic_classifier
     if _isic_classifier is None:
-        _isic_classifier = ISICClassifier()
+        _isic_classifier = ISICClassifier(
+            use_cross_classification_hints=_COORDINATED_CLASSIFICATION
+        )
     return _isic_classifier
 
 
@@ -1003,7 +1015,12 @@ def _send_message_impl(
     industry_text = ctx.collected_data.get("industry")
     if industry_text and not isic_result:
         try:
-            isic_clf = _get_isic_classifier().classify(industry_text)
+            _isic_cross_hints = (
+                {"isco_code": isco_results[0].primary_code}
+                if _COORDINATED_CLASSIFICATION and isco_results
+                else None
+            )
+            isic_clf = _get_isic_classifier().classify(industry_text, cross_hints=_isic_cross_hints)
             isic_result = ISICResult(
                 industry_text=industry_text,
                 section=isic_clf.section,
@@ -1088,6 +1105,53 @@ def _send_message_impl(
             from backend.agents.semantic_relation import get_semantic_relation_engine
             _sr = get_semantic_relation_engine(use_llm=False)
             isced_raw = isced_result.level if isced_result else None
+
+            # ── Item 1b: deterministic backward-direction coordination ──
+            # (2026-09-12) -- reconsider an already-uncertain ISCO primary
+            # using ISIC/ISCED evidence that wasn't available when ISCO
+            # committed. Runs BEFORE the SRE analyse() call below so SRE
+            # scores the final (possibly revised) code, not the
+            # pre-revision one. Off/unset -> byte-identical to before; see
+            # backend/agents/cross_standard_coordinator.py's own docstring
+            # for the exact, narrow firing conditions.
+            if _COORDINATED_CLASSIFICATION:
+                try:
+                    from backend.agents.cross_standard_coordinator import (
+                        maybe_revise_isco_with_cross_signal,
+                    )
+                    _promoted, _coord_reason = maybe_revise_isco_with_cross_signal(
+                        isco_results[0],
+                        isic_result.section if isic_result else None,
+                        isced_raw,
+                    )
+                    if _promoted is not None:
+                        _old_primary = isco_results[0]
+                        isco_results[0] = ISCOResult(
+                            job_title=_old_primary.job_title,
+                            primary_code=_promoted.code,
+                            primary_title_en=_promoted.title_en,
+                            primary_title_ar=_promoted.title_ar,
+                            confidence=_promoted.confidence,
+                            method=f"{_old_primary.method}+cross_revised",
+                            stage_confidences=_old_primary.stage_confidences,
+                            hierarchy_path=_old_primary.hierarchy_path,
+                            hitl_required=True,
+                            alternatives=[
+                                a for a in _old_primary.alternatives if a.code != _promoted.code
+                            ] + [ISCOAlternative(
+                                code=_old_primary.primary_code,
+                                title_en=_old_primary.primary_title_en,
+                                title_ar=_old_primary.primary_title_ar,
+                                confidence=_old_primary.confidence,
+                            )],
+                        )
+                        _logger.info(
+                            "cross_standard_coordinator revised ISCO for session=%s: %s",
+                            session_id, _coord_reason,
+                        )
+                except Exception:
+                    pass
+
             sc = _sr.analyse(
                 isco_code    = isco_results[0].primary_code,
                 isic_section = isic_result.section if isic_result else None,

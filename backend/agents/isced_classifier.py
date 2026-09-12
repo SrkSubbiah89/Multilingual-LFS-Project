@@ -478,10 +478,26 @@ class ISCEDClassifier:
         self,
         reranker_model: Optional[str] = None,
         enable_corrective_retry: bool = False,
+        enable_query_planning: bool = False,
     ) -> None:
         """
         Parameters
         ----------
+        enable_query_planning : bool, default False
+            Multi-step agentic retrieval (Item 2, 2026-09-12), mirroring
+            ISICClassifier's enable_query_planning exactly, scoped to the
+            FIELD dimension only -- ISCED 2011 attainment LEVEL is never
+            touched by this, exactly like enable_corrective_retry below.
+            When True, and only under the same ambiguous-field trigger,
+            QueryPlanner decomposes *text* into up to 2 sub-descriptions,
+            each is re-scored with the same ``_score_field_candidates()``
+            this classifier already uses, and results are reconciled via
+            QueryPlanner.reconcile(). Accepted only on a strictly wider
+            top1/top2 gap than the original -- identical rule to
+            enable_corrective_retry. Mutually exclusive with
+            enable_corrective_retry in practice (query planning takes
+            precedence when both are True). Default False reproduces prior
+            behaviour exactly for every existing caller.
         reranker_model : str, optional
             Default ``None`` preserves this classifier's original, fully
             offline, no-LLM behaviour exactly — every existing caller that
@@ -513,6 +529,7 @@ class ISCEDClassifier:
         """
         self._reranker_model_pin = reranker_model
         self._enable_corrective_retry = enable_corrective_retry
+        self._enable_query_planning = enable_query_planning
         self._llm = None
         self.reranker_model_resolved = "none (no reranker configured)"
         if reranker_model:
@@ -598,8 +615,14 @@ class ISCEDClassifier:
                 field_entry, field_conf = llm_result
                 method = "llm"
 
-        # ── Experimental: corrective retry (mirrors ISCOClassifier/ISICClassifier) ──
-        if self._enable_corrective_retry and self._llm is not None:
+        # ── Experimental: query planning / corrective retry (FIELD only) ──
+        # Mutually exclusive in practice -- query planning takes precedence.
+        if self._enable_query_planning and self._llm is not None:
+            planned = self._maybe_query_plan_retry_field(text, field_gap)
+            if planned is not None:
+                field_entry, field_conf = planned
+                method = "keyword_query_plan" if method == "keyword" else f"{method}_query_plan"
+        elif self._enable_corrective_retry and self._llm is not None:
             corrective = self._maybe_corrective_retry_field(text, field_gap)
             if corrective is not None:
                 field_entry, field_conf = corrective
@@ -950,6 +973,45 @@ class ISCEDClassifier:
 
         retry_score, retry_entry = retry_scored[0]
         retry_second = retry_scored[1][0] if len(retry_scored) > 1 else 0.0
+        retry_gap = retry_score - retry_second
+
+        if retry_gap <= current_gap:
+            return None
+        return retry_entry, retry_score
+
+    def _maybe_query_plan_retry_field(
+        self, text: str, current_gap: float, max_subqueries: int = 2,
+    ) -> Optional[tuple[dict, float]]:
+        """Multi-step agentic retrieval for the FIELD dimension only
+        (Item 2, 2026-09-12), mirroring ISICClassifier._maybe_query_plan_retry
+        exactly. ISCED 2011 LEVEL is never touched. Returns None (never
+        raises) on any failure, a single-item decomposition, or
+        non-improvement."""
+        from backend.agents.query_planner import QueryPlanner
+
+        planner = QueryPlanner(reranker_model=self._reranker_model_pin)
+        subqueries = planner.decompose(text, dimension="education field", max_subqueries=max_subqueries)
+        if len(subqueries) <= 1:
+            return None
+
+        per_subquery = []  # list[tuple[str, float, list[tuple[float, dict]]]]
+        for sq in subqueries:
+            scored = self._score_field_candidates(sq)
+            if not scored:
+                continue
+            top_score, top_entry = scored[0]
+            per_subquery.append((top_entry["detailed_code"], top_score, scored))
+
+        if not per_subquery:
+            return None
+
+        winning_code, _winning_score = QueryPlanner.reconcile(
+            [(code, score) for code, score, _ in per_subquery]
+        )
+        _, retry_score, winning_scored = next(e for e in per_subquery if e[0] == winning_code)
+        retry_entry = winning_scored[0][1]
+
+        retry_second = winning_scored[1][0] if len(winning_scored) > 1 else 0.0
         retry_gap = retry_score - retry_second
 
         if retry_gap <= current_gap:

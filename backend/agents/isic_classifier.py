@@ -847,10 +847,53 @@ class ISICClassifier:
         self,
         reranker_model: Optional[str] = None,
         enable_corrective_retry: bool = False,
+        use_cross_classification_hints: bool = False,
+        enable_query_planning: bool = False,
     ) -> None:
         """
         Parameters
         ----------
+        enable_query_planning : bool, default False
+            Multi-step agentic retrieval (Item 2, 2026-09-12), mirroring
+            ISCOClassifier's enable_query_planning exactly. When True, and
+            only under the same ambiguous-match trigger as
+            enable_corrective_retry, QueryPlanner (backend/agents/
+            query_planner.py) decomposes *text* into up to 2 sub-
+            descriptions, each is re-scored with the SAME
+            ``_keyword_score()`` this classifier already uses (no new
+            retrieval primitive), and the results are reconciled via
+            QueryPlanner.reconcile()'s disclosed frequency-tiebreak rule.
+            Accepted only if the winning sub-query's own top1/top2 gap is
+            strictly wider than the current gap -- identical acceptance
+            rule to enable_corrective_retry. Mutually exclusive with
+            enable_corrective_retry in practice: when both are True,
+            enable_query_planning takes precedence for that call. Default
+            False reproduces prior behaviour exactly for every existing
+            caller.
+        use_cross_classification_hints : bool, default False
+            Real, live cross-standard coordination (2026-09-12): when True,
+            and only when the caller also passes ``cross_hints={"isco_code":
+            "<4-digit>"}`` to ``classify()``, the legacy keyword/LLM path's
+            final candidate is checked against SemanticRelationEngine's own
+            already-validated ISCO<->ISIC crosswalk
+            (``get_semantic_relation_engine(use_llm=False).analyse()`` --
+            reused, not reimplemented). If the chosen section is
+            incompatible with the given ISCO code, the same already-scored
+            top-K candidates (zero new retrieval) are scanned for one that
+            IS compatible and within ``_MIN_CANDIDATE_GAP`` of the original
+            score -- i.e. still a plausible match, just also cross-standard-
+            coherent -- and that candidate is promoted instead. Never fires
+            on an already-compatible result, never re-retrieves, and any
+            failure leaves the original result unchanged (see
+            ``_maybe_apply_cross_hints``). Default False, and omitting
+            ``cross_hints`` even when True, both reproduce prior behaviour
+            exactly for every existing caller. Deliberately not applied to
+            ``ISCEDClassifier``: the ISCO<->ISCED crosswalk covers
+            attainment LEVEL, which that classifier already deliberately
+            keeps fully deterministic and untouched by any reranking
+            mechanism (see its own ``enable_corrective_retry`` docstring) --
+            biasing LEVEL toward an ISCO guess would contradict that
+            existing, intentional design, not extend it.
         reranker_model : str, optional
             Pin the LLM re-ranking step to exactly this model (e.g.
             "gemini/gemini-3.6-flash", "groq/openai/gpt-oss-120b") via
@@ -877,6 +920,8 @@ class ISICClassifier:
         """
         self._reranker_model_pin = reranker_model
         self._enable_corrective_retry = enable_corrective_retry
+        self._use_cross_classification_hints = use_cross_classification_hints
+        self._enable_query_planning = enable_query_planning
         if reranker_model:
             self._llm = get_llm_strict(reranker_model, temperature=0.3)
         else:
@@ -885,7 +930,13 @@ class ISICClassifier:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def classify(self, text: str, *, method: Optional[str] = None) -> ISICClassification:
+    def classify(
+        self,
+        text: str,
+        *,
+        method: Optional[str] = None,
+        cross_hints: Optional[dict] = None,
+    ) -> ISICClassification:
         """
         Classify *text* to an ISIC Rev.4 4-digit class with full hierarchy.
 
@@ -893,6 +944,15 @@ class ISICClassifier:
 
         Parameters
         ----------
+        cross_hints : dict, optional
+            ``{"isco_code": "<4-digit ISCO-08 code>"}`` from an
+            already-computed ISCO result. Only has any effect when the
+            constructor was built with ``use_cross_classification_hints=
+            True`` -- see that parameter's docstring. Ignored entirely
+            (and only ever consulted on the legacy keyword/LLM path, not
+            hierarchical/flat retrieval) when that flag is False, which is
+            the default -- omitting this parameter is a complete no-op for
+            every existing caller.
         method : str, optional
             Default ``None`` runs today's unchanged keyword+LLM pipeline
             (identical to calling ``classify(text)`` before this parameter
@@ -944,11 +1004,11 @@ class ISICClassifier:
             return self._classify_hierarchical(text)
         if method == ISIC_FLAT_RETRIEVAL:
             return self._classify_flat(text)
-        return self._classify_legacy(text)
+        return self._classify_legacy(text, cross_hints=cross_hints)
 
     # ── Legacy keyword/LLM pipeline (unchanged behaviour) ───────────────────────
 
-    def _classify_legacy(self, text: str) -> ISICClassification:
+    def _classify_legacy(self, text: str, cross_hints: Optional[dict] = None) -> ISICClassification:
         text = (text or "").strip()
         if not text:
             return self._fallback(text)
@@ -980,21 +1040,77 @@ class ISICClassifier:
         # band), not independently measured -- flag before citing in the
         # manuscript.
         if best_score >= self._KEYWORD_THRESHOLD or gap >= self._MIN_CANDIDATE_GAP:
-            return self._make_result(best_entry, best_score, "keyword", scored, text)
+            result = self._make_result(best_entry, best_score, "keyword", scored, text)
+        else:
+            # LLM re-ranking
+            top_candidates = [e for _, e in scored[:self._TOP_K]]
+            llm_result = self._llm_rerank(text, top_candidates)
+            result = llm_result if llm_result else self._make_result(best_entry, best_score * 0.8, "keyword", [], text)
 
-        # LLM re-ranking
-        top_candidates = [e for _, e in scored[:self._TOP_K]]
-        llm_result = self._llm_rerank(text, top_candidates)
-        result = llm_result if llm_result else self._make_result(best_entry, best_score * 0.8, "keyword", [], text)
+            # ── Experimental: query planning / corrective retry ──────────
+            # Mutually exclusive in practice -- see enable_query_planning's
+            # docstring. Query planning takes precedence when both enabled.
+            if self._enable_query_planning and self._llm is not None:
+                planned = self._maybe_query_plan_retry(text, gap)
+                if planned is not None:
+                    retry_entry, retry_score = planned
+                    result = self._make_result(retry_entry, retry_score, "keyword_query_plan", [], text)
+            elif self._enable_corrective_retry and self._llm is not None:
+                corrective = self._maybe_corrective_retry(text, gap)
+                if corrective is not None:
+                    retry_entry, retry_score = corrective
+                    result = self._make_result(retry_entry, retry_score, "keyword_corrective", [], text)
 
-        # ── Experimental: corrective retry (mirrors ISCOClassifier) ──────────
-        if self._enable_corrective_retry and self._llm is not None:
-            corrective = self._maybe_corrective_retry(text, gap)
-            if corrective is not None:
-                retry_entry, retry_score = corrective
-                result = self._make_result(retry_entry, retry_score, "keyword_corrective", [], text)
+        # ── Experimental: cross-classification hints (Item 1a, 2026-09-12) ──
+        if self._use_cross_classification_hints and cross_hints:
+            result = self._maybe_apply_cross_hints(scored, result, cross_hints)
 
         return result
+
+    def _maybe_apply_cross_hints(
+        self,
+        scored: list[tuple[float, dict]],
+        result: "ISICClassification",
+        cross_hints: dict,
+    ) -> "ISICClassification":
+        """Forward-direction cross-standard coordination (Item 1a).
+
+        Only called when ``use_cross_classification_hints=True`` and the
+        caller supplied ``cross_hints={"isco_code": ...}``. If *result*'s
+        section is already compatible with that ISCO code (per
+        SemanticRelationEngine's own validated crosswalk), this is a
+        complete no-op. Otherwise scans the SAME already-scored top-K
+        candidates (zero new retrieval) for one that IS compatible and
+        within ``_MIN_CANDIDATE_GAP`` of *result*'s own score -- i.e. still
+        a plausible match, just also cross-standard-coherent -- and
+        promotes it. Never raises: any failure (missing ISCO code, engine
+        error) returns *result* unchanged.
+        """
+        isco_code = cross_hints.get("isco_code")
+        if not isco_code:
+            return result
+        try:
+            from backend.agents.semantic_relation import get_semantic_relation_engine
+            engine = get_semantic_relation_engine(use_llm=False)
+
+            current = engine.analyse(isco_code=isco_code, isic_section=result.section)
+            if current.isco_isic_compatible:
+                return result
+
+            for score, entry in scored[: self._TOP_K]:
+                if entry["section"] == result.section:
+                    continue
+                if result.confidence - score > self._MIN_CANDIDATE_GAP:
+                    continue
+                alt = engine.analyse(isco_code=isco_code, isic_section=entry["section"])
+                if alt.isco_isic_compatible:
+                    return self._make_result(entry, score, "keyword_cross_hint", scored, result.raw_text)
+            return result
+        except Exception as exc:
+            log.warning(
+                "ISICClassifier: cross-hint coordination failed (%s); using original result.", exc
+            )
+            return result
 
     # ── Hierarchical retrieval, with explicit fallback labelling ────────────────
 
@@ -1348,6 +1464,48 @@ class ISICClassifier:
 
         retry_score, retry_entry = retry_scored[0]
         retry_second = retry_scored[1][0] if len(retry_scored) > 1 else 0.0
+        retry_gap = retry_score - retry_second
+
+        if retry_gap <= current_gap:
+            return None
+        return retry_entry, retry_score
+
+    def _maybe_query_plan_retry(
+        self, text: str, current_gap: float, max_subqueries: int = 2,
+    ) -> Optional[tuple[dict, float]]:
+        """Multi-step agentic retrieval (Item 2, 2026-09-12), mirroring
+        ISCOClassifier._maybe_query_plan_retry exactly: decompose *text*
+        into up to *max_subqueries* sub-descriptions, re-score EACH with
+        the same ``_keyword_score()`` this classifier already uses (no new
+        retrieval primitive), reconcile via QueryPlanner.reconcile(), and
+        accept only if the winning sub-query's own top1/top2 gap is
+        strictly wider than *current_gap*. Returns None (never raises) on
+        any failure, a single-item decomposition, or non-improvement."""
+        from backend.agents.query_planner import QueryPlanner
+
+        planner = QueryPlanner(reranker_model=self._reranker_model_pin)
+        subqueries = planner.decompose(text, dimension="industry", max_subqueries=max_subqueries)
+        if len(subqueries) <= 1:
+            return None
+
+        per_subquery = []  # list[tuple[str, float, list[tuple[float, dict]]]]
+        for sq in subqueries:
+            scored = self._keyword_score(sq)
+            if not scored:
+                continue
+            top_score, top_entry = scored[0]
+            per_subquery.append((top_entry["class_code"], top_score, scored))
+
+        if not per_subquery:
+            return None
+
+        winning_code, _winning_score = QueryPlanner.reconcile(
+            [(code, score) for code, score, _ in per_subquery]
+        )
+        _, retry_score, winning_scored = next(e for e in per_subquery if e[0] == winning_code)
+        retry_entry = winning_scored[0][1]
+
+        retry_second = winning_scored[1][0] if len(winning_scored) > 1 else 0.0
         retry_gap = retry_score - retry_second
 
         if retry_gap <= current_gap:

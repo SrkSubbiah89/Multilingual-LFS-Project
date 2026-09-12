@@ -205,6 +205,28 @@ def _make_client(
     patchers.append(sre_patcher)
     sre_patcher.start()
 
+    # CrossStandardCoordinator (Item 1b, 2026-09-12): same wrap-and-delegate
+    # pattern as SemanticRelationEngine above -- survey_routes.py imports
+    # maybe_revise_isco_with_cross_signal inline (not through a
+    # survey_routes-local getter), and it's a plain function, not a class
+    # instance, so this wraps the function itself. Installed unconditionally
+    # here; whether it actually gets CALLED depends on
+    # survey_routes._COORDINATED_CLASSIFICATION, which individual tests
+    # toggle via monkeypatch before sending the message.
+    from backend.agents import cross_standard_coordinator as _csc_module
+    real_maybe_revise = _csc_module.maybe_revise_isco_with_cross_signal
+
+    def _wrapped_maybe_revise(*args, **kwargs):
+        call_order.append("CrossStandardCoordinator")
+        return real_maybe_revise(*args, **kwargs)
+
+    csc_patcher = patch(
+        "backend.agents.cross_standard_coordinator.maybe_revise_isco_with_cross_signal",
+        side_effect=_wrapped_maybe_revise,
+    )
+    patchers.append(csc_patcher)
+    csc_patcher.start()
+
     # _ensure_isco_classification / _trigger_quality_review: patch with
     # wraps= so the real implementation still runs (early-returns are real
     # behaviour, not something this file needs to fake), only recording
@@ -414,6 +436,72 @@ class TestSessionCompletionOrder:
                 f"_trigger_quality_review ran before _ensure_isco_classification "
                 f"(order: {call_order}) -- violates the invariant documented at "
                 f"survey_routes.py:1224"
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+
+
+class TestCoordinatedClassification:
+    """Item 1b (2026-09-12): backward-direction cross-standard coordination
+    is opt-in via survey_routes._COORDINATED_CLASSIFICATION (default False)
+    and, when enabled, must run strictly BEFORE SemanticRelationEngine.analyse()
+    inside Stage 4e -- so SRE scores the final, possibly-revised ISCO code,
+    not the pre-revision one (see survey_routes.py's Stage 4e comment)."""
+
+    def test_coordinator_not_called_when_flag_unset(self, db):
+        """Default env has ENABLE_COORDINATED_CLASSIFICATION unset --
+        _COORDINATED_CLASSIFICATION is False, so the coordinator must never
+        be invoked even when ISCO is uncertain."""
+        client, patchers, call_order, message = _make_client(
+            db, state="VALIDATING", low_isco_confidence=True,
+            isco_code="2512", isic_section="A", isced_level=3,
+        )
+        try:
+            resp, _sid, _db2 = _create_session_and_send(client, message)
+            assert resp.status_code == 200
+            assert "CrossStandardCoordinator" not in call_order
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_coordinator_runs_before_semantic_relation_engine_when_enabled(self, db, monkeypatch):
+        """ISCO 2512 (submajor 25 -> ISIC "J" only) with isic_section="A" is
+        incompatible; an alternative 6111 (submajor 61 -> ISIC "A", major 6
+        ISCED range 0-3) is compatible with BOTH isic_section="A" and
+        isced_level=3 -- a real firing case, not just a config-shape check."""
+        from backend.api import survey_routes as _sr_module
+        from unittest.mock import MagicMock as _MM
+
+        monkeypatch.setattr(_sr_module, "_COORDINATED_CLASSIFICATION", True)
+
+        client, patchers, call_order, message = _make_client(
+            db, state="VALIDATING", low_isco_confidence=True,
+            isco_code="2512", isic_section="A", isced_level=3,
+        )
+        # Give the mocked ISCO result a real, cross-standard-compatible
+        # alternative for the coordinator to find (see docstring above).
+        # _make_client already started the _get_isco_classifier patcher;
+        # reach the live mock via the module attribute it replaced.
+        mock_isco = _sr_module._get_isco_classifier
+        mock_isco.return_value.classify.side_effect = None
+        alt = _MM(code="6111", title_en="Farmer", title_ar="مزارع", confidence=0.3)
+        mock_isco.return_value.classify.return_value = _MM(
+            primary=_MM(code="2512", title_en="Test Title", title_ar="test", confidence=0.40),
+            method="flat_semantic", hitl_required=True, reasoning="test",
+            hierarchy_path=None, alternatives=[alt], stage_confidences={},
+        )
+
+        try:
+            resp, _sid, _db2 = _create_session_and_send(client, message)
+            assert resp.status_code == 200
+            assert "CrossStandardCoordinator" in call_order
+            assert "SemanticRelationEngine" in call_order
+            coord_idx = call_order.index("CrossStandardCoordinator")
+            sre_idx = call_order.index("SemanticRelationEngine")
+            assert coord_idx < sre_idx, (
+                f"CrossStandardCoordinator ran after SemanticRelationEngine "
+                f"(order: {call_order}) -- SRE must score the post-revision code"
             )
         finally:
             for p in patchers:

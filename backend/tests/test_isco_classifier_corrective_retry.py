@@ -358,3 +358,160 @@ class TestGapBasedAcceptanceRule:
         assert result is not None
         retry_match, _ = result
         assert retry_match.confidence > current_match.confidence  # fallback rule applied correctly
+
+
+# ---------------------------------------------------------------------------
+# Query planning (enable_query_planning=) -- Item 2, 2026-09-12. Generalizes
+# corrective retry from "one reformulation" to "up to N sub-queries,
+# reconciled." Needs its OWN Agent/Crew/Task mock, since QueryPlanner
+# (backend/agents/query_planner.py) is a separate module with its own
+# CrewAI construction -- isco_classifier's mock_crew_sequence fixture only
+# patches isco_classifier's own Agent/Crew/Task names.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mock_query_planner_crew(monkeypatch):
+    """Patches QueryPlanner's own Agent/Crew/Task so decompose() returns a
+    controllable, queued response (native side_effect-list semantics --
+    an Exception instance in the queue is raised, not returned)."""
+    responses: list = []
+    crew_instance = MagicMock()
+    crew_instance.kickoff.side_effect = responses
+    crew_class = MagicMock(return_value=crew_instance)
+
+    monkeypatch.setattr("backend.agents.query_planner.get_llm", lambda *a, **kw: MagicMock())
+    monkeypatch.setattr("backend.agents.query_planner.Agent", MagicMock())
+    monkeypatch.setattr("backend.agents.query_planner.Crew", crew_class)
+    monkeypatch.setattr("backend.agents.query_planner.Task", MagicMock())
+    return responses
+
+
+class TestQueryPlanningDisabledByDefault:
+    def test_default_false_never_calls_query_planner(self, clf_factory, mock_hier_store, mock_crew_sequence):
+        weak = make_result("9999", 0.40)
+        mock_hier_store.search.return_value = weak
+        mock_crew_sequence.append('{"selected_code": "9999", "reasoning": "top pick"}')
+
+        clf = clf_factory()  # enable_query_planning omitted -> False
+        result = clf.classify("some vague title")
+
+        assert result.primary.code == "9999"
+        assert "query_plan" not in result.method
+        assert mock_hier_store.search.call_count == 1  # no sub-query re-retrieval at all
+
+
+class TestQueryPlanningEnabled:
+    def test_high_confidence_never_triggers_query_planning(
+        self, clf_factory, mock_hier_store, mock_crew_sequence, mock_query_planner_crew
+    ):
+        strong = make_result("2512", 0.95)  # >= _HIGH_CONFIDENCE_THRESHOLD, skips rerank entirely
+        mock_hier_store.search.return_value = strong
+
+        clf = clf_factory(enable_query_planning=True)
+        result = clf.classify("software developer")
+
+        assert result.primary.code == "2512"
+        assert "query_plan" not in result.method
+        assert mock_hier_store.search.call_count == 1
+
+    def test_weak_result_decomposes_retrieves_and_reconciles(
+        self, clf_factory, mock_hier_store, mock_crew_sequence, mock_query_planner_crew
+    ):
+        # Initial (weak) result, then two sub-query results: 6111 wins by
+        # frequency (see QueryPlanner.reconcile) even though its individual
+        # score is lower than a one-off higher score would need to be.
+        weak = make_result("9999", 0.40, label_en="Vague Match")
+        subquery1 = make_result_with_candidates([("6111", 0.60), ("9999", 0.30)], label_en="Farmer")
+        subquery2 = make_result_with_candidates([("6111", 0.55), ("2621", 0.20)], label_en="Farmer")
+        mock_hier_store.search.side_effect = [weak, subquery1, subquery2]
+
+        mock_crew_sequence.append('{"selected_code": "9999", "reasoning": "best of a weak set"}')
+        mock_crew_sequence.append('{"selected_code": "6111", "reasoning": "clear match after decomposition"}')
+        mock_query_planner_crew.append("subsistence farmer\ntaxi driver")
+
+        clf = clf_factory(enable_query_planning=True)
+        trace: dict = {}
+        result = clf.classify("farmer who also drives a taxi part-time", trace=trace)
+
+        assert result.primary.code == "6111"
+        assert "query_plan" in result.method
+        assert "[Query plan:" in result.reasoning
+        assert mock_hier_store.search.call_count == 3  # initial + 2 sub-queries
+        assert trace["query_plan_attempted"] is True
+        assert trace["query_plan_subqueries"] == ["subsistence farmer", "taxi driver"]
+        assert trace["query_plan_used"] is True
+
+    def test_query_planning_takes_precedence_over_corrective_retry_when_both_enabled(
+        self, clf_factory, mock_hier_store, mock_crew_sequence, mock_query_planner_crew
+    ):
+        weak = make_result("9999", 0.40)
+        subquery1 = make_result_with_candidates([("2512", 0.85), ("9999", 0.30)])
+        subquery2 = make_result_with_candidates([("2512", 0.80), ("8888", 0.20)])
+        mock_hier_store.search.side_effect = [weak, subquery1, subquery2]
+
+        mock_crew_sequence.append('{"selected_code": "9999", "reasoning": "best of a weak set"}')
+        mock_crew_sequence.append('{"selected_code": "2512", "reasoning": "clear match"}')
+        mock_query_planner_crew.append("software developer\nprogrammer")
+
+        clf = clf_factory(enable_query_planning=True, enable_corrective_retry=True)
+        result = clf.classify("does computer stuff")
+
+        # Exactly 3 search calls total (initial + 2 sub-queries) -- if
+        # corrective retry ALSO fired, there would be a 4th. Confirms
+        # mutual exclusivity: only query_plan's branch ran.
+        assert mock_hier_store.search.call_count == 3
+        assert "query_plan" in result.method
+        assert "corrective" not in result.method
+
+    def test_decomposition_finding_one_thing_skips_reconciliation(
+        self, clf_factory, mock_hier_store, mock_crew_sequence, mock_query_planner_crew
+    ):
+        weak = make_result("9999", 0.40)
+        mock_hier_store.search.return_value = weak
+        mock_crew_sequence.append('{"selected_code": "9999", "reasoning": "best of a weak set"}')
+        mock_query_planner_crew.append("just one thing")  # decompose() returns a single-item list
+
+        clf = clf_factory(enable_query_planning=True)
+        trace: dict = {}
+        result = clf.classify("does computer stuff", trace=trace)
+
+        assert result.primary.code == "9999"
+        assert "query_plan" not in result.method
+        assert mock_hier_store.search.call_count == 1  # no sub-query retrieval attempted
+        assert trace["query_plan_used"] is False
+
+    def test_decomposition_failure_keeps_original(
+        self, clf_factory, mock_hier_store, mock_crew_sequence, mock_query_planner_crew
+    ):
+        weak = make_result("9999", 0.40)
+        mock_hier_store.search.return_value = weak
+        mock_crew_sequence.append('{"selected_code": "9999", "reasoning": "best of a weak set"}')
+        mock_query_planner_crew.append(RuntimeError("boom"))  # QueryPlanner's own kickoff() raises
+
+        clf = clf_factory(enable_query_planning=True)
+        result = clf.classify("does computer stuff")
+
+        # decompose() degrades to [original_text] on failure -> len<=1 -> no reconciliation.
+        assert result.primary.code == "9999"
+        assert "query_plan" not in result.method
+        assert mock_hier_store.search.call_count == 1
+
+    def test_reconciled_result_no_improvement_keeps_original(
+        self, clf_factory, mock_hier_store, mock_crew_sequence, mock_query_planner_crew
+    ):
+        weak = make_result("9999", 0.40)
+        subquery1 = make_result("8888", 0.35, label_en="Still Vague")
+        subquery2 = make_result("7777", 0.30, label_en="Also Vague")
+        mock_hier_store.search.side_effect = [weak, subquery1, subquery2]
+
+        mock_crew_sequence.append('{"selected_code": "9999", "reasoning": "best of a weak set"}')
+        mock_crew_sequence.append('{"selected_code": "8888", "reasoning": "still not great"}')
+        mock_query_planner_crew.append("phrase a\nphrase b")
+
+        clf = clf_factory(enable_query_planning=True)
+        trace: dict = {}
+        result = clf.classify("does computer stuff", trace=trace)
+
+        assert result.primary.code == "9999"
+        assert "query_plan" not in result.method
+        assert trace["query_plan_used"] is False

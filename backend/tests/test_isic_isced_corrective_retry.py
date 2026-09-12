@@ -16,6 +16,22 @@ import pytest
 
 from backend.agents.isced_classifier import ISCEDClassifier
 from backend.agents.isic_classifier import ISICClassifier
+from backend.agents.query_planner import QueryPlanner
+
+
+@pytest.fixture(autouse=True)
+def _no_real_llm_in_query_planner_constructor(monkeypatch):
+    """QueryPlanner.__init__ calls get_llm(TaskType.GENERAL) for real
+    unless patched -- since the query-planning tests below patch
+    QueryPlanner.decompose() at the class level (not the constructor),
+    QueryPlanner() still gets instantiated for real inside
+    _maybe_query_plan_retry(_field), which would otherwise attempt a real
+    Ollama call every time (slow, network-dependent, and the reason an
+    earlier version of this file's query-planning tests took ~18s instead
+    of the <1s every other fully-mocked test here runs in). Autouse so
+    every test in this file gets it, harmless for the existing
+    corrective-retry tests that never construct a QueryPlanner at all."""
+    monkeypatch.setattr("backend.agents.query_planner.get_llm", lambda *a, **kw: MagicMock())
 
 
 # ---------------------------------------------------------------------------
@@ -159,3 +175,145 @@ class TestISCEDCorrectiveRetryEnabled:
              patch.object(clf, "_llm_reformulate_field_query", return_value="still ambiguous"):
             result = clf.classify("some ambiguous education description")
         assert "corrective" not in result.method
+
+
+# ---------------------------------------------------------------------------
+# Query planning (enable_query_planning=) -- Item 2, 2026-09-12. Same
+# mutual-exclusivity-with-corrective-retry contract as ISCOClassifier's own
+# TestQueryPlanningEnabled (test_isco_classifier_corrective_retry.py).
+# QueryPlanner.decompose() is patched directly (class-level patch.object)
+# rather than mocking Crew/Agent/Task, matching this file's own simpler
+# direct-method-patch convention for the rest of its tests.
+# ---------------------------------------------------------------------------
+
+class TestISICQueryPlanningDisabledByDefault:
+    def test_default_false_never_calls_query_planner(self):
+        with patch("backend.agents.isic_classifier.get_llm", return_value=MagicMock()):
+            clf = ISICClassifier()
+        with patch.object(QueryPlanner, "decompose") as decompose:
+            clf.classify("management consultancy and advisory services")
+            decompose.assert_not_called()
+
+
+class TestISICQueryPlanningEnabled:
+    def _make_clf(self):
+        with patch("backend.agents.isic_classifier.get_llm", return_value=MagicMock()):
+            return ISICClassifier(enable_query_planning=True)
+
+    def test_unambiguous_input_never_triggers_query_planning(self):
+        clf = self._make_clf()
+        with patch.object(QueryPlanner, "decompose") as decompose:
+            result = clf.classify("I sell things in a shop")  # clear winner, large gap
+            decompose.assert_not_called()
+        assert result.method == "keyword"
+
+    def test_ambiguous_input_decomposes_and_reconciles(self):
+        clf = self._make_clf()
+        subquery1 = [(0.9, {"class_code": "7020", "class_title": "Management consultancy",
+                             "division_code": "70", "section": "M", "section_title": "Prof",
+                             "division_title": "Head offices", "group_code": "702", "group_title": "Mgmt"})]
+        subquery2 = [(0.85, {"class_code": "7020", "class_title": "Management consultancy",
+                              "division_code": "70", "section": "M", "section_title": "Prof",
+                              "division_title": "Head offices", "group_code": "702", "group_title": "Mgmt"})]
+        with patch.object(QueryPlanner, "decompose", return_value=["management consultancy", "advisory services"]), \
+             patch.object(clf, "_keyword_score") as keyword_score, \
+             patch.object(clf, "_llm_rerank", return_value=None):
+            keyword_score.side_effect = [
+                [(0.6667, {"class_code": "6619", "class_title": "Other financial services",
+                           "division_code": "66", "section": "K", "section_title": "Finance",
+                           "division_title": "Aux financial", "group_code": "661", "group_title": "Aux"}),
+                 (0.6667, {"class_code": "7020", "class_title": "Management consultancy",
+                           "division_code": "70", "section": "M", "section_title": "Prof",
+                           "division_title": "Head offices", "group_code": "702", "group_title": "Mgmt"})],
+                subquery1,
+                subquery2,
+            ]
+            result = clf.classify("management consultancy and advisory services")
+
+        assert result.method == "keyword_query_plan"
+        assert result.class_code == "7020"
+
+    def test_takes_precedence_over_corrective_retry_when_both_enabled(self):
+        with patch("backend.agents.isic_classifier.get_llm", return_value=MagicMock()):
+            clf = ISICClassifier(enable_query_planning=True, enable_corrective_retry=True)
+        subquery1 = [(0.9, {"class_code": "7020", "class_title": "Management consultancy",
+                             "division_code": "70", "section": "M", "section_title": "Prof",
+                             "division_title": "Head offices", "group_code": "702", "group_title": "Mgmt"})]
+        subquery2 = [(0.85, {"class_code": "7020", "class_title": "Management consultancy",
+                              "division_code": "70", "section": "M", "section_title": "Prof",
+                              "division_title": "Head offices", "group_code": "702", "group_title": "Mgmt"})]
+        with patch.object(QueryPlanner, "decompose", return_value=["a", "b"]), \
+             patch.object(clf, "_keyword_score") as keyword_score, \
+             patch.object(clf, "_llm_rerank", return_value=None), \
+             patch.object(clf, "_llm_reformulate_query") as reformulate:
+            keyword_score.side_effect = [
+                [(0.6667, {"class_code": "6619", "class_title": "Other financial services",
+                           "division_code": "66", "section": "K", "section_title": "Finance",
+                           "division_title": "Aux financial", "group_code": "661", "group_title": "Aux"}),
+                 (0.6667, {"class_code": "7020", "class_title": "Management consultancy",
+                           "division_code": "70", "section": "M", "section_title": "Prof",
+                           "division_title": "Head offices", "group_code": "702", "group_title": "Mgmt"})],
+                subquery1,
+                subquery2,
+            ]
+            result = clf.classify("management consultancy and advisory services")
+            reformulate.assert_not_called()  # corrective retry's own path never ran
+        assert result.method == "keyword_query_plan"
+
+    def test_single_item_decomposition_skips_reconciliation(self):
+        clf = self._make_clf()
+        with patch.object(QueryPlanner, "decompose", return_value=["just one thing"]), \
+             patch.object(clf, "_keyword_score") as keyword_score, \
+             patch.object(clf, "_llm_rerank", return_value=None):
+            keyword_score.return_value = [
+                (0.6667, {"class_code": "6619", "class_title": "X", "division_code": "66",
+                          "section": "K", "section_title": "Finance", "division_title": "X",
+                          "group_code": "661", "group_title": "X"}),
+                (0.6667, {"class_code": "7020", "class_title": "Y", "division_code": "70",
+                          "section": "M", "section_title": "Prof", "division_title": "Y",
+                          "group_code": "702", "group_title": "Y"}),
+            ]
+            result = clf.classify("management consultancy and advisory services")
+        assert "query_plan" not in result.method
+
+
+class TestISCEDQueryPlanningEnabled:
+    _AMBIGUOUS = TestISCEDCorrectiveRetryEnabled._AMBIGUOUS
+    _CLEAR = TestISCEDCorrectiveRetryEnabled._CLEAR
+
+    def _make_clf(self):
+        with patch("backend.agents.isced_classifier.get_llm_strict", return_value=MagicMock()):
+            return ISCEDClassifier(reranker_model="gemini/gemini-3.6-flash", enable_query_planning=True)
+
+    def test_default_false_never_calls_query_planner(self):
+        with patch("backend.agents.isced_classifier.get_llm_strict", return_value=MagicMock()):
+            clf = ISCEDClassifier(reranker_model="gemini/gemini-3.6-flash")
+        with patch.object(QueryPlanner, "decompose") as decompose:
+            clf.classify("medical and dental studies")
+            decompose.assert_not_called()
+
+    def test_ambiguous_field_decomposes_and_reconciles(self):
+        clf = self._make_clf()
+        with patch.object(clf, "_score_field_candidates", side_effect=[self._AMBIGUOUS, self._CLEAR, self._CLEAR]), \
+             patch.object(clf, "_llm_rerank_field", return_value=None), \
+             patch.object(QueryPlanner, "decompose", return_value=["software development", "computer science"]):
+            result = clf.classify("some ambiguous education description")
+
+        assert "query_plan" in result.method
+        assert result.detailed_code == "0613"
+
+    def test_level_dimension_never_affected_by_query_planning(self):
+        clf = self._make_clf()
+        with patch.object(clf, "_score_field_candidates", side_effect=[self._AMBIGUOUS, self._CLEAR, self._CLEAR]), \
+             patch.object(clf, "_llm_rerank_field", return_value=None), \
+             patch.object(QueryPlanner, "decompose", return_value=["software development", "computer science"]):
+            result = clf.classify("Bachelor of Science, some ambiguous education description")
+        assert result.level == 6  # bachelor's -- unaffected by the field-only retry
+
+    def test_single_item_decomposition_skips_reconciliation(self):
+        clf = self._make_clf()
+        with patch.object(clf, "_score_field_candidates", side_effect=[self._AMBIGUOUS]), \
+             patch.object(clf, "_llm_rerank_field", return_value=None), \
+             patch.object(QueryPlanner, "decompose", return_value=["just one description"]):
+            result = clf.classify("some ambiguous education description")
+        assert "query_plan" not in result.method

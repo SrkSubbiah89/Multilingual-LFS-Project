@@ -492,3 +492,114 @@ def test_flat_retrieval_falls_back_when_search_finds_nothing(clf, monkeypatch):
 def test_unrelated_method_value_still_ignores_flat_retrieval_too(clf):
     result = clf.classify("software developer tech startup app", method="some_other_value")
     assert result.method not in (ISIC_FLAT_RETRIEVAL, ISIC_HIERARCHICAL_RETRIEVAL)
+
+
+# ---------------------------------------------------------------------------
+# Cross-classification hints (Item 1a, 2026-09-12) -- forward-direction
+# coordination: an already-computed ISCO code biases ISIC's own
+# ambiguous-match tie-break. Real crosswalk facts reused from
+# semantic_relation.py: ISCO submajor "25" (ICT Professionals) -> ISIC "J"
+# only; submajor "61" (Market Gardeners) -> ISIC "A" only.
+# ---------------------------------------------------------------------------
+
+def _entry(section, code_suffix="1"):
+    return {
+        "section": section,
+        "section_title": f"Section {section}",
+        "division_code": f"0{code_suffix}",
+        "division_title": "div",
+        "group_code": f"0{code_suffix}1",
+        "group_title": "grp",
+        "class_code": f"0{code_suffix}11",
+        "class_title": "cls",
+    }
+
+
+@pytest.fixture
+def clf_with_hints():
+    """ISICClassifier with cross-classification hints enabled."""
+    with patch("backend.agents.isic_classifier.get_llm", return_value=MagicMock()):
+        return ISICClassifier(use_cross_classification_hints=True)
+
+
+class TestCrossClassificationHints:
+    def test_default_false_never_applies_hints(self, clf):
+        # clf fixture has use_cross_classification_hints=False (default).
+        # Even with cross_hints passed, classify() must be byte-identical
+        # to omitting it entirely.
+        with_hints = clf.classify("software development company", cross_hints={"isco_code": "6111"})
+        without_hints = clf.classify("software development company")
+        assert with_hints.section == without_hints.section
+        assert with_hints.method == without_hints.method
+
+    def test_no_cross_hints_passed_is_noop_even_when_enabled(self, clf_with_hints):
+        result = clf_with_hints.classify("software development company")
+        assert result.method != "keyword_cross_hint"
+
+    def test_maybe_apply_cross_hints_promotes_compatible_candidate(self, clf_with_hints):
+        # Top candidate is section "A" (incompatible with ISCO 2512, ICT
+        # Professional submajor 25 -> ISIC "J" only). A close second
+        # candidate is section "J" (compatible) -- within _MIN_CANDIDATE_GAP.
+        scored = [
+            (0.60, _entry("A", "1")),
+            (0.55, _entry("J", "2")),
+        ]
+        result = ISICClassification(
+            section="A", section_title="Section A", division_code="01",
+            division_title="div", group_code="011", group_title="grp",
+            class_code="0111", class_title="cls", confidence=0.60, method="keyword",
+        )
+        revised = clf_with_hints._maybe_apply_cross_hints(scored, result, {"isco_code": "2512"})
+        assert revised.section == "J"
+        assert revised.method == "keyword_cross_hint"
+
+    def test_maybe_apply_cross_hints_noop_when_already_compatible(self, clf_with_hints):
+        scored = [(0.60, _entry("J", "1"))]
+        result = ISICClassification(
+            section="J", section_title="Section J", division_code="01",
+            division_title="div", group_code="011", group_title="grp",
+            class_code="0111", class_title="cls", confidence=0.60, method="keyword",
+        )
+        revised = clf_with_hints._maybe_apply_cross_hints(scored, result, {"isco_code": "2512"})
+        assert revised is result
+
+    def test_maybe_apply_cross_hints_noop_when_gap_too_large(self, clf_with_hints):
+        # Compatible candidate exists but its score is far below the
+        # current result's -- too much worse a match to justify swapping.
+        scored = [
+            (0.90, _entry("A", "1")),
+            (0.10, _entry("J", "2")),
+        ]
+        result = ISICClassification(
+            section="A", section_title="Section A", division_code="01",
+            division_title="div", group_code="011", group_title="grp",
+            class_code="0111", class_title="cls", confidence=0.90, method="keyword",
+        )
+        revised = clf_with_hints._maybe_apply_cross_hints(scored, result, {"isco_code": "2512"})
+        assert revised is result
+
+    def test_maybe_apply_cross_hints_noop_without_isco_code(self, clf_with_hints):
+        scored = [(0.60, _entry("A", "1"))]
+        result = ISICClassification(
+            section="A", section_title="Section A", division_code="01",
+            division_title="div", group_code="011", group_title="grp",
+            class_code="0111", class_title="cls", confidence=0.60, method="keyword",
+        )
+        revised = clf_with_hints._maybe_apply_cross_hints(scored, result, {})
+        assert revised is result
+
+    def test_maybe_apply_cross_hints_engine_failure_returns_original(self, clf_with_hints, monkeypatch):
+        import backend.agents.semantic_relation as sr
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(sr, "get_semantic_relation_engine", _boom)
+        scored = [(0.60, _entry("A", "1")), (0.55, _entry("J", "2"))]
+        result = ISICClassification(
+            section="A", section_title="Section A", division_code="01",
+            division_title="div", group_code="011", group_title="grp",
+            class_code="0111", class_title="cls", confidence=0.60, method="keyword",
+        )
+        revised = clf_with_hints._maybe_apply_cross_hints(scored, result, {"isco_code": "2512"})
+        assert revised is result

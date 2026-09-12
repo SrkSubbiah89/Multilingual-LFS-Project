@@ -494,6 +494,7 @@ class ISCOClassifier:
         enable_corrective_retry: bool = False,
         use_gap_aware_confidence: bool = False,
         translate_before_retrieval: bool = False,
+        enable_query_planning: bool = False,
     ) -> None:
         """
         Parameters
@@ -620,6 +621,30 @@ class ISCOClassifier:
             just HITL_THRESHOLD -- that part of the recalibration is
             intrinsic to what a "corrective retry" is for, not a separate
             opt-in.
+        enable_query_planning : bool, default False
+            Multi-step agentic retrieval (2026-09-12, generalizes
+            enable_corrective_retry above from "one reformulation" to "up
+            to N sub-queries, reconciled"). When True, and only under the
+            same trigger condition as enable_corrective_retry (result still
+            weak after normal reranking, LLM available), QueryPlanner
+            (backend/agents/query_planner.py) decomposes the job title into
+            up to 2 sub-descriptions, each is re-retrieved with the SAME
+            existing retrieval call this classifier already uses (no new
+            retrieval primitive), and the results are reconciled via
+            QueryPlanner.reconcile()'s disclosed, provisional
+            highest-score-with-frequency-tiebreak rule. Accepted only if
+            the winning sub-query's own top1/top2 gap is strictly wider
+            than the current gap -- the identical acceptance rule as
+            enable_corrective_retry, just applied to a reconciled
+            multi-sub-query result. Mutually exclusive with
+            enable_corrective_retry IN PRACTICE: when both are True,
+            enable_query_planning takes precedence and
+            enable_corrective_retry's block is skipped for that call --
+            evaluate the two flags one at a time, never combined, so a
+            measurement never confounds which mechanism produced a given
+            change (this project's own standing discipline; see CLAUDE.md).
+            Default False reproduces prior behaviour exactly for every
+            existing caller.
         use_gap_aware_confidence : bool, default False
             Thesis RAG-comparison work (see _MIN_TRUSTED_CANDIDATE_GAP's
             module-level comment for the evidence). When True, the
@@ -667,6 +692,7 @@ class ISCOClassifier:
         self._enable_corrective_retry = enable_corrective_retry
         self._use_gap_aware_confidence = use_gap_aware_confidence
         self._translate_before_retrieval = translate_before_retrieval
+        self._enable_query_planning = enable_query_planning
         # Task 21: force_flat_only means "call search_flat_only() on the
         # official-profile HierarchicalISCOStore" -- distinct from the
         # legacy force_flat=True path (self._flat_store, legacy VectorStore).
@@ -1045,6 +1071,29 @@ class ISCOClassifier:
         # corrective retry's own purpose is to catch what raw confidence
         # alone misses, so it always consults both signals once enabled.
         if (
+            self._enable_query_planning
+            and (hitl or is_ambiguous)
+            and use_llm
+            and self._agent_available
+        ):
+            planned = self._maybe_query_plan_retry(
+                job_title=job_title,
+                context=context,
+                lang=lang,
+                current_match=primary_match,
+                top_k=top_k,
+                current_gap=candidate_gap,
+                trace=trace,
+            )
+            if planned is not None:
+                retry_match, retry_reasoning = planned
+                primary_match = retry_match
+                reasoning = retry_reasoning
+                method = f"{method}_query_plan"
+                hitl = primary_match.confidence < HITL_THRESHOLD
+                if self._use_gap_aware_confidence:
+                    hitl = hitl or is_ambiguous
+        elif (
             self._enable_corrective_retry
             and (hitl or is_ambiguous)
             and use_llm
@@ -1188,6 +1237,94 @@ class ISCOClassifier:
         if not improved:
             return None
         return retry_match, retry_reasoning
+
+    def _maybe_query_plan_retry(
+        self,
+        job_title: str,
+        context: str,
+        lang: str,
+        current_match: ISCOMatch,
+        top_k: int,
+        current_gap: Optional[float] = None,
+        max_subqueries: int = 2,
+        trace: Optional[dict] = None,
+    ) -> Optional[tuple[ISCOMatch, str]]:
+        """Multi-step agentic retrieval (Item 2, 2026-09-12) -- see
+        enable_query_planning's docstring for the full contract. Generalizes
+        _maybe_corrective_retry's single-reformulation pattern to N
+        sub-queries: decompose, re-retrieve EACH with the same existing
+        retrieval call this classifier already uses (no new retrieval
+        primitive), reconcile via QueryPlanner.reconcile(), then apply the
+        identical accept-only-if-gap-widens rule as corrective retry.
+        Returns None (never raises) on any failure or non-improvement.
+        """
+        if trace is not None:
+            trace["query_plan_attempted"] = True
+
+        from backend.agents.query_planner import QueryPlanner
+
+        planner = QueryPlanner(reranker_model=self._reranker_model_pin)
+        subqueries = planner.decompose(job_title, dimension="occupation", max_subqueries=max_subqueries)
+
+        if trace is not None:
+            trace["query_plan_subqueries"] = subqueries
+
+        if len(subqueries) <= 1:
+            if trace is not None:
+                trace["query_plan_used"] = False
+            return None  # nothing to reconcile -- decomposition found only one thing
+
+        per_subquery = []  # list[tuple[str, float, list, HierarchicalResult]]
+        for sq in subqueries:
+            try:
+                if self._force_flat_only:
+                    h2 = self._hierarchical_store.search_flat_only(sq, top_k=top_k)
+                else:
+                    h2 = self._hierarchical_store.search(
+                        sq, top_k=top_k, major_hint="",
+                        beam=self._beam, stage1_mode=self._stage1_mode,
+                        reranker_candidates=self._reranker_candidates,
+                        branch_collapse=self._branch_collapse,
+                    )
+            except Exception as exc:
+                _logger.warning("ISCO query-plan retry: sub-query %r failed: %s", sq, exc)
+                continue
+            if h2 is None or not h2.code or not h2.top_candidates:
+                continue
+            per_subquery.append((h2.code, float(h2.top_candidates[0].score), h2.top_candidates, h2))
+
+        if not per_subquery:
+            if trace is not None:
+                trace["query_plan_used"] = False
+            return None
+
+        winning_code, _winning_score = QueryPlanner.reconcile(
+            [(code, score) for code, score, _, _ in per_subquery]
+        )
+        _, _, winning_candidates, winning_h = next(
+            e for e in per_subquery if e[0] == winning_code
+        )
+
+        retry_match, retry_reasoning = self._llm_select_from_candidates(
+            job_title=job_title, candidates=winning_candidates, context=context,
+            lang=lang, stage_confidences=winning_h.stage_confidences,
+        )
+
+        retry_gap = _top_candidate_gap(winning_candidates)
+        if retry_gap is not None and current_gap is not None:
+            improved = retry_gap > current_gap
+        elif retry_gap is not None and current_gap is None:
+            improved = retry_gap >= _MIN_TRUSTED_CANDIDATE_GAP
+        else:
+            improved = retry_match.confidence > current_match.confidence
+
+        if trace is not None:
+            trace["query_plan_used"] = improved
+            trace["query_plan_result_confidence"] = retry_match.confidence
+            trace["query_plan_result_gap"] = retry_gap
+        if not improved:
+            return None
+        return retry_match, f"[Query plan: {subqueries}] {retry_reasoning}"
 
     def _llm_reformulate_query(
         self,

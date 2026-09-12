@@ -462,6 +462,9 @@ Not all of these construct a `crewai.Agent` — confirmed which do:
 | `report_generator.py` | Yes |
 | `semantic_relation.py` | Yes |
 | `validation_agent.py` | Yes |
+| `query_planner.py` | **Yes — added 2026-09-12** (Item 2, multi-agent RAG work; built lazily inside `decompose()`, not `__init__` — see that fix's own writeup below) |
+| `hierarchical_classification_crew.py` | **Yes — added 2026-09-12** (Item 3; the only module in this codebase using `process=Process.hierarchical` + `manager_llm` — every other `Crew(...)` site defaults to sequential) |
+| `cross_standard_coordinator.py` | **No — added 2026-09-12** (Item 1; pure Python, no CrewAI construction at all — reuses `SemanticRelationEngine`'s existing compatibility logic instead) |
 | `nationality_classifier.py` | No |
 | `person_register.py` | No — deterministic |
 | `isco_reranker_strict.py` | No |
@@ -1402,6 +1405,205 @@ dedicated passing tests.
   `eval/wisco_translate_and_classify.py`,
   `eval/wisco_groq_zeroshot_classify.py`.
 
+- **Cross-standard coordination between ISCO/ISIC/ISCED, 2026-09-12 (Item
+  1 of a 3-part "multi-agent RAG" request)**: until now, `ISCOClassifier`/
+  `ISICClassifier`/`ISCEDClassifier` retrieved fully independently every
+  turn — `SemanticRelationEngine.analyse()` only ever *scored* the three
+  already-fixed results after the fact (its `inferred_isco` field is
+  LLM-suggested advisory text shown in the explanation string; confirmed
+  directly it was never read back to replace `isco_result.primary_code`
+  anywhere in `survey_routes.py`). Built two small, additive, opt-in
+  mechanisms behind one new env var, `ENABLE_COORDINATED_CLASSIFICATION`
+  (default `"false"`, same style as `LFS_FAST_MODE` — zero behavioural
+  change for every existing turn when unset):
+
+  **Backward direction** (`backend/agents/cross_standard_coordinator.py`,
+  new file): `maybe_revise_isco_with_cross_signal()` reconsiders an
+  already-uncertain ISCO primary (`hitl_required=True` only — never an
+  already-confident one) once ISIC/ISCED are known. Fires only when the
+  primary is cross-standard-incompatible AND ISCO's own already-computed
+  `.alternatives` (zero new retrieval) contain a compatible one — reuses
+  `SemanticRelationEngine`'s own validated `isco_isic_compatible`/
+  `isco_isced_compatible` booleans (already returned by `analyse()`,
+  confirmed present, not previously read for this purpose) as the single
+  compatibility oracle, rather than a second hand-built crosswalk table.
+  Wired into Stage 4e in `survey_routes.py`, running *before* the existing
+  `SemanticRelationEngine.analyse()` call so SRE scores the final
+  (possibly revised) code.
+
+  **Forward direction** (`ISICClassifier`, new `use_cross_classification_
+  hints` constructor param + `cross_hints` kwarg on `classify()`): once
+  ISCO's code is known, `_maybe_apply_cross_hints()` checks the legacy
+  keyword/LLM path's chosen section against the same crosswalk oracle;
+  if incompatible, scans the SAME already-scored top-K candidates (zero
+  new retrieval) for one that's compatible and within `_MIN_CANDIDATE_GAP`
+  of the original score, and promotes it. **Deliberately NOT applied to
+  `ISCEDClassifier`**: the ISCO↔ISCED crosswalk covers attainment LEVEL,
+  which that classifier already deliberately keeps fully deterministic
+  and untouched by any reranking mechanism (its own `enable_corrective_
+  retry` docstring) — biasing LEVEL toward an ISCO guess would contradict
+  that existing, intentional design, not extend it. This asymmetry is a
+  real finding, not an oversight: cross-hint coordination only makes sense
+  where the crosswalk target is a dimension the classifier is willing to
+  let external evidence move.
+
+  Both mechanisms wrap every failure mode (missing data, engine error) in
+  try/except degrading to "no change" — never raise, never block
+  classification. 19 new tests (9 in `test_cross_standard_coordinator.py`,
+  8 in `test_isic_classifier.py`'s new `TestCrossClassificationHints`, 2
+  in `test_orchestration_correctness.py`'s new `TestCoordinatedClassification`
+  — including a real end-to-end firing case through the actual HTTP
+  endpoint, not just a config-shape check); full suite re-run: see Testing
+  section below.
+
+  **Honest status**: this is real, tested, working code — not yet a
+  production default (env var unset), and **not yet evaluated for real
+  accuracy impact**. No joint ISCO+ISIC+ISCED labelled dataset exists
+  (WISCO is occupation-only; the synthetic ISIC/ISCED-F benchmark has no
+  ISCO gold label), so the honest evaluation path is: ISCO accuracy delta
+  on a WISCO dev-split sample (if WISCO's raw rows carry industry/
+  education free text — not yet checked) plus, always measurable
+  regardless, the SRE HIGH-severity escalation rate before/after. Not run
+  in this pass. Given this project's own base rate — 7 independent,
+  already-confirmed-null results for "add more sophistication on top of
+  retrieval" (5× LLM reranking, corrective retry, Gulf dialect
+  normalization) — the honest prior going in is "may not move accuracy,"
+  stated up front rather than discovered as a surprise if the eventual
+  eval comes back null. Items 2 (multi-step query planning) and 3 (real
+  CrewAI hierarchical delegation) of this same 3-part request are tracked
+  separately and not yet built as of this entry.
+
+- **Multi-step agentic retrieval, 2026-09-12 (Item 2 of the same 3-part
+  request)**: generalizes the existing single-shot corrective-retry
+  pattern (`enable_corrective_retry` — reformulate once, re-retrieve,
+  accept only on a strictly wider top1/top2 candidate-score gap) from
+  "one reformulation" to "decompose into up to 2 sub-queries, retrieve
+  for each, reconcile." New file `backend/agents/query_planner.py`:
+  `QueryPlanner.decompose(text, dimension, max_subqueries)` (same CrewAI
+  `Agent`/`Task`/`Crew` construction pattern as every existing
+  reformulation method — `allow_delegation=False`, no `process=`, built
+  lazily inside the method rather than in `__init__`, matching every
+  other classifier's convention) and the static `QueryPlanner.reconcile()`
+  — a disclosed, provisional highest-score-with-frequency-tiebreak rule
+  (a candidate that's the top pick for ≥2 sub-queries beats a single
+  higher-scoring outlier; not independently measured, same category of
+  judgement call as `ISICClassifier._MIN_CANDIDATE_GAP = 0.15`).
+
+  New `enable_query_planning: bool = False` constructor parameter on all
+  three classifiers (`ISCOClassifier`, `ISICClassifier`, `ISCEDClassifier`
+  — ISCED's scoped to the FIELD dimension only, LEVEL untouched, exactly
+  like its own `enable_corrective_retry`), each with a new sibling method
+  (`_maybe_query_plan_retry` / `_maybe_query_plan_retry_field`) that
+  reuses the classifier's *existing* retrieval/scoring call per
+  sub-query — zero new retrieval primitive — then applies the identical
+  accept-only-if-gap-widens rule as corrective retry. **Mutually
+  exclusive with `enable_corrective_retry` in practice**: when both are
+  set on the same classifier, query planning takes precedence and
+  corrective retry's block is skipped for that call, so a measurement
+  never confounds which mechanism produced a given change — evaluate the
+  two flags one at a time, per this project's own standing discipline.
+  Default `False` everywhere reproduces prior behaviour exactly.
+
+  40 new tests (11 in `test_query_planner.py`; `TestQueryPlanning*`
+  classes appended to `test_isco_classifier_corrective_retry.py` and
+  `test_isic_isced_corrective_retry.py`, including explicit
+  mutual-exclusivity-when-both-enabled checks for all three classifiers).
+  A real test-hygiene bug was caught and fixed while writing these:
+  `QueryPlanner`'s first draft built its CrewAI `Agent` once in
+  `__init__`, which meant even a test that mocks `decompose()` itself
+  still triggered a real `Agent(llm=...)` pydantic validation against
+  whatever the test's mocked `get_llm()` returned (a bare `MagicMock()`
+  fails validation — `Agent`'s `llm` field requires a real LLM object or
+  model string, not any object) — confirmed directly (ISIC's
+  query-planning tests failed with a real `pydantic_core.ValidationError`
+  until fixed). Moved `Agent` construction into `decompose()` itself,
+  matching how every other CrewAI construction in this codebase already
+  works (built per-call, not once at construction time) — this is a real
+  design correction, not just a test workaround.
+
+  **Honest status**: same as Item 1 — real, tested, working code, not yet
+  evaluated for real accuracy impact and not a production default. The
+  same "may not move accuracy" prior applies (this generalizes corrective
+  retry, whose own single-reformulation version already came back null at
+  n=60). Not run in this pass — a real dev-split evaluation plan exists
+  (see the approved plan document from this session) but was not
+  executed.
+
+- **Real CrewAI hierarchical delegation, 2026-09-12 (Item 3, final part of
+  the 3-part request)**: until now, this codebase's 18+
+  `Crew(agents=[...], tasks=[...])` construction sites all omitted
+  `process=`, defaulting to CrewAI's plain sequential process — zero real
+  manager-delegates-to-workers orchestration anywhere, despite this being
+  a CrewAI project throughout. New file `backend/agents/
+  hierarchical_classification_crew.py`: `HierarchicalClassificationCoordinator`
+  wraps the three **already-constructed** classifiers as CrewAI tools
+  (`@tool`-decorated thin adapters calling their existing `.classify()` —
+  no reimplemented retrieval/reranking/corrective-retry logic) behind
+  three worker `Agent`s (`allow_delegation=False`, preserving the spirit
+  of the existing 13-agent-module invariant for these new agents),
+  orchestrated by the **first and only** `Crew` in this codebase using
+  `process=Process.hierarchical` + `manager_llm` — the manager decides
+  invocation order/delegation at runtime, a genuinely different mechanism
+  from Item 1's fixed, deterministic call order.
+
+  **Deliberately kept standalone, not wired into `survey_routes.py`'s
+  per-turn path** — exposed only via direct construction (eval/manual use)
+  for now, matching how `translate_before_retrieval` and the enriched/
+  e5-large profiles were proven in `eval/` scripts before any production
+  wiring discussion. `classify_all()` wraps the entire crew call in
+  try/except; any failure (manager LLM unreachable, malformed output,
+  timeout) falls back to calling all three classifiers directly and
+  sequentially — i.e. degrades to today's exact independent-classifier
+  behaviour. 11 new tests (`test_hierarchical_classification_crew.py`) —
+  since a real delegation decision can't be pinned to one fixed
+  `kickoff.return_value` the way a sequential crew can, these assert what
+  can be honestly asserted hermetically: `Crew` is actually constructed
+  with `process=Process.hierarchical` and a real `manager_llm`; all three
+  worker agents have `allow_delegation=False`; the fallback path really
+  does call all three real classifiers directly when the crew raises.
+
+  **A real bug found and fixed via this project's own "live-verify before
+  declaring done" discipline, not left for later**: a first manual smoke
+  check (`classify_all()` against real classifiers and a real local
+  `ollama/qwen2.5:3b` manager, no mocks) returned
+  `isco_code='5310, null'` / `isic_section='11, null'` — valid JSON
+  strings that parsed successfully but are not real classification codes
+  — while still reporting `fallback_used=False` (i.e. "success"). The
+  original `_parse_crew_result()` had no field-shape validation at all.
+  Fixed by adding `_valid_isco_code()` (4-digit numeric), 
+  `_valid_isic_section()` (single letter A-U), `_valid_isced_level()`
+  (integer 0-8) — a malformed value is now treated as "no answer" (`None`)
+  for that field, never silently passed through. 3 new regression tests
+  pin the exact malformed shape found live as a guard against
+  reintroduction.
+
+  **A second, genuine, disclosed limitation found by the same smoke
+  check, re-run after the validation fix**: the local 3B-parameter
+  manager LLM did not reliably invoke all three delegation tools across
+  repeated runs — one run returned only a (this time validly-shaped)
+  `isco_code` with `isic_section`/`isced_level` both `None`, meaning the
+  manager simply didn't delegate to the other two tools that call. This
+  is not a bug in the coordinator (the contract — `fallback_used=True`
+  only when the crew call itself raises, not when delegation is
+  incomplete — is working exactly as designed) but a real, honest finding
+  about small local-model reliability as a hierarchical-process manager:
+  a stronger manager model (e.g. Groq `openai/gpt-oss-120b`, already
+  proven reliable elsewhere in this codebase for reranking) is a
+  plausible next step, not yet tried.
+
+  **Honest status, and the real thesis-relevant question this sets up**:
+  real, tested, working code — not a production default, not yet
+  evaluated for accuracy. The three-arm comparison this item's own
+  evaluation plan calls for (no coordination vs. Item 1's deterministic
+  coordinator vs. this LLM-delegated one) has NOT been run. Given this
+  session's own live smoke-check finding above (unreliable full
+  delegation from a small local manager model), the honest prior is that
+  Item 1's deterministic coordinator likely captures most of any real
+  benefit at a fraction of the cost/reliability risk — a real, testable
+  thesis contribution in its own right (does non-deterministic delegation
+  earn its complexity over deterministic coordination?), not yet
+  measured.
+
 ## The actual published WISCO evaluation result — read this before citing any accuracy number
 
 **This is the single most important fact this document can convey.** The
@@ -1589,6 +1791,18 @@ new "Cloud-hosting migration" section below) and the
 below) → **2,508 passed, 1 deselected**, zero failures. +7 tests over the
 2,501 baseline (`TestTranslateBeforeRetrieval` in
 `test_isco_classifier.py`). Same 1 deselected slow test throughout.
+
+**2026-09-12**: real, full re-run (706.70s) after the 3-part multi-agent
+RAG work (see "Knowledge base construction" above — Item 1 coordinated
+retrieval, Item 2 multi-step query planning, Item 3 real CrewAI
+hierarchical delegation) and the two demo-day `ConversationManager`
+VALIDATING-state fixes (bare "no" hallucination, then the longer
+quick-reply-text timeout) → **2,567 passed, 1 deselected**, zero
+failures. +59 tests over the 2,508 baseline, confirmed via three
+successive full runs as each item landed (2,529 after Item 1 alone, 2,556
+after Items 1+2, 2,567 after all three) — every intermediate count
+matched hand-computed expectations exactly, not just the final total.
+Same 1 deselected slow test throughout.
 
 ## Citation policy — unchanged, still correct
 
