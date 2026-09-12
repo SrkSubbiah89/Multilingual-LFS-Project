@@ -419,6 +419,31 @@ class TestTransition:
         assert ctx.correction_rejected_field is None
         assert ctx.correction_no_target is True
 
+    def test_validating_bare_no_never_calls_either_extractor(self, mgr, ctx, monkeypatch):
+        # Real, live-reproduced bug (2026-09-12), distinct from the
+        # correction_no_target tests above: those all mock
+        # _llm_extract_correction to return False, which made them blind to
+        # the actual failure mode. The real live LLM, asked to find ANY
+        # field a bare "no" might correct, would match it against an
+        # unrelated yes/no-valued field (e.g. "Actively Looking for Work")
+        # and report success -- producing "Got it, I've updated that for
+        # you" with an unchanged summary. _is_ambiguous() must short-circuit
+        # BEFORE either extractor is even called for a bare "no", so this
+        # failure mode is structurally impossible regardless of what the
+        # LLM would have guessed -- proven here by making the LLM mock
+        # return a fake "success" and asserting it's never invoked at all.
+        regex_spy = MagicMock(return_value=False)
+        llm_spy = MagicMock(return_value=True)  # simulates the exact hallucination bug
+        monkeypatch.setattr(mgr, "_extract_correction", regex_spy)
+        monkeypatch.setattr(mgr, "_llm_extract_correction", llm_spy)
+        ctx.state = ConversationState.VALIDATING
+        mgr._transition(ctx, "no", "")
+        regex_spy.assert_not_called()
+        llm_spy.assert_not_called()
+        assert ctx.state == ConversationState.VALIDATING
+        assert ctx.correction_applied is False
+        assert ctx.correction_no_target is True
+
     def test_validating_correction_no_target_stub_reply_asks_what_to_correct(self, mgr, ctx, monkeypatch):
         # The FAST_MODE / no-LLM-available template must not repeat the
         # identical summary when correction_no_target is set — it must ask

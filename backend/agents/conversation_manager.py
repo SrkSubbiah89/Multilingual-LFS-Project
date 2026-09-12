@@ -3365,8 +3365,25 @@ class ConversationManager:
                 ctx.corrected_fields = set()
                 ctx.correction_rejected_field = None
                 ctx.correction_no_target = False
-                regex_ok = self._extract_correction(ctx, user_message)
-                llm_ok = False if regex_ok else self._llm_extract_correction(ctx, user_message)
+                # Real, reproduced bug (2026-09-12): a bare "no" (matching the
+                # prompt's own "no, I'd like to correct something" phrasing)
+                # was passed straight to the extractors below. _extract_correction
+                # correctly found nothing, but _llm_extract_correction -- asked
+                # to find ANY field the single word "no" might correct -- would
+                # match it against an unrelated yes/no-valued field (e.g.
+                # "Actively Looking for Work") and report success, producing
+                # "Got it, I've updated that for you" with an unchanged summary.
+                # _is_ambiguous() already existed for exactly this case (bare
+                # yes/no/ok-style replies with under 5 characters) but was never
+                # actually called anywhere -- wiring it in here short-circuits
+                # straight to the existing correction_no_target prompt instead
+                # of ever handing an ambiguous reply to either extractor.
+                if self._is_ambiguous(user_message):
+                    regex_ok = False
+                    llm_ok = False
+                else:
+                    regex_ok = self._extract_correction(ctx, user_message)
+                    llm_ok = False if regex_ok else self._llm_extract_correction(ctx, user_message)
                 correction_ok = regex_ok or llm_ok
                 # Stay in VALIDATING if all required fields are still satisfied —
                 # the response will immediately re-read the corrected summary.
