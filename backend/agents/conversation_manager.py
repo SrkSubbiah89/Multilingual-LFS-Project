@@ -3378,7 +3378,14 @@ class ConversationManager:
                 # actually called anywhere -- wiring it in here short-circuits
                 # straight to the existing correction_no_target prompt instead
                 # of ever handing an ambiguous reply to either extractor.
-                if self._is_ambiguous(user_message):
+                # Second, broader guard (2026-09-12, same live bug class as
+                # above): a longer message that still names no recognisable
+                # field -- e.g. the quick-reply button text itself, "no, I'd
+                # like to correct something" -- is just as unresolvable as a
+                # bare "no", but was long enough to slip past _is_ambiguous()
+                # and hit the slow LLM extractor for nothing. See
+                # _mentions_known_field()'s own docstring for the full story.
+                if self._is_ambiguous(user_message) or not self._mentions_known_field(user_message):
                     regex_ok = False
                     llm_ok = False
                 else:
@@ -4243,6 +4250,27 @@ class ConversationManager:
             return True
         vague = {"yes", "no", "ok", "okay", "sure", "fine", "نعم", "لا", "حسنًا", "موافق", "طيب"}
         return stripped.lower() in vague
+
+    @staticmethod
+    def _mentions_known_field(text: str) -> bool:
+        """Return True if *text* names (or aliases) any real survey field.
+
+        Real, reproduced bug (2026-09-12, live demo): the VALIDATING
+        quick-reply button's own label -- "no, I'd like to correct
+        something" -- is 32 characters and not an exact vague-word match,
+        so it sailed past _is_ambiguous() straight into
+        _llm_extract_correction(), which has no field to find and burned
+        60+ seconds (approaching the documented 100s hard Ollama timeout)
+        before giving up. Every field this survey can correct already has
+        an entry in _FIELD_ALIASES (English and Arabic); a message that
+        doesn't substring-match any of them cannot possibly be resolved by
+        either extractor, so there is nothing correct about paying for the
+        slow LLM call at all -- short-circuit straight to
+        correction_no_target instead, exactly like a bare "no" already
+        does via _is_ambiguous().
+        """
+        lowered = text.lower()
+        return any(alias in lowered for alias in _FIELD_ALIASES)
 
     @staticmethod
     def _is_confirmed(text: str, language: str) -> bool:

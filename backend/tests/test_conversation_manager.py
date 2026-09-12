@@ -444,6 +444,44 @@ class TestTransition:
         assert ctx.correction_applied is False
         assert ctx.correction_no_target is True
 
+    def test_validating_quick_reply_no_field_named_never_calls_llm_extractor(self, mgr, ctx, monkeypatch):
+        # Real, live-reproduced bug (2026-09-12, demo day): the VALIDATING
+        # quick-reply button's own label -- "no, I'd like to correct
+        # something" -- is 32 characters, so it is NOT caught by
+        # _is_ambiguous() (which only catches sub-5-char or exact
+        # yes/no/ok-style replies). It sailed through to
+        # _llm_extract_correction() and, against the real live Ollama
+        # backend, took 60+ seconds (approaching the documented 100s hard
+        # timeout) before giving up, since there is no field in the message
+        # for the LLM to find. _mentions_known_field() must short-circuit
+        # this BEFORE either extractor is invoked, exactly like the bare
+        # "no" case above -- proven here the same way: the LLM mock reports
+        # a fake "success" and must never even be called.
+        regex_spy = MagicMock(return_value=False)
+        llm_spy = MagicMock(return_value=True)
+        monkeypatch.setattr(mgr, "_extract_correction", regex_spy)
+        monkeypatch.setattr(mgr, "_llm_extract_correction", llm_spy)
+        ctx.state = ConversationState.VALIDATING
+        mgr._transition(ctx, "no, I'd like to correct something", "")
+        regex_spy.assert_not_called()
+        llm_spy.assert_not_called()
+        assert ctx.state == ConversationState.VALIDATING
+        assert ctx.correction_applied is False
+        assert ctx.correction_no_target is True
+
+    def test_validating_message_naming_a_field_still_calls_extractors(self, mgr, ctx, monkeypatch):
+        # Guard against the new _mentions_known_field() check being too
+        # broad and blocking genuine corrections -- a message that names a
+        # real field (here, "job title", a real _FIELD_ALIASES key) must
+        # still reach the extractors as before.
+        regex_spy = MagicMock(return_value=True)
+        llm_spy = MagicMock(return_value=False)
+        monkeypatch.setattr(mgr, "_extract_correction", regex_spy)
+        monkeypatch.setattr(mgr, "_llm_extract_correction", llm_spy)
+        ctx.state = ConversationState.VALIDATING
+        mgr._transition(ctx, "no, the job title is wrong", "")
+        regex_spy.assert_called_once()
+
     def test_validating_correction_no_target_stub_reply_asks_what_to_correct(self, mgr, ctx, monkeypatch):
         # The FAST_MODE / no-LLM-available template must not repeat the
         # identical summary when correction_no_target is set — it must ask
