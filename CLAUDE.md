@@ -1473,6 +1473,75 @@ dedicated passing tests.
   CrewAI hierarchical delegation) of this same 3-part request are tracked
   separately and not yet built as of this entry.
 
+  **Real evaluation, run 2026-09-12/13, the same day**: first, directly
+  checked the "if WISCO's raw rows carry industry/education free text —
+  not yet checked" caveat above rather than leaving it open — confirmed
+  directly against the full 18,747-row heldout CSV that `gold_isic`/
+  `gold_isced` are blank in **every single row** (0/18,747 non-empty).
+  WISCO cannot test Item 1 at all, on either direction — not "not yet
+  checked," now genuinely closed. Built a new, small, explicitly-disclosed
+  synthetic combined benchmark to close this specific gap (the existing
+  ISIC/ISCED-F synthetic benchmark has no ISCO gold label either) —
+  `eval/generate_synthetic_coordination_benchmark.py`: n=60, English
+  only (multilingual generation quality problems already documented
+  earlier in this file for a different generator ruled that scope out
+  for a first pass), each row a real ISCO-08 unit-group code (drawn from
+  the same enriched catalogue used for the 40.95% headline result) paired
+  with an LLM-generated (`ollama/qwen2.5:3b`), grounded-in-the-real-
+  official-definition (job_title, industry_text, education_text) triple
+  — same taxonomy-grounded-paraphrase method already used and disclosed
+  for the ISIC/ISCED-F benchmark, not a new technique. `eval/
+  run_coordination_eval.py` runs the exact same call sequence
+  `survey_routes.py` runs when `ENABLE_COORDINATED_CLASSIFICATION=true`
+  (baseline ISCO → ISIC with cross-hint → `maybe_revise_isco_with_cross_
+  signal`) directly against real classifiers, paired per-case.
+
+  **A real, disclosed operational snag hit while running this**: the
+  first attempt (immediately after a demo session, with the demo's
+  backend/frontend/ngrok/cloudflared still running) degraded exactly the
+  way this file's own standing discipline warns about — free memory fell
+  to **39MB**, Ollama calls started timing out at 120s. Stopped the demo
+  processes (backend, frontend, both tunnels — freed ~845MB), re-ran
+  clean. This is the same "run memory-heavy work sequentially, not
+  concurrently" lesson already documented multiple times elsewhere in
+  this file, encountered and handled the same way again rather than
+  pushed through on a degraded run.
+
+  **Result: 26.67% (16/60) both with and without coordination —
+  byte-identical, not one single case flipped either direction (McNemar
+  b=0, c=0).** The ISIC cross-hint changed the ISIC classifier's own
+  section guess in only 2/60 cases, and — the more informative number —
+  the backward coordinator (`maybe_revise_isco_with_cross_signal`) never
+  revised the ISCO primary even once across all 60 cases, including the
+  44 cases where the baseline ISCO guess was wrong. Read plainly: the
+  mechanism is working as designed (it only fires when `hitl_required=
+  True` AND the primary is cross-standard-incompatible AND a compatible
+  alternative exists among the already-computed top-2 alternatives — a
+  deliberately narrow, conservative gate), but that gate was essentially
+  never satisfied on this sample. This is the **8th independent
+  confirmed-null result** in this project for "add more sophistication
+  on top of retrieval" (after 5× LLM reranking, corrective retry, and
+  Gulf dialect normalization) — extending the pattern to cross-standard
+  coordination specifically, not just generation-layer changes. Real
+  artifacts: `eval/results/synthetic_coordination_benchmark/
+  benchmark.csv` (the 60 generated cases), `eval/results/
+  synthetic_coordination_benchmark/eval_results.csv` (full per-case
+  paired result).
+
+  **Honest limits of this result, stated plainly**: n=60, English only,
+  synthetic (LLM-generated, not real respondent data) — a real, useful
+  first signal, not a heldout-grade confirmation. The near-zero firing
+  rate is itself informative (a mechanism this conservative may need a
+  less narrow trigger condition to ever have a chance to matter, or may
+  genuinely be solving a rare-enough problem that it doesn't move
+  aggregate accuracy) — a real design question for a future pass, not
+  answered here. Given this result, Item 3's three-arm comparison
+  (documented above) has a clearer prior than before: if the
+  deterministic coordinator itself rarely fires, the harder question
+  becomes whether real LLM delegation would fire more often and
+  usefully, or just add cost without changing the outcome — still
+  unmeasured.
+
 - **Multi-step agentic retrieval, 2026-09-12 (Item 2 of the same 3-part
   request)**: generalizes the existing single-shot corrective-retry
   pattern (`enable_corrective_retry` — reformulate once, re-retrieve,
