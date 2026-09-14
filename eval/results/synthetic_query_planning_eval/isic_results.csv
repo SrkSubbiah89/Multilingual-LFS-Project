@@ -1,0 +1,61 @@
+text,baseline,planned,changed,planned_method
+Optical Stores and Eyewear Manufacturing Companies,G,G,False,keyword
+Nursing Homes and Care Facilities,Q,Q,False,keyword
+Forestry and Environmental Services,A,A,False,keyword_query_plan
+Casino and Gaming Venues,R,R,False,keyword
+Tech companies and related services.,J,J,False,llm
+Railway Transportation Industry,G,G,False,keyword
+Shipping and Maritime Industry,H,H,False,keyword
+Window and Door Installations,G,G,False,keyword
+Fire and Emergency Services,Q,Q,False,llm
+Agriculture and Farming,A,A,False,keyword
+Home Health Care Services,Q,Q,False,keyword
+Local Community Gardens and Small Farms,Q,Q,False,keyword
+Log and Wood Products Manufacturing,A,A,False,keyword
+Private Tutoring,K,K,False,keyword_query_plan
+"Agriculture, Forestry, and Aquaculture sectors",A,A,False,keyword_query_plan
+Semiconductor Manufacturing and Telecommunications Industry,C,C,False,keyword
+Manufacturing plants and factories.,G,G,False,keyword
+Tech and Software Development,J,J,False,keyword
+Law enforcement,O,O,False,keyword
+Tech Startup,J,J,False,keyword
+Oil and Gas Exploration,B,B,False,keyword
+"Commercial buildings, industrial facilities, and institutional settings",F,F,False,llm
+Law enforcement,O,O,False,keyword
+Butchery and Fishmongery,G,G,False,keyword
+Manufacturing plant specializing in metal casting,D,D,False,keyword
+Tourism and Travel Industry,N,N,False,keyword
+Small Rural Communities,G,G,False,keyword
+Oil and Gas Extraction,B,B,False,keyword
+Rural or Forest Area,A,A,False,keyword
+Holistic Healthcare and Wellness Centers,G,G,False,keyword
+Automotive Factory,C,C,False,keyword
+Retail and Services,G,G,False,llm
+Prestigious Fortune Telling and Astrological Consultancy,G,G,False,keyword
+Fruit orchards and specialty produce farms,A,A,False,keyword
+Waste Management,E,E,False,llm
+Senior Care Facilities,Q,Q,False,llm
+Livestock farming and dairy production,A,A,False,keyword
+Custom Woodworking Shop,G,G,False,keyword
+Construction and Infrastructure,F,F,False,keyword_query_plan
+Community Health Centers,K,K,False,llm
+Engineering and Manufacturing Companies,F,F,False,keyword
+Banking and Financial Services,K,K,False,keyword_query_plan
+Insurance Company and Banking,K,K,False,keyword_query_plan
+Tech and Innovation,J,J,False,llm
+Construction and Residential Maintenance,F,F,False,keyword
+"Job Fairs, Recruitment Agencies, and Online Platforms",N,N,False,keyword_query_plan
+Manufacturing company,J,J,False,keyword
+Local agriculture and animal husbandry,A,A,False,keyword
+Clinics and Hospitals,G,G,False,keyword
+Healthcare and Women's Health Services,Q,Q,False,keyword
+Pharmacies and healthcare centers.,G,G,False,keyword
+"I work in a variety of industries including healthcare, manufacturing, and waste management sectors.",Q,Q,False,llm
+I work for a green tech company that develops sustainable building materials.,J,J,False,keyword
+Construction,F,F,False,keyword
+Theater and Film Production,J,J,False,keyword
+Local Animal Hospital and Vet Clinic,M,M,False,keyword
+Healthcare and R&D,G,G,False,keyword
+Oil and gas exploration,B,B,False,keyword
+Technology consulting and software development firms,J,J,False,keyword
+Local farm,A,A,False,keyword

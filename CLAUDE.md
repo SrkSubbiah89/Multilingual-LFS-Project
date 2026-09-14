@@ -1590,13 +1590,49 @@ dedicated passing tests.
   works (built per-call, not once at construction time) — this is a real
   design correction, not just a test workaround.
 
-  **Honest status**: same as Item 1 — real, tested, working code, not yet
-  evaluated for real accuracy impact and not a production default. The
-  same "may not move accuracy" prior applies (this generalizes corrective
-  retry, whose own single-reformulation version already came back null at
-  n=60). Not run in this pass — a real dev-split evaluation plan exists
-  (see the approved plan document from this session) but was not
-  executed.
+  **Real evaluation, run 2026-09-13/14, same benchmark as Item 1**: no
+  new data needed — query planning's trigger condition (still-ambiguous
+  after normal reranking) is generic, not specific to visibly compound
+  text, so the same n=60 synthetic combined benchmark
+  (`eval/generate_synthetic_coordination_benchmark.py`) works directly.
+  New script `eval/run_query_planning_eval.py`: three independent, paired
+  comparisons (ISCO on `job_title` with a real gold label; ISIC/ISCED on
+  `industry_text`/`education_text`, no gold label in this benchmark so
+  only a prediction-agreement rate is reportable there — see Item 1's own
+  entry above for why no joint-labelled dataset exists).
+
+  **Result: ISCO 26.67% (16/60) baseline vs. 28.33% (17/60) with query
+  planning — McNemar b=1, c=2, p=1.0, not remotely significant** (only 3
+  of 60 cases were even discordant). **ISIC: query planning changed the
+  predicted section in 0/60 cases. ISCED: query planning changed the
+  predicted level in 0/60 cases.** Both completely inert on this sample —
+  not "small effect," zero cases where the mechanism's own output even
+  differed from doing nothing. This is the **9th independent
+  confirmed-null result** in this project for "add more sophistication on
+  top of retrieval," directly extending Item 1's finding two entries
+  above from the same session. Real artifacts: `eval/results/
+  synthetic_query_planning_eval/{isco,isic,isced}_results.csv`.
+
+  **A real, disclosed operational cost, separate from the accuracy
+  result**: this run took roughly 2 hours for 60 cases (vs. Item 1's ~90
+  minutes for a lighter-weight check) — query planning's own decompose
+  step adds a full LLM call per case on top of the classifier's normal
+  reranking, and this machine's now-familiar low-RAM ceiling (see
+  multiple entries elsewhere in this file) pushed many of those calls
+  into their 120s timeout under memory pressure from `llama-server`
+  (Ollama's inference process, confirmed at ~1.4GB resident during the
+  run) competing with the eval script's own loaded embedding models. Not
+  a code bug — legitimate, expected resource cost of doing more LLM work
+  per case, restated honestly rather than smoothed over.
+
+  **Honest limits, same caveats as Item 1**: n=60, English only,
+  synthetic. Given BOTH Item 1 and Item 2 came back null on the same
+  benchmark, the honest working conclusion so far is that this
+  benchmark's cases are largely not the kind of case either mechanism was
+  designed to catch (ambiguous-enough-to-trigger, cross-standard-
+  incompatible-enough-to-fix) — which is itself informative about how
+  rare that combination is in practice, not just a statement about these
+  two mechanisms specifically.
 
 - **Real CrewAI hierarchical delegation, 2026-09-12 (Item 3, final part of
   the 3-part request)**: until now, this codebase's 18+
