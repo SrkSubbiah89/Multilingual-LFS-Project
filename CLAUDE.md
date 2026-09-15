@@ -1542,6 +1542,58 @@ dedicated passing tests.
   usefully, or just add cost without changing the outcome — still
   unmeasured.
 
+  **Correction, 2026-09-14/15, prompted directly by "check where there is
+  wrong happening how to improve it"**: the 26.67% baseline above used
+  `ISCOClassifier()` with every default, which is `LEGACY_PROFILE`
+  (21.19% on the full WISCO heldout) — NOT this project's own real
+  best-tested config, `official_ilo2021_v1_enriched_e5large` (40.95%).
+  This wasn't a deliberate scope choice, just an unexamined default — a
+  real gap, caught only when asked directly to look for one. Re-ran with
+  `--isco-profile official_ilo2021_v1_enriched_e5large` (both eval
+  scripts gained this flag, default unchanged so every existing
+  invocation is byte-for-byte unaffected).
+
+  **A second, independent real bug found while re-running, not the
+  coordination mechanism's fault**: the first e5-large re-run's own
+  process sat idle for an extended period mid-run (this machine went to
+  sleep), and on wake, **Qdrant silently entered a broken state — Docker
+  reported the container "healthy" while its API returned empty replies
+  (`curl` exit 52, HTTP 000)** — a real gap between Docker's shallow
+  health check and actual service liveness. `ISCOClassifier._empty_result()`
+  (its documented, correct fallback for "the store genuinely found no
+  candidates") fired for the last 13/60 cases as a result — indistinguishable
+  in the output CSV from a real negative result unless inspected directly.
+  Confirmed directly (not assumed) by checking `baseline_isco_code` for
+  blank strings and cross-referencing against `docker ps`/`curl -m 15`.
+  Fixed by restarting the Qdrant container (`docker restart lfs_qdrant`)
+  and verifying a real, populated `/collections` response before
+  trusting it again — the classifier code itself needed no change; this
+  is an infrastructure-liveness gap, not a bug in Item 1's logic. A
+  second attempt to re-run just the 13 affected cases immediately after
+  the restart **segfaulted** (exit 139, the same well-documented e5-large-
+  under-memory-pressure crash class already tracked elsewhere in this
+  file) — checked free memory before retrying rather than blindly
+  re-running (985MB free, genuinely improved from whatever triggered the
+  first crash, not the same conditions), and the retry succeeded cleanly
+  with zero further issues.
+
+  **Corrected, complete, final result (n=60, enriched_e5large,
+  `eval/results/synthetic_coordination_benchmark/
+  eval_results_enriched_e5large_final.csv`)**: **48.33% (29/60) baseline
+  vs. 48.33% (29/60) coordinated — still byte-identical, 0/60 cases
+  changed, 0/60 ISIC cross-hint changes, 0/60 ISCO revisions.** The
+  stronger, real baseline (48.33%, consistent with the project's own
+  40.95% full-scale WISCO number, within expected sampling variance for
+  n=60 English-only synthetic data) makes this a **more rigorous null
+  result, not a weaker one** — the original 26.67%-baseline run left open
+  the honest possibility that a weak baseline (more room to be "fixed")
+  might behave differently from a strong one; this rules that out
+  directly. The original, corrupted-partial run
+  (`eval_results_enriched_e5large.csv`, 47 real + 13 empty rows) is kept
+  in the repo alongside the corrected file, not deleted, as a disclosed
+  record of the real infrastructure bug found, per this project's own
+  standing "disclose, don't hide" discipline.
+
 - **Multi-step agentic retrieval, 2026-09-12 (Item 2 of the same 3-part
   request)**: generalizes the existing single-shot corrective-retry
   pattern (`enable_corrective_retry` — reformulate once, re-retrieve,

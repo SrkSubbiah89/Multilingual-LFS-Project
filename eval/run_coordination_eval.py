@@ -27,6 +27,20 @@ exact test on the paired outcomes, and secondary counts (how often the
 ISIC cross-hint actually changed the ISIC result, how often the backward
 coordinator actually revised ISCO) -- an honest "how often did this even
 have a chance to matter" number, not just the aggregate accuracy delta.
+
+--isco-profile (default: ISCOClassifier's own default, LEGACY_PROFILE):
+real, live-caught gap (2026-09-14) -- the first run of this script used
+ISCOClassifier() with every default, which is LEGACY_PROFILE (21.19% on
+the full WISCO heldout), NOT this project's own proven best-tested
+config (official_ilo2021_v1_enriched_e5large, 40.95%). That first run's
+26.67% baseline on n=60 was consistent with the weaker profile, not a
+sign anything was wrong with the coordination mechanisms -- but it also
+means that first comparison wasn't run against the strongest baseline
+this project actually has. Pass
+--isco-profile official_ilo2021_v1_enriched_e5large to re-run against
+the real best config. Needs ~1-1.5GB free RAM for multilingual-e5-large
+-- this exact machine has a documented segfault history under memory
+pressure loading that model (see CLAUDE.md); check free memory first.
 """
 
 from __future__ import annotations
@@ -50,6 +64,12 @@ def main() -> None:
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--isco-profile", default=None,
+        help="isco_catalogue_profile to pass to ISCOClassifier (default: its own default, "
+             "LEGACY_PROFILE). Pass official_ilo2021_v1_enriched_e5large for this project's "
+             "real best-tested config.",
+    )
     args = parser.parse_args()
 
     with args.input.open(encoding="utf-8", newline="") as f:
@@ -64,7 +84,8 @@ def main() -> None:
     from backend.agents.isced_classifier import ISCEDClassifier
     from backend.agents.cross_standard_coordinator import maybe_revise_isco_with_cross_signal
 
-    isco_clf = ISCOClassifier()
+    isco_kwargs = {"isco_catalogue_profile": args.isco_profile} if args.isco_profile else {}
+    isco_clf = ISCOClassifier(**isco_kwargs)
     isic_baseline_clf = ISICClassifier()
     isic_hinted_clf = ISICClassifier(use_cross_classification_hints=True)
     isced_clf = ISCEDClassifier()

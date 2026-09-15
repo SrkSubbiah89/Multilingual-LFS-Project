@@ -50,6 +50,12 @@ def main() -> None:
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--isco-profile", default=None,
+        help="isco_catalogue_profile for both ISCO classifiers (default: ISCOClassifier's own "
+             "default, LEGACY_PROFILE). Pass official_ilo2021_v1_enriched_e5large for this "
+             "project's real best-tested config.",
+    )
     args = parser.parse_args()
 
     with args.input.open(encoding="utf-8", newline="") as f:
@@ -63,8 +69,9 @@ def main() -> None:
     from backend.agents.isic_classifier import ISICClassifier
     from backend.agents.isced_classifier import ISCEDClassifier
 
-    isco_baseline = ISCOClassifier()
-    isco_planned = ISCOClassifier(enable_query_planning=True)
+    isco_kwargs = {"isco_catalogue_profile": args.isco_profile} if args.isco_profile else {}
+    isco_baseline = ISCOClassifier(**isco_kwargs)
+    isco_planned = ISCOClassifier(enable_query_planning=True, **isco_kwargs)
     isic_baseline = ISICClassifier()
     isic_planned = ISICClassifier(enable_query_planning=True)
     isced_baseline = ISCEDClassifier()
