@@ -1961,6 +1961,21 @@ after Items 1+2, 2,567 after all three) — every intermediate count
 matched hand-computed expectations exactly, not just the final total.
 Same 1 deselected slow test throughout.
 
+**2026-09-14/16, requested reliability check ("atleast 10 run full and
+make the system reliable and consistant")**: real, full suite re-run
+**10 times** — default seed, then explicit `PYTHONHASHSEED` 0, 1, 2,
+random, 10, 11, 12, 13, random again (the same methodology already used
+once before in this project, 2026-08-27, extended from 9 repeats to a
+full 10). Every single run: **2,567 passed, 1 deselected, 0 failed**,
+byte-identical (mean 758s, range 680–820s — the variance is wall-clock
+timing under this session's own concurrent eval/demo-service load
+documented above, not test outcome variance). No flakiness, no
+hash-order non-determinism, in either this run or the 9-run check from
+three weeks earlier — two independent confirmations of the same
+property, three weeks apart, across a substantial amount of intervening
+code change (the entire multi-agent RAG addition sits between them).
+Same 1 deselected slow test throughout.
+
 ## Citation policy — unchanged, still correct
 
 Do not add a citation (paper, dataset, standard) unless independently

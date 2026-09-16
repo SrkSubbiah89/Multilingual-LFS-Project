@@ -80,8 +80,10 @@ conversational session.
 \noindent\textbf{C5 --- A tested, deployable system.}
 A Dockerised multi-service stack, an 11-table PostgreSQL schema, audit
 logging, and bilingual report generation, backed by a real, repeatedly-run
-test suite (2,508 tests passing, 1 deselected, at the time of this thesis's
-writing --- not the 18-file figure an earlier internal draft stated).
+test suite (2,567 tests passing, 1 deselected, at the time of this thesis's
+writing --- not the 18-file figure an earlier internal draft stated ---
+confirmed byte-identical across 10 consecutive full runs under varying
+\texttt{PYTHONHASHSEED} values, Section~\ref{sec:impl-testing}).
 
 % ------------------------------------------------------------
 \section{Limitations}

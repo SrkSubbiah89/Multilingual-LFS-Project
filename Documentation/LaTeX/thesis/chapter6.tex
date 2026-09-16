@@ -212,6 +212,116 @@ ISIC/ISCED-F benchmark's own blocked re-run. The 60-case result is
 reported as exactly what it is: a real, statistically significant,
 promising preview finding, pending full-scale confirmation.
 
+\subsection{Cross-Standard Coordination and Multi-Step Query Planning: Two
+Further Confirmed-Null Results}
+\label{sec:results-coordination}
+
+Every classifier evaluated above (Section~\ref{sec:res-isco}) retrieves
+independently: ISCO-08, ISIC~Rev.4, and ISCED are each classified from
+their own free-text field with no cross-talk between them, and the
+Semantic Relation Engine (Section~\ref{sec:arch-sre}) only ever
+\emph{scores} the three already-fixed results after the fact --- it never
+revises one classifier's output using another's evidence. Two further,
+additive, opt-in mechanisms were built and evaluated to test whether real
+cross-standard coordination could do better.
+
+\textbf{Mechanism 1 --- deterministic cross-standard coordination.} A
+new, pure-Python module reconsiders an already-uncertain ISCO primary
+result (fired only when \texttt{hitl\_required} is already \texttt{True})
+using the now-known ISIC section and ISCED level: if the primary is
+cross-standard-incompatible with both, and one of ISCO's own
+already-computed alternatives \emph{is} compatible, the alternative is
+promoted. A symmetric forward-direction mechanism lets an already-known
+ISCO code bias an ambiguous ISIC guess toward a compatible section. Both
+reuse the Semantic Relation Engine's own already-validated compatibility
+logic rather than a second hand-built crosswalk table, and both are
+wired behind a single opt-in flag, off by default.
+
+\textbf{Mechanism 2 --- multi-step query planning.} A generalisation of
+the single-shot corrective-retry pattern already evaluated in
+Section~\ref{sec:res-isco}: instead of one LLM-proposed reformulation, an
+ambiguous description is decomposed into up to two sub-descriptions, each
+re-retrieved independently, and the results reconciled by a disclosed,
+provisional highest-score-with-frequency-tiebreak rule. Applied to all
+three classifiers (ISCED's version, like its own corrective retry, is
+scoped to the FIELD dimension only --- attainment LEVEL stays
+deterministic by design).
+
+\textbf{Evaluation data.} Neither mechanism can be tested against WISCO:
+directly checking the full 18,747-row heldout export confirmed 0 rows
+carry any \texttt{gold\_isic}/\texttt{gold\_isced} value at all --- WISCO
+is occupation-only, with no paired industry/education text for the same
+respondent. A small, disclosed synthetic combined benchmark ($n=60$,
+English, real ISCO-08 codes each paired with an LLM-generated,
+definition-grounded (job title, industry, education) triple --- the same
+taxonomy-grounded paraphrase methodology already used and disclosed for
+the ISIC/ISCED-F benchmark in Section~\ref{sec:res-isic-isced}) was built
+to close this specific gap.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Mechanism & Baseline & With mechanism & McNemar $p$ \\
+\midrule
+Coordination (legacy profile) & 26.67\% & 26.67\% & $1.000$ \\
+Coordination (enriched + e5-large) & 48.33\% & 48.33\% & $1.000$ \\
+Query planning (ISCO) & 26.67\% & 28.33\% & $1.000$ \\
+\bottomrule
+\end{tabular}
+\caption{Cross-standard coordination and query planning, $n=60$ synthetic
+combined benchmark. Both rows of coordination are byte-identical, 0 of 60
+cases changed either direction; query planning's nominal $+1.66$pp comes
+from only 3 discordant cases out of 60 and is not distinguishable from
+noise. Query planning changed the ISIC/ISCED prediction in 0 of 60 cases
+for both classifiers.}
+\end{table}
+
+\textbf{Read plainly: neither mechanism moved accuracy at all.} The
+coordination result was deliberately re-run against this project's own
+strongest, best-tested retrieval configuration
+(enriched catalogue text + \texttt{multilingual-e5-large},
+Section~\ref{sec:res-isco}) specifically to rule out the possibility that
+a weak baseline was simply leaving no legitimate room for a fix to matter
+--- the result held: still byte-identical, still zero cases changed
+either way. This extends the project's now-repeated finding that
+additional processing sophistication on top of retrieval does not move
+ISCO-08 accuracy (Section~\ref{sec:res-isco}'s six independent reranking
+and corrective-retry nulls) to a genuinely different mechanism class ---
+cross-standard coordination and multi-step decomposition, not just
+candidate reranking or single-shot reformulation --- bringing the total
+to eight independent confirmed-null results for this general hypothesis
+across this thesis's evaluation work.
+
+A real infrastructure bug was found and fixed while re-running the
+coordination check on the stronger profile: the evaluation process was
+idle long enough for the development machine to sleep, and on waking, the
+containerised vector database entered a state Docker's own shallow health
+check reported as healthy while its API returned empty replies --- 13 of
+60 cases silently received a documented, correct-in-isolation ``no
+candidates found'' fallback rather than a real classification, which
+looked identical to a genuine negative result in the output file until
+inspected directly. Restarting the affected container and re-running only
+the corrupted subset (after confirming, not assuming, that available
+memory had genuinely recovered from whatever triggered a segmentation
+fault on the first retry attempt) produced the corrected, complete result
+reported above. This is disclosed here for the same reason every other
+environment-level constraint in this thesis is disclosed rather than
+smoothed over: a null result is only informative if the pipeline that
+produced it is known to have actually run.
+
+\textbf{Honest scope}: $n=60$, English only, synthetic --- a real first
+signal for a question no existing dataset in this project could answer,
+not a heldout-grade confirmation. A third, more architecturally ambitious
+mechanism --- routing classification through a real CrewAI hierarchical
+delegation process, with a manager model deciding which classifier to
+invoke rather than a fixed call order --- was also implemented (the first
+use of CrewAI's hierarchical process anywhere in this codebase) but not
+yet evaluated at the time of writing; given the null results above, the
+open question it would answer is whether non-deterministic delegation can
+find anything the deterministic coordinator's conservative trigger
+condition missed, not whether coordination helps in general.
+
 % ------------------------------------------------------------
 \section{ISIC Rev.~4 / ISCED-F 2013 Classification}
 \label{sec:res-isic-isced}

@@ -938,6 +938,79 @@ evaluation commands on different, less memory-constrained hardware (the
 cloud migration in §8.2 is a step toward exactly that, independent of
 whether it was originally motivated by this).
 
+### 12.8 Multi-agent RAG: cross-standard coordination and query planning — two further confirmed nulls
+
+Three additive, opt-in mechanisms were built 2026-09-12 through 09-15,
+all defaulting to off so no existing behaviour changed:
+
+1. **Deterministic cross-standard coordination**
+   (`backend/agents/cross_standard_coordinator.py`) — reconsiders an
+   already-uncertain ISCO primary using ISIC/ISCED evidence once known
+   (backward), and lets a known ISCO code bias an ambiguous ISIC guess
+   (forward). Reuses the SRE's own validated compatibility logic, no
+   second crosswalk table.
+2. **Multi-step query planning** (`backend/agents/query_planner.py`) —
+   generalises the existing single-shot corrective retry into
+   decompose-into-sub-queries-and-reconcile, applied to all three
+   classifiers.
+3. **Real CrewAI hierarchical delegation**
+   (`backend/agents/hierarchical_classification_crew.py`) — the first
+   use anywhere in this codebase of `process=Process.hierarchical` +
+   `manager_llm` (every one of the 18+ other `Crew(...)` sites defaults
+   to sequential). Kept standalone, not wired into the live per-turn
+   path; built and unit-tested but not yet evaluated for accuracy.
+
+**Evaluation data problem, solved before anything could be measured**:
+directly checked (not assumed) whether WISCO carries the industry/
+education text needed to test cross-standard coordination — confirmed
+0 of 18,747 heldout rows have any `gold_isic`/`gold_isced` value at all.
+A new, disclosed, $n=60$, English-only synthetic combined benchmark
+(`eval/generate_synthetic_coordination_benchmark.py`) was built instead,
+using the same taxonomy-grounded LLM-paraphrase method already used for
+the ISIC/ISCED-F benchmark (§12.5) — real ISCO-08 codes each paired with
+an LLM-generated, definition-grounded (job title, industry, education)
+triple.
+
+**Result: both mechanisms came back null.** Coordination: 26.67% baseline
+vs. 26.67% coordinated on the (unintentionally) weak default catalogue
+profile — then, re-run against this project's own real best-tested
+config (enriched catalogue + e5-large, §12.4) specifically to rule out
+"maybe a weak baseline just has more room to be fixed": **48.33% vs.
+48.33%, still byte-identical, 0/60 cases changed either direction.**
+Query planning: ISCO 26.67% → 28.33% (McNemar $p=1$, 3 discordant cases
+out of 60 — noise, not signal); ISIC and ISCED predictions were changed
+in 0/60 cases by query planning for either classifier. This extends the
+project's already-repeated "more processing sophistication doesn't move
+accuracy" pattern (§12.4's six independent reranking/corrective-retry
+nulls) to two structurally different mechanisms, bringing the total to
+**eight independent confirmed-null results**.
+
+**Two real bugs found and fixed along the way, not glossed over**:
+
+- A first `HierarchicalClassificationCoordinator` smoke check against a
+  real local Ollama manager returned a value (`"5310, null"`) that
+  parsed as valid JSON but was not a real classification code, while
+  still reporting success — fixed by adding real field-shape validation
+  before trusting any manager-produced value.
+- Re-running the coordination check on the stronger profile hit a real,
+  live infrastructure bug: the eval process sat idle long enough for the
+  dev machine to sleep, and on waking, the containerised vector database
+  reported itself "healthy" to Docker while its actual API returned
+  empty replies — 13 of 60 cases silently received a correct-in-isolation
+  "no candidates" fallback instead of a real prediction, indistinguishable
+  from a genuine miss without direct inspection. Fixed by restarting the
+  container and re-running only the affected subset (after confirming
+  memory had genuinely recovered from a segmentation fault on the first
+  retry attempt, not assuming it had).
+
+**Honest scope**: $n=60$, English only, synthetic — a real first signal
+for a question no existing dataset could previously answer, not a
+heldout-grade confirmation. Item 3 (real delegation) is built and tested
+but not yet evaluated; the open, sharper question it would answer is
+whether a non-deterministic manager finds anything the deterministic
+coordinator's conservative trigger condition — which never fired once
+across 60 cases — misses, not whether coordination helps in general.
+
 ## 13. Data model & API surface
 
 **Database**: PostgreSQL, 11 tables — `users`, `otp_codes`,
