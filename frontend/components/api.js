@@ -59,13 +59,21 @@ export function createSession(token, language) {
   });
 }
 
-export function sendMessage(token, sessionId, message, preferredLanguage = null) {
+// `correction`, when passed, is { field, value } from the VALIDATING-state
+// structured field picker (see chat.js's handleStructuredCorrection) — sent
+// alongside `message` so the backend applies it deterministically instead of
+// re-parsing free text (see MessageBody.correction_field/correction_value).
+export function sendMessage(token, sessionId, message, preferredLanguage = null, correction = null) {
   return request(`/survey/sessions/${sessionId}/message`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       message,
       ...(preferredLanguage && { preferred_language: preferredLanguage }),
+      ...(correction?.field && correction?.value != null && {
+        correction_field: correction.field,
+        correction_value: correction.value,
+      }),
     }),
   });
 }

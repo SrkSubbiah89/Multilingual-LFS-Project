@@ -280,6 +280,20 @@ class SurveyResponseOut(BaseModel):
 class MessageBody(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     preferred_language: Optional[str] = None
+    # Structured correction picker (2026-09-16) -- see
+    # ConversationManager._transition's own docstring for why this exists:
+    # free-text correction parsing is inherently ambiguous (a real,
+    # live-reported bug -- a respondent naming a field in its natural
+    # singular form, "skill", went unrecognised against an alias list that
+    # only had "skills" -- is exactly the class of failure this sidesteps).
+    # When the frontend's field picker is used instead of typing a
+    # correction, it sends the exact field key (from MessageOut's own
+    # collected_data keys) and the new value here; `message` is still sent
+    # too, as the human-readable text shown in the chat transcript. Both
+    # optional and independent of `message` -- omitted, behaviour is
+    # byte-for-byte the existing free-text path.
+    correction_field: Optional[str] = None
+    correction_value: Optional[str] = None
 
 
 class EntityOut(BaseModel):
@@ -500,6 +514,11 @@ class MessageOut(BaseModel):
     emotional_support_message: Optional[str] = None  # shown to interviewer when distress detected
     validation_issues: list[str] = []                # rule violations when in VALIDATING state
     is_data_valid: Optional[bool] = None             # None outside VALIDATING state
+    # Real field keys -> current values (2026-09-16), so the frontend's
+    # structured correction picker can list actual fields/values without
+    # re-parsing the rendered summary text back into field keys (fragile --
+    # label text isn't guaranteed to reverse-map 1:1 onto a field key).
+    collected_data: dict[str, str] = {}
 
 
 class MessageResponse(BaseModel):
@@ -785,7 +804,12 @@ def _send_message_impl(
     # both to queue/time-out.  Sequential keeps each call within the timeout.
     t_parallel = time.perf_counter()
     lp_result = _empty_lp_result(msg, ctx.language) if skip_ner else lang_proc.process(msg)
-    reply = conv_mgr.process_message(ctx, msg)
+    _structured_correction = (
+        (body.correction_field, body.correction_value)
+        if body.correction_field and body.correction_value
+        else None
+    )
+    reply = conv_mgr.process_message(ctx, msg, structured_correction=_structured_correction)
     t_parallel_ms = int((time.perf_counter() - t_parallel) * 1000)
 
     # Fields set for the first time in this turn
@@ -1400,6 +1424,7 @@ def _send_message_impl(
         emotional_support_message=emotional_support_message,
         validation_issues=validation_issues,
         is_data_valid=is_data_valid,
+        collected_data={k: str(v) for k, v in ctx.collected_data.items() if v is not None},
     )
 
 

@@ -336,6 +336,27 @@ class TestIsConfirmed:
     def test_empty_string_not_confirmed(self, mgr):
         assert mgr._is_confirmed("", "en") is False
 
+    def test_hindi_confirmation(self, mgr):
+        # Real, reproduced bug (2026-09-16): the old \b-anchored regex
+        # never matched this phrase at all, because Devanagari dependent
+        # vowel signs (here, the "ी" in "सही") are Unicode category Mn,
+        # which Python's \b does not treat as a word character -- so the
+        # intended trailing \b never found a word/non-word transition.
+        # See _contains_whole_phrase's own docstring for the full story.
+        assert mgr._is_confirmed("हाँ, यह सही है", "hi") is True
+
+    def test_urdu_confirmation(self, mgr):
+        assert mgr._is_confirmed("ہاں، یہ درست ہے", "ur") is True
+
+    def test_tagalog_confirmation(self, mgr):
+        assert mgr._is_confirmed("Oo, tama na iyan", "tl") is True
+
+    def test_english_no_inside_know_not_confirmed_as_correction(self, mgr):
+        # Guards _contains_whole_phrase against the exact false-positive
+        # plain substring matching would introduce: _CORRECTIONS["en"]
+        # has bare "no", which must not match inside "know".
+        assert mgr._wants_correction("I know the answer", "en") is False
+
 
 # ---------------------------------------------------------------------------
 # FSM transitions — _transition
@@ -544,6 +565,42 @@ class TestTransition:
         assert ctx.state == ConversationState.VALIDATING
         assert ctx.correction_applied is False
         assert ctx.correction_no_target is True
+
+    def test_validating_structured_correction_applies_deterministically(self, mgr, full_ctx, monkeypatch):
+        # Structured field-picker path (2026-09-16): built specifically to
+        # remove the ambiguity that caused the singular/plural bug above --
+        # the frontend already resolved the exact field key, so this must
+        # apply without ever touching _wants_correction/_extract_correction/
+        # _llm_extract_correction (spied to prove neither is called).
+        extract_spy = MagicMock(return_value=False)
+        llm_spy = MagicMock(return_value=False)
+        monkeypatch.setattr(mgr, "_extract_correction", extract_spy)
+        monkeypatch.setattr(mgr, "_llm_extract_correction", llm_spy)
+        full_ctx.state = ConversationState.VALIDATING
+        mgr._transition(
+            full_ctx, "Main Work-Related Skills should be Engineering", "",
+            structured_correction=("main_skills", "Engineering"),
+        )
+        extract_spy.assert_not_called()
+        llm_spy.assert_not_called()
+        assert full_ctx.collected_data["main_skills"] == "Engineering"
+        assert "main_skills" in full_ctx.corrected_fields
+        assert full_ctx.correction_applied is True
+        assert full_ctx.correction_no_target is False
+
+    def test_validating_structured_correction_unknown_field_sets_no_target(self, mgr, full_ctx):
+        # A field key the picker can't legitimately send (not on this
+        # respondent's real path) must not be silently written -- same
+        # "never fabricate/never silently write invalid data" discipline
+        # as the rest of this codebase's correction handling.
+        full_ctx.state = ConversationState.VALIDATING
+        mgr._transition(
+            full_ctx, "irrelevant display text", "",
+            structured_correction=("not_a_real_field", "whatever"),
+        )
+        assert "not_a_real_field" not in full_ctx.collected_data
+        assert full_ctx.correction_applied is False
+        assert full_ctx.correction_no_target is True
 
     def test_completing_is_terminal(self, mgr, ctx):
         ctx.state = ConversationState.COMPLETING

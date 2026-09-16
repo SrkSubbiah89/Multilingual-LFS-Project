@@ -26,6 +26,14 @@ const T = {
     entities: "Entities found",
     stateLabel: "State",
     orType: "or tap an option above",
+    confirmCorrect: "Yes, that's correct",
+    startCorrection: "No, I'd like to correct something",
+    pickFieldPrompt: "Which field would you like to correct?",
+    cancelCorrection: "Cancel",
+    backToFieldList: "← Back",
+    newValuePlaceholder: "Type the new value…",
+    saveCorrection: "Save",
+    currentValue: "Currently:",
   },
   ar: {
     title: "مسح القوى العاملة",
@@ -42,6 +50,14 @@ const T = {
     entities: "الكيانات المكتشفة",
     stateLabel: "الحالة",
     orType: "أو اكتب إجابتك أدناه",
+    confirmCorrect: "نعم، هذا صحيح",
+    startCorrection: "لا، أريد تصحيح شيء ما",
+    pickFieldPrompt: "ما الحقل الذي تريد تصحيحه؟",
+    cancelCorrection: "إلغاء",
+    backToFieldList: "→ رجوع",
+    newValuePlaceholder: "اكتب القيمة الجديدة…",
+    saveCorrection: "حفظ",
+    currentValue: "حاليًا:",
   },
   ur: {
     title: "لیبر فورس سروے",
@@ -58,6 +74,14 @@ const T = {
     entities: "دریافت شدہ ہستیاں",
     stateLabel: "حالت",
     orType: "یا اپنا جواب نیچے ٹائپ کریں",
+    confirmCorrect: "ہاں، یہ درست ہے",
+    startCorrection: "نہیں، میں کچھ درست کرنا چاہتا ہوں",
+    pickFieldPrompt: "آپ کون سا فیلڈ درست کرنا چاہتے ہیں؟",
+    cancelCorrection: "منسوخ کریں",
+    backToFieldList: "← واپس",
+    newValuePlaceholder: "نئی قدر لکھیں…",
+    saveCorrection: "محفوظ کریں",
+    currentValue: "فی الحال:",
   },
   hi: {
     title: "श्रम बल सर्वेक्षण",
@@ -74,6 +98,14 @@ const T = {
     entities: "मिली हस्तियाँ",
     stateLabel: "स्थिति",
     orType: "या नीचे अपना उत्तर टाइप करें",
+    confirmCorrect: "हाँ, यह सही है",
+    startCorrection: "नहीं, मुझे कुछ ठीक करना है",
+    pickFieldPrompt: "आप कौन सा फ़ील्ड ठीक करना चाहते हैं?",
+    cancelCorrection: "रद्द करें",
+    backToFieldList: "← वापस",
+    newValuePlaceholder: "नया मान लिखें…",
+    saveCorrection: "सहेजें",
+    currentValue: "अभी:",
   },
   tl: {
     title: "Labour Force Survey",
@@ -90,6 +122,14 @@ const T = {
     entities: "Mga nahanap na entity",
     stateLabel: "Katayuan",
     orType: "o i-type ang iyong sagot sa ibaba",
+    confirmCorrect: "Oo, tama na iyan",
+    startCorrection: "Hindi, may gusto akong itama",
+    pickFieldPrompt: "Aling field ang gusto mong itama?",
+    cancelCorrection: "Kanselahin",
+    backToFieldList: "← Bumalik",
+    newValuePlaceholder: "I-type ang bagong halaga…",
+    saveCorrection: "I-save",
+    currentValue: "Kasalukuyan:",
   },
 };
 
@@ -507,6 +547,23 @@ export default function ChatPage() {
   const sessionStartRef               = useRef(Date.now());
   const prevTotalRef                  = useRef(null);
 
+  // Structured correction picker (VALIDATING state) — see handleStructuredCorrection.
+  // collectedData holds the real field_key -> value pairs from the backend
+  // (MessageOut.collected_data), so the picker lists actual fields rather
+  // than re-parsing the rendered summary text back into field keys.
+  const [collectedData, setCollectedData]     = useState({});
+  const [correctionMode, setCorrectionMode]   = useState(null);   // null | "picking-field" | "picking-value"
+  const [correctingField, setCorrectingField] = useState(null);   // field key once chosen
+  const [correctionInput, setCorrectionInput] = useState("");
+
+  // Sidebar declutter (2026-09-16): the two long per-row lists default open
+  // (byte-identical to prior behaviour, including for the thesis demo) but
+  // are now collapsible, since they're the densest, least moment-to-moment
+  // content in the sidebar — a user who finds the sidebar too busy can
+  // collapse them without anything being unilaterally hidden by default.
+  const [sectionStatusOpen, setSectionStatusOpen]     = useState(true);
+  const [agentActivationOpen, setAgentActivationOpen] = useState(true);
+
   const messagesEndRef  = useRef(null);
   const inputRef        = useRef(null);
   const sessionStarted  = useRef(false);
@@ -558,6 +615,10 @@ export default function ChatPage() {
   const processResponse = useCallback((res, prevTotal) => {
     if (res.state) setFsmState(res.state);
     setNextField(res.next_field || null);
+    setCollectedData(res.collected_data || {});
+    setCorrectionMode(null);
+    setCorrectingField(null);
+    setCorrectionInput("");
     if (res.survey_progress) {
       setSurveyProgress(res.survey_progress);
       const newTotal = res.survey_progress.total;
@@ -682,6 +743,42 @@ export default function ChatPage() {
       .finally(() => { setSending(false); setInput(""); inputRef.current?.focus(); });
   }, [sending, completed, sessionId, token, lang, processResponse, router]);
 
+  // ── Structured correction (VALIDATING field picker) ─────────────────────────
+  // Sends the exact field key + new value the respondent picked, alongside a
+  // human-readable display string for the chat transcript. The backend applies
+  // this deterministically (ConversationManager._transition's structured_correction
+  // path) instead of re-parsing free text -- see MessageBody.correction_field.
+  // Built specifically to remove the ambiguity that caused a real, live-reported
+  // bug: a free-text correction naming a field in its natural singular form
+  // ("skill" vs. the alias list's "skills") went unrecognised entirely.
+  const handleStructuredCorrection = useCallback((fieldKey, value) => {
+    if (sending || completed || !sessionId || !value?.trim()) return;
+    const label = PREFILL_LABELS[fieldKey] || fieldKey;
+    const displayText = `${label} → ${value.trim()}`;
+    setMessages(prev => [...prev, { role: "user", text: displayText }]);
+    setCorrectionMode(null);
+    setCorrectingField(null);
+    setCorrectionInput("");
+    setSending(true);
+    const prevTotal = prevTotalRef.current;
+    sendMessage(token, sessionId, displayText, lang, { field: fieldKey, value: value.trim() })
+      .then((res) => {
+        const meta = buildMeta(res);
+        setMessages(prev => [...prev, { role: "assistant", text: res.reply, meta }]);
+        setLastMeta(meta);
+        processResponse(res, prevTotal);
+        if (res.session_completed) {
+          setCompleted(true);
+          setTimeout(() => router.push(`/report?session=${sessionId}`), 2500);
+        }
+      })
+      .catch(() => {
+        setMessages(prev => [...prev, { role: "error", text: T[getLangKey(lang)].sendError }]);
+        setTimeout(() => setMessages(prev => prev.filter(m => m.role !== "error")), 4000);
+      })
+      .finally(() => { setSending(false); inputRef.current?.focus(); });
+  }, [sending, completed, sessionId, token, lang, processResponse, router]);
+
   // ── Language change ───────────────────────────────────────────────────────
   const handleLangChange = useCallback((newLang) => {
     setLang(newLang);
@@ -784,6 +881,15 @@ export default function ChatPage() {
         )}
 
         {/* ── Progress strip ────────────────────────────────────────────── */}
+        {/* The "LLM Processing" state used to be its own separate banner
+            that appeared/disappeared below this one on every turn, shifting
+            the whole chat layout up and down while typing. Folded into a
+            trailing pulse on this same row instead (2026-09-16 decluttering
+            pass) -- one stable row instead of two popping in and out. The
+            per-turn message-list typing dots (below) and the sidebar's own
+            "LLM Role in This Step" panel already cover this turn's LLM
+            activity in more detail, so nothing here is a net loss of
+            information, just fewer moving pieces above the chat itself. */}
         {surveyProgress && surveyProgress.total > 2 && !completed && (
           <div style={{ background: C.white, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}
                className="px-4 py-2">
@@ -797,18 +903,15 @@ export default function ChatPage() {
                 <div className="rounded-full" style={{ height: 5, background: C.green, width: `${surveyProgress.pct}%`, transition: "width 0.5s" }} />
               </div>
               <span style={{ fontFamily: MONO, color: C.green, fontSize: 11, fontWeight: 700 }}>{surveyProgress.pct}%</span>
+              {sending && (
+                <span style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.amber, flexShrink: 0 }} className="animate-pulse" />
+                  <span style={{ color: C.amber, fontSize: 10, fontFamily: MONO }} className="hidden sm:inline">
+                    {LLM_ROLES[fsmState] ?? "Processing…"}
+                  </span>
+                </span>
+              )}
             </div>
-          </div>
-        )}
-
-        {/* ── LLM processing strip ─────────────────────────────────────── */}
-        {sending && (
-          <div style={{ background: C.amberBg, borderBottom: `1px solid ${C.amberBd}`, flexShrink: 0 }}
-               className="px-4 py-1.5 flex items-center gap-2">
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.amber, flexShrink: 0 }} className="animate-pulse" />
-            <span style={{ color: "#92400e", fontSize: 11, fontWeight: 500 }}>
-              LLM Processing — {LLM_ROLES[fsmState] ?? "Generating response…"}
-            </span>
           </div>
         )}
 
@@ -879,6 +982,110 @@ export default function ChatPage() {
                     ))}
                   </div>
                   <p style={{ color: C.faint, fontSize: 11, textAlign: "center", marginTop: 6 }}>{t.orType}</p>
+                </div>
+              </div>
+            )}
+
+            {/* ── VALIDATING: confirm / structured correction picker ──────── */}
+            {/* Built 2026-09-16 specifically to remove correction ambiguity at
+                the source: picking a field + value here sends both explicitly
+                (MessageBody.correction_field/correction_value), so the backend
+                never has to guess a field name out of free text at all. Free
+                text via the input box below still works exactly as before --
+                this is purely additive, not a replacement. */}
+            {!completed && !sending && fsmState === "validating" && (
+              <div style={{ background: C.white, borderTop: `1px solid ${C.border}`, padding: "10px 16px 8px", flexShrink: 0 }}>
+                <div className="max-w-3xl mx-auto">
+
+                  {correctionMode === null && (
+                    <div className={`flex flex-wrap gap-2 ${isAr ? "justify-end" : "justify-start"}`}>
+                      <button onClick={() => handleQuickReply(t.confirmCorrect)}
+                        style={{ border: `1px solid ${C.green}`, color: "#fff", background: C.green, borderRadius: 99, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                        ✓ {t.confirmCorrect}
+                      </button>
+                      <button onClick={() => setCorrectionMode("picking-field")}
+                        style={{ border: `1px solid ${C.border}`, color: C.text, background: C.white, borderRadius: 99, padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+                        ✎ {t.startCorrection}
+                      </button>
+                    </div>
+                  )}
+
+                  {correctionMode === "picking-field" && (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: C.text, margin: 0 }}>{t.pickFieldPrompt}</p>
+                        <button onClick={() => setCorrectionMode(null)}
+                          style={{ color: C.muted, fontSize: 11, background: "none", border: "none", cursor: "pointer" }}>
+                          {t.cancelCorrection}
+                        </button>
+                      </div>
+                      <div style={{ maxHeight: 220, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 10, background: C.panel }}>
+                        {Object.keys(collectedData)
+                          .sort((a, b) => {
+                            const sa = SECTIONS.findIndex(s => s.id === FIELD_TO_SECTION[a]);
+                            const sb = SECTIONS.findIndex(s => s.id === FIELD_TO_SECTION[b]);
+                            return (sa === -1 ? 99 : sa) - (sb === -1 ? 99 : sb);
+                          })
+                          .map(key => (
+                            <button key={key}
+                              onClick={() => { setCorrectingField(key); setCorrectionInput(""); setCorrectionMode("picking-value"); }}
+                              style={{ width: "100%", textAlign: isAr ? "right" : "left", display: "flex", justifyContent: "space-between", gap: 8, padding: "8px 12px", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontSize: 12 }}
+                              onMouseEnter={e => { e.currentTarget.style.background = C.greenLt; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                              <span style={{ color: C.text, fontWeight: 500 }}>{PREFILL_LABELS[key] || key}</span>
+                              <span style={{ color: C.faint, fontFamily: MONO, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{collectedData[key]}</span>
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {correctionMode === "picking-value" && correctingField && (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: C.text, margin: 0 }}>
+                          {PREFILL_LABELS[correctingField] || correctingField}
+                          <span style={{ color: C.faint, fontWeight: 400, marginLeft: 8 }}>
+                            {t.currentValue} {collectedData[correctingField]}
+                          </span>
+                        </p>
+                        <button onClick={() => setCorrectionMode("picking-field")}
+                          style={{ color: C.muted, fontSize: 11, background: "none", border: "none", cursor: "pointer" }}>
+                          {t.backToFieldList}
+                        </button>
+                      </div>
+
+                      {QUICK_OPTIONS[correctingField] ? (
+                        <div className={`flex flex-wrap gap-2 ${isAr ? "justify-end" : "justify-start"}`}>
+                          {(QUICK_OPTIONS[correctingField][getLangKey(lang)] || QUICK_OPTIONS[correctingField].en).map(opt => (
+                            <button key={opt} onClick={() => handleStructuredCorrection(correctingField, opt)}
+                              style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 99, padding: "5px 12px", fontSize: 12, fontWeight: 500, background: C.white, cursor: "pointer" }}
+                              onMouseEnter={e => { e.target.style.background = C.green; e.target.style.color = "#fff"; }}
+                              onMouseLeave={e => { e.target.style.background = C.white; e.target.style.color = C.green; }}>
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <form onSubmit={e => { e.preventDefault(); handleStructuredCorrection(correctingField, correctionInput); }}
+                              style={{ display: "flex", gap: 8 }}>
+                          <input
+                            autoFocus
+                            dir={isAr ? "rtl" : "ltr"}
+                            value={correctionInput}
+                            onChange={e => setCorrectionInput(e.target.value)}
+                            placeholder={t.newValuePlaceholder}
+                            style={{ flex: 1, fontFamily: SANS, fontSize: 13, padding: "8px 12px", background: "#f9fafb", border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, outline: "none" }}
+                          />
+                          <button type="submit" disabled={!correctionInput.trim()}
+                            style={{ background: C.green, color: "#fff", border: "none", borderRadius: 10, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: correctionInput.trim() ? 1 : 0.4, flexShrink: 0 }}>
+                            {t.saveCorrection}
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  )}
+
                 </div>
               </div>
             )}
@@ -982,9 +1189,14 @@ export default function ChatPage() {
 
             {/* ── SECTION STATUS ────────────────────────────────────────── */}
             <div style={{ borderBottom: `1px solid ${C.border}`, padding: "14px 16px" }}>
-              <p style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
-                Section Status
-              </p>
+              <button onClick={() => setSectionStatusOpen(v => !v)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", padding: 0, cursor: "pointer", marginBottom: sectionStatusOpen ? 10 : 0 }}>
+                <p style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", margin: 0 }}>
+                  Section Status
+                </p>
+                <span style={{ color: C.faint, fontSize: 9 }}>{sectionStatusOpen ? "▲" : "▼"}</span>
+              </button>
+              {sectionStatusOpen && (
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {SECTIONS.map(sec => {
                   const status = getSectionStatus(sec.id);
@@ -1008,7 +1220,8 @@ export default function ChatPage() {
                   );
                 })}
               </div>
-              {skipped > 0 && (
+              )}
+              {sectionStatusOpen && skipped > 0 && (
                 <div style={{ marginTop: 10 }}>
                   <span style={{ background: C.greenLt, border: `1px solid ${C.green}40`, color: C.green, borderRadius: 99, padding: "3px 10px", fontSize: 10, fontWeight: 600 }}>
                     {skipped} questions saved
@@ -1040,9 +1253,14 @@ export default function ChatPage() {
 
             {/* ── AGENT ACTIVATION ──────────────────────────────────────── */}
             <div style={{ padding: "14px 16px" }}>
-              <p style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
-                Agent Activation
-              </p>
+              <button onClick={() => setAgentActivationOpen(v => !v)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", padding: 0, cursor: "pointer", marginBottom: agentActivationOpen ? 10 : 0 }}>
+                <p style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", margin: 0 }}>
+                  Agent Activation
+                </p>
+                <span style={{ color: C.faint, fontSize: 9 }}>{agentActivationOpen ? "▲" : "▼"}</span>
+              </button>
+              {agentActivationOpen && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {AGENTS.map(ag => {
                   const isActive = activeAgentIds.has(ag.id);
@@ -1079,6 +1297,7 @@ export default function ChatPage() {
                   );
                 })}
               </div>
+              )}
             </div>
           </aside>
         </div>

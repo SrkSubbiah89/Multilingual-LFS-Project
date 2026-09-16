@@ -56,6 +56,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 import time
 import urllib.error
 import urllib.request
@@ -252,6 +253,21 @@ _CONFIRMATIONS = {
         "نعم", "صحيح", "موافق", "تأكيد", "هذا صحيح", "كل شيء صحيح", "ممتاز",
         "بالضبط", "أجل", "طبعًا",
     }),
+    # Real gap, found 2026-09-16 while wiring a new VALIDATING-state
+    # confirm button through this exact check: only "en"/"ar" existed here,
+    # so _is_confirmed(text, language) for ur/hi/tl fell back to
+    # _CONFIRMATIONS["en"] via .get()'s default -- a Hindi/Urdu/Tagalog
+    # respondent's own native "yes" was checked against English words and
+    # would never match. Same gap existed in _CORRECTIONS below.
+    "ur": frozenset({
+        "ہاں", "صحیح", "درست", "بالکل", "ٹھیک ہے", "یہ درست ہے", "سب ٹھیک ہے", "جی ہاں",
+    }),
+    "hi": frozenset({
+        "हाँ", "सही", "ठीक", "बिल्कुल", "यह सही है", "सब ठीक है", "जी हाँ",
+    }),
+    "tl": frozenset({
+        "oo", "tama", "tama na", "tama iyan", "sige", "eksakto", "tama iyon",
+    }),
 }
 
 _CORRECTIONS = {
@@ -266,7 +282,61 @@ _CORRECTIONS = {
         "خطأ", "غلط", "تغيير", "تعديل", "تصحيح", "لا", "ليس صحيحًا", "في الواقع", "انتظر",
         "غير", "غيّر", "عدّل", "عدل", "صحح",
     }),
+    # Same gap and fix as _CONFIRMATIONS above.
+    "ur": frozenset({
+        "غلط", "درست نہیں", "تبدیل کریں", "تبدیلی", "درستگی", "نہیں", "ٹھیک نہیں", "غلطی",
+    }),
+    "hi": frozenset({
+        "गलत", "सही नहीं", "बदलें", "बदलाव", "सुधार", "नहीं", "गलती", "ठीक नहीं",
+    }),
+    "tl": frozenset({
+        "mali", "hindi tama", "baguhin", "itama", "hindi", "pagkakamali", "hindi ito tama",
+    }),
 }
+
+
+def _contains_whole_phrase(text: str, phrase: str) -> bool:
+    """Substring containment that behaves like regex \\b...\\b, but also
+    treats Unicode combining marks (category M*, e.g. Devanagari dependent
+    vowel signs) as word-continuing rather than as a boundary.
+
+    Real, reproduced bug (2026-09-16): _is_confirmed/_wants_correction used
+    to build `re.search(r"\\b" + re.escape(phrase) + r"\\b", text)` directly.
+    Python's \\b only recognises `\\w` (letters/digits/underscore) as "word"
+    characters -- a combining vowel sign like Devanagari "ी"/"ै" (category
+    Mn) is NOT `\\w`, even though it's not a real word boundary either (it's
+    glued to the consonant before it). So a Hindi phrase ending in one of
+    these marks -- e.g. "यह सही है", where सही = स + ह + ी -- never matched
+    even when it was a genuine, correctly-spelled substring: the regex
+    engine found no `\\w`->non-`\\w` transition at the intended end position,
+    because the character right there (the vowel sign) was already
+    classified non-`\\w` on both sides. Confirmed directly: `"यह सही है" in
+    "हाँ, यह सही है"` is True, but the old \\b-anchored regex against the
+    same two strings returned no match at all -- silently, for every Hindi
+    confirmation until fixed. Arabic/Urdu happened not to hit this in the
+    phrases tested (their combining marks, harakat, are rarely written in
+    casual text), which is why the bug went unnoticed until Hindi entries
+    were added to _CONFIRMATIONS/_CORRECTIONS.
+
+    Plain, unanchored substring containment was considered and rejected:
+    _CORRECTIONS["en"] has bare "no" as an entry, which would then match
+    inside "know", "not", "cannot", etc. -- a real false-positive regression
+    for English specifically. This keeps that protection while fixing the
+    Devanagari case.
+    """
+    def _is_word_char(ch: str) -> bool:
+        return ch.isalnum() or ch == "_" or unicodedata.category(ch).startswith("M")
+
+    start = text.find(phrase)
+    while start != -1:
+        end = start + len(phrase)
+        before_ok = start == 0 or not _is_word_char(text[start - 1])
+        after_ok = end == len(text) or not _is_word_char(text[end])
+        if before_ok and after_ok:
+            return True
+        start = text.find(phrase, start + 1)
+    return False
+
 
 # ── Comprehensive field schema: valid values + hints for every survey field ───
 # Used in the LLM correction prompt so the model knows accepted values.
@@ -760,6 +830,7 @@ class ConversationManager:
         self,
         ctx: ConversationContext,
         user_message: str,
+        structured_correction: Optional[tuple[str, str]] = None,
     ) -> str:
         """
         Process one conversational turn.
@@ -770,6 +841,9 @@ class ConversationManager:
         4. Append response to history
         5. Evaluate FSM transition
         6. Return the agent response string
+
+        `structured_correction` -- see `_transition`'s own docstring;
+        threaded through unchanged from `survey_routes.py`'s MessageBody.
         """
         ctx.history.append({"role": "user", "content": user_message})
         prev_state = ctx.state
@@ -778,7 +852,7 @@ class ConversationManager:
         # Must happen BEFORE response generation so the response reflects the
         # updated collected_data and state (otherwise the just-answered question
         # gets asked again in the same turn).
-        self._transition(ctx, user_message, agent_response="")
+        self._transition(ctx, user_message, agent_response="", structured_correction=structured_correction)
 
         # ── Step 2: generate the response based on the UPDATED state ─────────
         # GREETING turn always uses the fixed intro so respondents get a warm,
@@ -3301,8 +3375,23 @@ class ConversationManager:
         ctx: ConversationContext,
         user_message: str,
         agent_response: str,
+        structured_correction: Optional[tuple[str, str]] = None,
     ) -> None:
-        """Evaluate and apply FSM state transition after each turn."""
+        """Evaluate and apply FSM state transition after each turn.
+
+        `structured_correction`, added 2026-09-16: an optional (field_key,
+        value) pair the frontend supplies when the respondent picked a
+        field from a structured correction picker (see chat.js) instead of
+        typing free text. Chosen after the exact live bug this session
+        found and fixed above (a correction naming a field in its natural
+        singular form -- "skill" vs. the alias list's "skills" -- was
+        unrecognisable): free-text correction parsing is inherently
+        ambiguous no matter how many alias variants get added, while a
+        structured pick from a list the frontend already rendered (see
+        MessageOut.collected_data) never is. When present, this bypasses
+        _wants_correction / _extract_correction / _llm_extract_correction
+        entirely -- see the VALIDATING branch below.
+        """
         state = ctx.state
 
         if state == ConversationState.GREETING:
@@ -3351,7 +3440,36 @@ class ConversationManager:
                     ctx.state = ConversationState.COLLECTING_INFO
 
         elif state == ConversationState.VALIDATING:
-            if self._is_confirmed(user_message, ctx.language):
+            if structured_correction is not None:
+                # Deterministic path -- see this method's own docstring.
+                # No ambiguity guard is needed here (_is_ambiguous /
+                # _mentions_known_field exist only to protect the free-text
+                # path below from wasting an LLM call on an unresolvable
+                # message): the frontend already resolved both the field
+                # and the value before sending this.
+                ctx.corrected_fields = set()
+                ctx.correction_rejected_field = None
+                ctx.correction_no_target = False
+                f_key, f_val = structured_correction
+                valid_fields, _, _ = self.correction_schema_for(ctx.collected_data)
+                correction_ok = False
+                if f_key in valid_fields and f_val.strip():
+                    canon = self._canonicalize_correction_value(f_key, f_val.strip())
+                    cleaned = _sanity_check_correction_value(f_key, canon)
+                    if cleaned is not None:
+                        ctx.collected_data[f_key] = cleaned
+                        ctx.corrected_fields.add(f_key)
+                        correction_ok = True
+                    else:
+                        ctx.correction_rejected_field = f_key
+                required = self._get_required_fields(ctx.collected_data)
+                if correction_ok and not required.issubset(ctx.collected_data.keys()):
+                    ctx.state = ConversationState.COLLECTING_INFO
+                elif correction_ok:
+                    ctx.correction_applied = True
+                elif not ctx.correction_rejected_field:
+                    ctx.correction_no_target = True
+            elif self._is_confirmed(user_message, ctx.language):
                 ctx.state = ConversationState.COMPLETING
             elif self._wants_correction(user_message, ctx.language):
                 # Apply correction: regex-first (instant), LLM fallback for complex cases.
@@ -4311,20 +4429,14 @@ class ConversationManager:
         """Return True if the text expresses confirmation of the validation summary."""
         lower = text.lower().strip()
         confirmations = _CONFIRMATIONS.get(language, _CONFIRMATIONS["en"])
-        return any(
-            re.search(r"\b" + re.escape(c) + r"\b", lower)
-            for c in confirmations
-        )
+        return any(_contains_whole_phrase(lower, c) for c in confirmations)
 
     @staticmethod
     def _wants_correction(text: str, language: str) -> bool:
         """Return True if the text indicates the respondent wants to correct something."""
         lower = text.lower().strip()
         corrections = _CORRECTIONS.get(language, _CORRECTIONS["en"])
-        return any(
-            re.search(r"\b" + re.escape(c) + r"\b", lower)
-            for c in corrections
-        )
+        return any(_contains_whole_phrase(lower, c) for c in corrections)
 
     @staticmethod
     def correction_schema_for(collected_data: dict) -> tuple[set[str], str, dict]:

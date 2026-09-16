@@ -87,7 +87,7 @@ def _make_client(db, isco_code, isic_section, isced_level, job_title="Assembler"
         # real ConversationManager does when it stores a newly-collected field.
         return ctx
 
-    def _process_message(ctx, msg):
+    def _process_message(ctx, msg, structured_correction=None):
         ctx.collected_data["job_title"] = job_title
         return "Thanks, noted."
 

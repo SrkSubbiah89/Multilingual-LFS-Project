@@ -121,7 +121,7 @@ def _make_client(
         ctx.state = state_enum
         return ctx
 
-    def _process_message(ctx, msg):
+    def _process_message(ctx, msg, structured_correction=None):
         call_order.append("ConversationManager")
         if job_title is not None:
             ctx.collected_data["job_title"] = job_title
