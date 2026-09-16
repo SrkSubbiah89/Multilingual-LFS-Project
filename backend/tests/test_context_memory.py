@@ -260,6 +260,32 @@ class TestSaveSession:
         result = cm.save_session(1, "greeting", "en", {}, [])
         assert result.turn_count == 0
 
+    def test_coerces_real_conversation_context_history_shape(self, cm):
+        """Real, live-caught bug (2026-09-16): every OTHER test in this
+        class's history fixtures includes a "timestamp" key -- convenient,
+        but not what real production code ever sends. survey_routes.py's
+        _send_message_impl passes ctx.history straight through to
+        save_session(), and ConversationContext.history entries (see
+        conversation_manager.py's ctx.history.append() call sites) are
+        ALWAYS exactly {"role": ..., "content": ...} -- never a
+        "timestamp" key. TurnRecord.timestamp used to have no default,
+        so TurnRecord(**r) raised a ValidationError on every single real
+        call, silently swallowed by survey_routes.py's bare `except
+        Exception: pass` -- meaning Redis session persistence was 100%
+        broken for every real conversation, never caught by this file's
+        own existing tests because none of them used the real shape.
+        This test uses the exact real shape (no timestamp key) as its
+        own guard against that regression recurring."""
+        history = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        result = cm.save_session(1, "greeting", "en", {}, history)
+        assert isinstance(result.history[0], TurnRecord)
+        assert result.history[0].content == "hello"
+        assert result.history[0].timestamp  # got a real default, didn't raise
+        assert result.turn_count == 1
+
     def test_stores_language(self, cm):
         result = cm.save_session(1, "greeting", "ar", {}, [])
         assert result.language == "ar"

@@ -1315,6 +1315,15 @@ def _send_message_impl(
 
     # ── ContextMemory: persist full session state to Redis after every turn ─────
     # Survives server restarts and allows context sharing across multiple workers.
+    # Real, live-caught bug (2026-09-16): this was a bare `except: pass` with
+    # zero logging, which let a genuine, 100%-reproducible failure (TurnRecord's
+    # then-mandatory `timestamp` field never being present in ctx.history's real
+    # {"role","content"} shape -- see context_memory.py's TurnRecord docstring
+    # for the full story) run silently, undetected, on every single turn. The
+    # underlying bug is fixed; this now logs (not raises) so a *future*
+    # persistence failure is never silent again -- still non-fatal to the
+    # respondent's turn, since losing durability is real but recoverable
+    # (in-process _contexts still serves the live session), unlike a hard 500.
     try:
         _get_context_memory().save_session(
             session_id=session_id,
@@ -1325,8 +1334,11 @@ def _send_message_impl(
         )
         if session_completed:
             _get_context_memory().delete_session(session_id)
-    except Exception:
-        pass
+    except Exception as _cm_err:
+        _logger.warning(
+            "ContextMemory.save_session failed (non-fatal, session=%s): %s",
+            session_id, _cm_err,
+        )
 
     # ── AuditLogger: log message event ──────────────────────────────────────
     try:

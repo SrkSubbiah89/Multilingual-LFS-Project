@@ -134,6 +134,11 @@ _STATE_LABELS: dict[str, dict[str, str]] = {
 }
 
 
+def _now() -> str:
+    """Return the current UTC time as an ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 # ---------------------------------------------------------------------------
 # Output models
 # ---------------------------------------------------------------------------
@@ -143,7 +148,26 @@ class TurnRecord(BaseModel):
 
     role: str                                   # "user" | "assistant"
     content: str
-    timestamp: str                              # ISO 8601 UTC
+    # Real, live-caught bug (2026-09-16): this field used to have no
+    # default, but save_session() below constructs TurnRecord(**r) from
+    # ConversationContext.history's plain {"role", "content"} dicts (see
+    # conversation_manager.py's ctx.history.append() call sites), which
+    # NEVER carry a timestamp key -- every such construction raised a
+    # pydantic ValidationError, silently swallowed by survey_routes.py's
+    # bare `except Exception: pass` around every save_session() call.
+    # Confirmed directly: TurnRecord(role="user", content="hello") raised
+    # "Field required: timestamp" on every invocation, meaning Redis
+    # session persistence was 100% broken (not intermittent) for every
+    # real conversation, silently, since this field was added -- a
+    # session survives only in the in-process _contexts dict
+    # (survey_routes.py), so a backend restart loses all in-progress
+    # conversation state. Defaulting to _now() means turns built from
+    # bare {"role","content"} dicts get an approximate (save-time, not
+    # true per-turn) timestamp -- a real, disclosed limitation, but a
+    # correct save is vastly better than a silently-failing one. Turns
+    # built via append_turn() (below) still pass a real timestamp
+    # explicitly and are unaffected.
+    timestamp: str = Field(default_factory=_now)  # ISO 8601 UTC
     detected_language: Optional[str] = None    # "en" | "ar" | "mixed" | None
 
 
@@ -701,10 +725,8 @@ class ContextMemory:
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
-
-def _now() -> str:
-    """Return the current UTC time as an ISO 8601 string."""
-    return datetime.now(timezone.utc).isoformat()
+# (_now() moved above TurnRecord's definition so Field(default_factory=_now)
+# can reference it -- see that class's own docstring/comment for why.)
 
 
 # ---------------------------------------------------------------------------
