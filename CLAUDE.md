@@ -2155,6 +2155,45 @@ the actual committed evidence directly, not by trusting the prior text.
   documented) are marked "Ready for paper update" there, everything else
   is "Partially evidenced" / "Awaiting data" / "Awaiting measurement."
 
+- **Redis session persistence was 100% broken since this feature was
+  built, found and fixed 2026-09-16** — prompted directly by "questionaries
+  llm chat page is not working correctly," investigated live rather than
+  guessed at. `context_memory.py`'s `TurnRecord.timestamp` was a
+  mandatory field with no default, but `ConversationContext.history`
+  entries (`conversation_manager.py`'s real `ctx.history.append()` call
+  sites) only ever contain `{"role", "content"}` — never a `timestamp`
+  key. Every `TurnRecord(**r)` construction inside `save_session()`
+  therefore raised a pydantic `ValidationError`, on every single turn,
+  for every session, in every language — silently swallowed by
+  `survey_routes.py`'s bare `except Exception: pass` around the save
+  call. Confirmed directly, not assumed: `TurnRecord(role="user",
+  content="hello")` raised `"Field required: timestamp"` every time;
+  Redis held **zero** `lfs:session:*` keys despite multiple live,
+  fully-functional conversations completing successfully — the
+  in-process `_contexts` dict (`survey_routes.py`) masked the bug for
+  the lifetime of one server process (sessions worked turn-to-turn), but
+  nothing ever survived a restart. A live user's mid-correction
+  conversation was lost to exactly this during this same debugging
+  session, when a backend restart (to deploy this very fix) collided
+  with their active turn — the honest, disclosed cost of the bug having
+  existed at all.
+
+  **Fixed**: `timestamp` gained `Field(default_factory=_now)` (`_now()`
+  moved above `TurnRecord`'s definition so the reference resolves at
+  class-body execution time). `survey_routes.py`'s except block now logs
+  the failure (non-fatal, matching the `PersonRegister` update block's
+  own already-established pattern immediately above it) instead of
+  swallowing it silently — this exact class of bug can never hide again
+  undetected. New regression test uses the **real** `{"role","content"}`-
+  only shape; every other existing test in that file's fixtures included
+  an artificial `"timestamp"` key in its history dicts, which is exactly
+  why none of them ever caught this. **Live-verified after the fix**: a
+  fresh Arabic-language session showed up correctly in Redis with its
+  full `collected_fields` populated — confirms the fix is language-
+  agnostic (a save-mechanism bug, not language-specific code), not just
+  tested in English. Full suite re-run: 2,568 passed (2,567 + 1 new
+  test), 1 deselected, zero regressions.
+
 ## Do not
 
 - Do not resubmit on internal-only evidence — the real, external WISCO
