@@ -482,6 +482,28 @@ class TestTransition:
         mgr._transition(ctx, "no, the job title is wrong", "")
         regex_spy.assert_called_once()
 
+    def test_validating_singular_field_name_still_calls_extractors(self, mgr, ctx, monkeypatch):
+        # Real, live-reported bug (2026-09-16): a respondent wrote "Work
+        # related skill will AI and Engineering" -- naming the field in its
+        # natural singular form ("skill"), which didn't substring-match any
+        # _FIELD_ALIASES entry (only the plural "skills"/"main skills" and
+        # the unrelated synonym "abilities" exist), so _mentions_known_field
+        # returned False and the message never reached either extractor --
+        # exactly what the screenshot behind this report showed. Same test
+        # shape as test_validating_message_naming_a_field_still_calls_extractors
+        # above, using the exact reported message.
+        regex_spy = MagicMock(return_value=True)
+        llm_spy = MagicMock(return_value=False)
+        monkeypatch.setattr(mgr, "_extract_correction", regex_spy)
+        monkeypatch.setattr(mgr, "_llm_extract_correction", llm_spy)
+        ctx.state = ConversationState.VALIDATING
+        mgr._transition(
+            ctx,
+            "no, I'd like to correct something Work related skill will AI and Engineering",
+            "",
+        )
+        regex_spy.assert_called_once()
+
     def test_validating_correction_no_target_stub_reply_asks_what_to_correct(self, mgr, ctx, monkeypatch):
         # The FAST_MODE / no-LLM-available template must not repeat the
         # identical summary when correction_no_target is set — it must ask

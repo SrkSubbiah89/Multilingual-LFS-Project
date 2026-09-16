@@ -4268,9 +4268,43 @@ class ConversationManager:
         slow LLM call at all -- short-circuit straight to
         correction_no_target instead, exactly like a bare "no" already
         does via _is_ambiguous().
+
+        Real, reproduced bug (2026-09-16, live user report -- "LLM not
+        responding to answer... not correctly modified it"): a respondent
+        wrote "Work related skill will AI and Engineering" -- naming the
+        field in its natural singular form, "skill". _FIELD_ALIASES only
+        has the plural "skills"/"main skills" (plus the unrelated synonym
+        "abilities"), none of which substring-match "skill", so this guard
+        returned False and short-circuited straight to correction_no_target
+        ("what would you like to correct?") without either extractor ever
+        running -- confirmed directly by feeding the exact reported message
+        through this function. Not an isolated typo: 11 other single-word
+        aliases in _FIELD_ALIASES are a plain regular plural with no
+        singular counterpart in the dict at all (allowances, barriers,
+        bonuses, challenges, comments, courses, hours, incentives,
+        platforms, suggestions, tasks) -- each one silently unrecognisable
+        in its natural singular form the same way. Fixed generally, not by
+        adding one more literal string: a single-word alias ending in a
+        plain "s" (not "ss") also matches its singular form (alias minus
+        the trailing "s") in the message. Irregular plurals (duties/
+        abilities/responsibilities, whose singular isn't "alias minus one
+        letter") aren't specially handled -- each already has a regular-
+        plural sibling alias mapped to the same field (e.g. "tasks" also
+        maps to job_duties), so the class of respondent phrasing this guard
+        exists to admit is still covered.
         """
         lowered = text.lower()
-        return any(alias in lowered for alias in _FIELD_ALIASES)
+        for alias in _FIELD_ALIASES:
+            if alias in lowered:
+                return True
+            if (
+                " " not in alias
+                and alias.endswith("s")
+                and not alias.endswith("ss")
+                and alias[:-1] in lowered
+            ):
+                return True
+        return False
 
     @staticmethod
     def _is_confirmed(text: str, language: str) -> bool:
