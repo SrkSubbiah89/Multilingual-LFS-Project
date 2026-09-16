@@ -2194,6 +2194,109 @@ the actual committed evidence directly, not by trusting the prior text.
   tested in English. Full suite re-run: 2,568 passed (2,567 + 1 new
   test), 1 deselected, zero regressions.
 
+- **Free-text correction parsing had two more real, root-caused bugs, plus
+  a new deterministic escape hatch built, 2026-09-16** — prompted directly
+  by a live screenshot ("chating window is not perfect... make sure if any
+  chnages need"). Investigated the exact reported message rather than the
+  vague framing: "no, I'd like to correct something Work related skill
+  will AI and Engineering" got the generic "what would you like to
+  correct?" reply instead of updating anything.
+
+  **Bug 1 — singular/plural alias gap, `_mentions_known_field`**:
+  `_FIELD_ALIASES` had "skills"/"main skills"/"abilities" but not "skill"
+  (singular) — the respondent's exact phrasing. Confirmed directly:
+  feeding the real message through `_mentions_known_field` returned
+  `False`, so the guard (added 2026-09-12 to avoid burning an LLM call on
+  an unresolvable message) short-circuited to `correction_no_target`
+  *before either extractor ever ran* — not an LLM misunderstanding, a
+  guard that never gave the LLM a chance. Checked how widespread the
+  pattern was rather than patching just "skill": 11 other single-word
+  plural aliases (allowances, barriers, bonuses, challenges, comments,
+  courses, hours, incentives, platforms, suggestions, tasks) had no
+  singular counterpart either. Fixed generally in `_mentions_known_field`:
+  a single-word alias ending in a plain "s" (not "ss") also matches its
+  singular form. Irregular y→ies plurals (duties/abilities/
+  responsibilities) aren't specially handled — each already has a
+  regular-plural sibling alias mapped to the same field.
+
+  **Bug 2 — a real Unicode regex bug, found while building the fix's own
+  tests for other languages**: `_is_confirmed`/`_wants_correction` built
+  `re.search(r"\b" + re.escape(phrase) + r"\b", text)`. Python's `\b` only
+  recognises `\w` (letters/digits/underscore) as a word character — a
+  Devanagari dependent vowel sign (e.g. the "ी" in "सही", Unicode category
+  Mn) is not `\w`, so a phrase ending in one has no `\w`→non-`\w`
+  transition at its own end, and the trailing `\b` never matches at all.
+  Confirmed directly: `"यह सही है" in "हाँ, यह सही है"` is `True` as a plain
+  substring, but the old `\b`-anchored regex against the identical two
+  strings found no match. A second, independent gap in the same area:
+  `_CONFIRMATIONS`/`_CORRECTIONS` only ever had `"en"`/`"ar"` keys —
+  `.get(language, _CONFIRMATIONS["en"])` meant Hindi/Urdu/Tagalog
+  confirmation words were checked against *English* words and could never
+  match. Both real, both silent, both would have broken the new "Yes,
+  that's correct" button (below) in 3 of this project's 5 languages had
+  they shipped unfixed. Fixed: real `hi`/`ur`/`tl` word lists added, and a
+  new `_contains_whole_phrase()` helper (module-level, near
+  `_CONFIRMATIONS`) replaces the `\b`-anchored regex — same whole-word
+  protection as before (verified `"no"` still does not match inside
+  `"know"`, guarding the exact false-positive plain substring matching
+  would have reintroduced), but treats Unicode combining marks as
+  word-continuing rather than as a boundary.
+
+  **New: a deterministic structured correction path, so free-text parsing
+  ambiguity is avoidable entirely, not just patched instance-by-instance**.
+  `MessageBody` (`survey_routes.py`) gained optional
+  `correction_field`/`correction_value`; `MessageOut` gained
+  `collected_data` (real field-key → value pairs, so the frontend never
+  has to reverse-parse rendered label text back into a field key).
+  `ConversationManager._transition` gained a `structured_correction`
+  parameter — when present in the VALIDATING state, it applies the
+  field/value directly via the same canonicalize + sanity-check pipeline
+  the LLM path already uses, skipping `_wants_correction`/
+  `_extract_correction`/`_llm_extract_correction` and every ambiguity
+  guard entirely, because there is nothing left to guess. `chat.js` gained
+  a field-picker UI (pick the field from a list of real collected values,
+  then either tap a `QUICK_OPTIONS` enum button or type a value scoped to
+  just that one field) wired to this new parameter via `sendMessage`'s new
+  optional `correction` argument. Free-text correction (now with both bugs
+  above fixed) remains fully available as a fallback — this is additive,
+  not a replacement.
+
+  **Also, same session, explicit user-approved scope ("Both of the
+  above")**: decluttered the chat window itself. The separate amber "LLM
+  Processing" banner used to pop in and out above the chat on every turn,
+  shifting the whole layout; folded into a small trailing pulse on the
+  existing (already-stable) progress-bar row instead — zero information
+  loss, since the per-turn typing-dots indicator and the sidebar's own
+  "LLM Role in This Step" panel already cover it. The two densest sidebar
+  panels (Section Status, Agent Activation — 10 rows each) gained a
+  collapse toggle, defaulting **open** (byte-identical to prior behaviour
+  including for the thesis demo) so nothing is unilaterally hidden.
+
+  **A real regression caught by this project's own "full suite before
+  committing" discipline, not shipped blind**: `_send_message_impl` now
+  always calls `conv_mgr.process_message(ctx, msg,
+  structured_correction=_structured_correction)`, but two existing test
+  files' hand-written `_process_message` mocks
+  (`test_orchestration_correctness.py`, `test_sre_hitl_enforcement.py`)
+  declared only `(ctx, msg)` — every test using them started failing with
+  a 500 (`TypeError: ... unexpected keyword argument
+  'structured_correction'`), 14 tests across both files. Caught by a full
+  `backend/tests` run before this was committed (not by the narrower
+  targeted runs used while iterating), fixed by adding
+  `structured_correction=None` to both mock signatures, re-verified.
+
+  **Live-verified end-to-end, not just unit-tested**: a real signup, a
+  real 43-turn conversation through the live running backend reaching
+  VALIDATING, a real structured correction call (`main_skills`:
+  `"programming"` → `"Engineering"`, confirmed in the response), and a
+  real confirm-to-COMPLETING handoff afterward — all against the actual
+  HTTP API, not mocked. Full suite: **1,679 passed** (this file's own
+  count differs from the 2,568 logged just above because that entry's
+  count included `eval/` — this run and re-run were `backend/tests` only,
+  to avoid the low-RAM segfault risk documented extensively elsewhere in
+  this file while the live backend was also running), **1 deselected, 0
+  failed**.
+
 ## Do not
 
 - Do not resubmit on internal-only evidence — the real, external WISCO
