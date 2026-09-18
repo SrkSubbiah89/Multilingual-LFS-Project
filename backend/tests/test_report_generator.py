@@ -30,6 +30,7 @@ from backend.agents.report_generator import (
 )
 from backend.database.models import (
     Base,
+    HITLQueue,
     QualityReview,
     SurveyReportRecord,
     SurveyResponse,
@@ -570,6 +571,127 @@ class TestGenerateWithQuality:
         _make_quality_review(session_factory, s.id, flagged_count=3)
         r = mgr.generate(session_id=s.id)
         assert r.flagged_count == 3
+
+
+class TestSREHighSeverityBackstop:
+    """
+    Regression tests for a real gap found via QA (2026-09-19): a HIGH-
+    severity semantic_coherence violation (its own explanation says "HITL
+    review required") could complete without ever reaching a supervisor,
+    because survey_routes.py's Stage 4e live escalation only fires on a
+    turn where NER freshly extracts a job title THIS turn -- a returning
+    user's pre-filled profile, or one made incoherent by a later
+    correction to an unrelated field, never passes through that check.
+    Separately, the report's own quality_status/flagged_count (from
+    HITLQualityManager's ISCO-confidence-only QualityReview) had no
+    visibility into semantic_coherence at all, so a report could show
+    quality_status="pass" while its own semantic_coherence block showed
+    is_coherent=False with HIGH-severity violations. Both fixed in
+    ReportGenerator: an idempotent HITL escalation backstop, and a
+    display-time-only quality_status/flagged_count override.
+
+    Fixture values (isco_code="2511", industry="government" -> ISIC
+    section "O", education_level="no_formal" -> ISCED 0) are confirmed
+    directly (not assumed) to produce two real HIGH-severity violations
+    via SemanticRelationEngine.analyse() before being used here.
+    """
+
+    def _make_incoherent_session(self, session_factory):
+        u = _make_user(session_factory)
+        s = _make_session(session_factory, u.id)
+        _make_response(session_factory, s.id, "employment_status", "employed")
+        _make_response(session_factory, s.id, "industry", "government")
+        _make_response(session_factory, s.id, "education_level", "no_formal")
+        _make_response(
+            session_factory, s.id, "job_title", "Engineering",
+            isco_code="2511", confidence_score=0.80,
+        )
+        return s
+
+    def _make_coherent_session(self, session_factory):
+        u = _make_user(session_factory)
+        s = _make_session(session_factory, u.id)
+        _make_response(session_factory, s.id, "employment_status", "employed")
+        _make_response(session_factory, s.id, "industry", "information technology")
+        _make_response(session_factory, s.id, "education_level", "bachelor")
+        _make_response(
+            session_factory, s.id, "job_title", "Engineering",
+            isco_code="2511", confidence_score=0.80,
+        )
+        return s
+
+    def test_high_severity_overrides_quality_status_to_escalated(
+        self, monkeypatch, session_factory, mgr
+    ):
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "ر.",
+        }))
+        s = self._make_incoherent_session(session_factory)
+        # The underlying ISCO-confidence-only quality review says PASS --
+        # this is the exact inconsistency being fixed: the report must not
+        # repeat that verdict once semantic_coherence disagrees.
+        _make_quality_review(session_factory, s.id, passed=True, quality_score=0.90)
+        r = mgr.generate(session_id=s.id)
+        assert r.semantic_coherence["is_coherent"] is False
+        assert r.quality_status == "escalated"
+        assert r.flagged_count >= 1
+
+    def test_high_severity_creates_pending_hitl_entry(
+        self, monkeypatch, session_factory, mgr
+    ):
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "ر.",
+        }))
+        s = self._make_incoherent_session(session_factory)
+        mgr.generate(session_id=s.id)
+        db = session_factory()
+        try:
+            rows = db.query(HITLQueue).filter(HITLQueue.session_id == s.id).all()
+        finally:
+            db.close()
+        assert len(rows) == 1
+        assert rows[0].priority == "HIGH"
+        assert rows[0].status == "pending"
+        assert "SR-ISCO-ISIC-02" in rows[0].ai_reasoning
+
+    def test_high_severity_escalation_idempotent_on_regenerate(
+        self, monkeypatch, session_factory, mgr
+    ):
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "ر.",
+        }))
+        s = self._make_incoherent_session(session_factory)
+        mgr.generate(session_id=s.id)
+        mgr.generate(session_id=s.id, regenerate=True)
+        mgr.generate(session_id=s.id, regenerate=True)
+        db = session_factory()
+        try:
+            rows = db.query(HITLQueue).filter(HITLQueue.session_id == s.id).all()
+        finally:
+            db.close()
+        assert len(rows) == 1, "regenerating must never create duplicate HITL entries"
+
+    def test_coherent_case_creates_no_hitl_entry_and_keeps_quality_status(
+        self, monkeypatch, session_factory, mgr
+    ):
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "ر.",
+        }))
+        s = self._make_coherent_session(session_factory)
+        _make_quality_review(session_factory, s.id, passed=True, quality_score=0.90)
+        r = mgr.generate(session_id=s.id)
+        assert r.semantic_coherence["is_coherent"] is True
+        assert r.quality_status == "pass"
+        db = session_factory()
+        try:
+            rows = db.query(HITLQueue).filter(HITLQueue.session_id == s.id).all()
+        finally:
+            db.close()
+        assert rows == []
 
 
 class TestParseNarrative:

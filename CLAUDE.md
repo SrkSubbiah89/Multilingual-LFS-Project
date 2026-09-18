@@ -1976,6 +1976,15 @@ property, three weeks apart, across a substantial amount of intervening
 code change (the entire multi-agent RAG addition sits between them).
 Same 1 deselected slow test throughout.
 
+**2026-09-19**: real, full re-run (`backend/tests` only, same low-RAM
+reasoning as the 2026-09-16 entry above — the live backend was also
+running) after the QA-pass fix to `report_generator.py` (HITL escalation
+backstop + display-time `quality_status` override for HIGH-severity SRE
+coherence violations, see "Knowledge base construction" above) →
+**1,683 passed, 1 deselected, 0 failed**, 595.60s. +4 tests over the
+1,679 baseline (`TestSREHighSeverityBackstop` in
+`test_report_generator.py`). Same 1 deselected slow test throughout.
+
 ## Citation policy — unchanged, still correct
 
 Do not add a citation (paper, dataset, standard) unless independently
@@ -2296,6 +2305,116 @@ the actual committed evidence directly, not by trusting the prior text.
   to avoid the low-RAM segfault risk documented extensively elsewhere in
   this file while the live backend was also running), **1 deselected, 0
   failed**.
+
+- **A real, end-to-end QA pass ("act as quality tester, dev + business
+  perspective") found and fixed a genuine integration gap between three
+  independently-correct subsystems, 2026-09-19**: the Semantic Relation
+  Engine, the live turn-time HITL escalation trigger, and the report's own
+  quality scoring. Each piece works correctly in isolation — the gap was
+  in how they don't talk to each other.
+
+  **How it was found**: deliberately drove a real session (via the live
+  API, not a unit test) to an internally inconsistent state — employed as
+  "Software Engineer" (ISCO `2151`, major group 2 Professionals), industry
+  "government" (ISIC section `O`, Public Administration), education "no
+  formal schooling" (ISCED level 0). The SRE correctly detected this as
+  HIGH-severity and incoherent (`score=0.0`, `is_coherent=False`), and its
+  own `explanation_en` literally says "HITL review required." **It was
+  never escalated, and the report showed `quality_status: "pass"`,
+  `flagged_count: 0`.**
+
+  **Root cause 1 — turn-scoped escalation gate**: `survey_routes.py`'s
+  Stage 4e (the code that escalates HIGH-severity SRE violations to the
+  HITL queue) only runs when `isco_results` is non-empty, i.e. only on a
+  turn where NER freshly extracts and classifies a job title *that exact
+  turn*. A returning user's profile — built directly from PersonRegister
+  or a prior session at session-creation time (`survey_routes.py`
+  ~L568-598), entirely bypassing the `/message` turn pipeline — or a
+  profile made incoherent later by a correction to an unrelated field
+  (industry, education), never passes through Stage 4e at all. Confirmed
+  directly: the test session's job title was inherited via pre-fill, so
+  `isco_results` was empty on every turn of that session, so Stage 4e
+  never ran once.
+
+  **Root cause 2 — two unrelated quality signals**: the report's headline
+  `quality_status`/`flagged_count` come from `HITLQualityManager`
+  (`hitl_quality_manager.py`), whose `_flag_items()` only checks two
+  things — a missing ISCO code, or an ISCO code below the confidence
+  threshold. It has **zero visibility into SRE coherence** — a different,
+  independently-computed signal (`report_generator.py`'s own
+  `semantic_coherence` block, computed fresh from the profile's
+  industry/education text on every non-cached report generation). Since
+  the test session's ISCO confidence was a perfectly ordinary 0.82, no
+  ISCO-confidence flag ever fired, so `quality_status` stayed "pass"
+  while the coherence engine, three lines below it in the same JSON
+  response, was saying the opposite.
+
+  **Fixed, both in `report_generator.py`, not by touching Stage 4e or
+  `HITLQualityManager`'s own stored semantics**:
+  1. A HITL escalation *backstop* right after `semantic_coherence` is
+     computed in `generate()`: if any violation is HIGH severity, create
+     a `HITLQueue` row (same shape/fields as Stage 4e's own escalation)
+     — unless a pending HIGH row for this session already exists (checked
+     first, so calling `generate(regenerate=True)` repeatedly never
+     creates duplicates). This is a genuine backstop, not a replacement
+     for Stage 4e — Stage 4e still fires immediately during a live
+     conversation for the common case (a fresh job title just typed);
+     this catches everything Stage 4e's turn-scoped gate structurally
+     cannot: pre-filled and later-corrected profiles. Reliable in
+     practice because every real completed session triggers at least one
+     report generation automatically — `chat.js` auto-navigates to
+     `/report` 2.5s after `session_completed` — so this isn't a "only if
+     someone happens to check" backstop.
+  2. `_persist()` now computes `quality_status`/`flagged_count` as a
+     **display-time-only override**: if `semantic_coherence` shows any
+     HIGH-severity violation, the report shows `quality_status:
+     "escalated"` and `flagged_count >= 1`, regardless of what the
+     underlying `QualityReview` row says. `QualityReview`'s own stored
+     meaning (ISCO confidence/coverage, read elsewhere by
+     `HITLQualityManager.get_pending_reviews()` for its own,
+     unrelated supervisor workflow) is completely untouched — this only
+     changes what one specific report display shows.
+
+  **Live-verified against the exact real session the gap was found in**,
+  not just unit-tested: called `GET /survey/sessions/547/report
+  ?regenerate=true` against the live running backend (uvicorn `--reload`
+  auto-picked up the fix) — response now shows `quality_status:
+  "escalated"`, `flagged_count: 1`. Confirmed directly in Postgres
+  (`hitl_queue` row id 269, `session_id=547`, `priority='HIGH'`,
+  `status='pending'`, reasoning citing both violated rules) that the
+  escalation really happened — **not** visible through
+  `GET /hitl/queue` itself, because of the separate, pre-existing
+  operational finding below.
+
+  **A separate, real, disclosed operational finding — not a code bug**:
+  `GET /survey/hitl/queue` (`survey_routes.py`) orders by
+  `priority DESC, created_at ASC` and hard-`.limit(200)`s — and there
+  are already 200+ pending HIGH-priority items in this environment, the
+  oldest dated 2026-08-16. A newly-escalated item, being the *newest*
+  among HIGH items, sorts past the 200-item cutoff and is invisible
+  through the paginated endpoint even though it's really in the
+  database, pending, HIGH priority. This queue has apparently never been
+  worked through by an actual supervisor in this environment — expected
+  for a solo-dev thesis project, but worth knowing before treating
+  `/hitl/queue`'s results as complete, and a real, separate
+  follow-up item (pagination, or a cursor) if this queue is ever used for
+  real. Not fixed in this pass — flagged, not silently absorbed into the
+  fix above.
+
+  **4 new regression tests** (`TestSREHighSeverityBackstop` in
+  `test_report_generator.py`), fixture values confirmed directly against
+  `SemanticRelationEngine.analyse()` before being used (not assumed):
+  the HIGH-severity case, a coherent control case (asserts *no* HITL row
+  and `quality_status` unchanged — guards against over-firing), and the
+  regenerate-idempotency case. Full suite re-run: see Testing section
+  timestamped 2026-09-19 for the exact count.
+
+  **Also confirmed clean in the same QA pass, no fix needed**: JWT
+  rejection, OTP single-use enforcement (a consumed code correctly
+  rejected on reuse), cross-user session isolation (user B reading user
+  A's session correctly 404s, no data leak), and report-on-incomplete-
+  session correctly 409s rather than 500ing. All 4 frontend pages load
+  clean.
 
 ## Do not
 
