@@ -114,7 +114,11 @@ if (Test-Url "http://localhost:3000/") {
     Write-Host "  [OK] Frontend already running."
 } else {
     Write-Host "  Starting frontend..."
-    Start-Process -FilePath "npx" -ArgumentList "next", "dev", "--port", "3000" `
+    # Start-Process -FilePath "npx" fails on Windows with "%1 is not a
+    # valid Win32 application" -- npx resolves to npx.cmd, a shim
+    # CreateProcess can't launch directly (confirmed repeatedly, 2026-09).
+    # Routing through cmd.exe /c is the standard fix.
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npx next dev --port 3000" `
         -WorkingDirectory "C:\Multilingual_LFS_Project\frontend" `
         -RedirectStandardOutput "$LogDir\frontend.log" -RedirectStandardError "$LogDir\frontend.err.log" `
         -WindowStyle Hidden
@@ -157,24 +161,35 @@ if ($cfRunning) {
     Write-Host "  [OK] Cloudflare tunnel for backend already running -- leaving it and the env files alone."
 } else {
     Write-Host "  Starting a fresh Cloudflare tunnel for the backend (this WILL get a new URL)..."
+    # cloudflared prints the tunnel URL to stderr, not stdout -- but
+    # Start-Process refuses RedirectStandardOutput and RedirectStandardError
+    # pointing at the SAME file (a real, reproduced PowerShell limitation,
+    # not a cloudflared quirk -- confirmed 2026-09-18: "This command cannot
+    # be run because 'RedirectStandardOutput' and 'RedirectStandardError'
+    # are same"). Two separate files instead; the URL search below checks
+    # both so this still works regardless of which stream cloudflared uses.
     $cfLog = "$LogDir\cloudflared_backend.log"
-    Remove-Item $cfLog -ErrorAction SilentlyContinue
+    $cfLogErr = "$LogDir\cloudflared_backend.err.log"
+    Remove-Item $cfLog, $cfLogErr -ErrorAction SilentlyContinue
     Start-Process -FilePath $CloudflaredExe -ArgumentList "tunnel", "--url", "http://localhost:8000" `
-        -RedirectStandardOutput $cfLog -RedirectStandardError $cfLog `
+        -RedirectStandardOutput $cfLog -RedirectStandardError $cfLogErr `
         -WindowStyle Hidden
     Start-Sleep -Seconds 8
 
     $newBackendUrl = $null
     for ($i = 1; $i -le 10; $i++) {
-        if (Test-Path $cfLog) {
-            $match = Select-String -Path $cfLog -Pattern "https://[a-z0-9-]+\.trycloudflare\.com" | Select-Object -First 1
-            if ($match) { $newBackendUrl = $match.Matches[0].Value; break }
+        foreach ($logFile in @($cfLog, $cfLogErr)) {
+            if (Test-Path $logFile) {
+                $match = Select-String -Path $logFile -Pattern "https://[a-z0-9-]+\.trycloudflare\.com" | Select-Object -First 1
+                if ($match) { $newBackendUrl = $match.Matches[0].Value; break }
+            }
         }
+        if ($newBackendUrl) { break }
         Start-Sleep -Seconds 2
     }
 
     if (-not $newBackendUrl) {
-        Write-Host "ERROR: Could not read the new backend tunnel URL from $cfLog" -ForegroundColor Red
+        Write-Host "ERROR: Could not read the new backend tunnel URL from $cfLog or $cfLogErr" -ForegroundColor Red
         exit 1
     }
     Write-Host "  New backend URL: $newBackendUrl"
@@ -210,7 +225,7 @@ if ($cfRunning) {
         -WorkingDirectory "C:\Multilingual_LFS_Project" `
         -RedirectStandardOutput "$LogDir\backend.log" -RedirectStandardError "$LogDir\backend.err.log" `
         -WindowStyle Hidden
-    Start-Process -FilePath "npx" -ArgumentList "next", "dev", "--port", "3000" `
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npx next dev --port 3000" `
         -WorkingDirectory "C:\Multilingual_LFS_Project\frontend" `
         -RedirectStandardOutput "$LogDir\frontend.log" -RedirectStandardError "$LogDir\frontend.err.log" `
         -WindowStyle Hidden
