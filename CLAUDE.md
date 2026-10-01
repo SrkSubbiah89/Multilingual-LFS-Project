@@ -2055,6 +2055,15 @@ throughout. (The n=30 synthetic pilot run the same day used the live
 HTTP API directly, not pytest, and is reported in its own "Knowledge
 base construction" entry rather than here.)
 
+**2026-10-02, later the same day**: real, full re-run (`backend/tests`
+only) after the `report.js` badge fix and the LEGACY_PROFILE/
+official_ilo2021_v1 mislabeling correction (comment-only change in
+`survey_routes.py`, see "Knowledge base construction" above) →
+**1,683 passed, 1 deselected, 0 failed**, 603.35s. Byte-identical count
+to the entry above, as expected — both changes were documentation/comment
+text, no runtime behaviour touched. Same 1 deselected slow test
+throughout.
+
 ## Citation policy — unchanged, still correct
 
 Do not add a citation (paper, dataset, standard) unless independently
