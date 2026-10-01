@@ -8,7 +8,7 @@
  * Supports English (LTR) and Arabic (RTL) via the shared LanguageToggle.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { getHitlQueue, submitHitlReview } from "../components/api";
@@ -288,8 +288,16 @@ export default function SupervisorReview() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {items.map((item) => (
-                    <>
-                      <tr key={item.id} className="hover:bg-gray-50">
+                    // Real bug (2026-10-02): the bare <>...</> shorthand
+                    // cannot carry a `key` prop, so only the inner <tr>'s
+                    // own key was ever set -- React had no key on the
+                    // fragment itself across this .map(), risking
+                    // incorrect reconciliation on re-render (e.g. after
+                    // the status filter changes or a review submits and
+                    // this list's order/membership shifts). Fixed by
+                    // using the named Fragment, which does accept a key.
+                    <Fragment key={item.id}>
+                      <tr className="hover:bg-gray-50">
                         <td className="px-4 py-3 font-mono text-gray-500">{item.id}</td>
                         <td className="px-4 py-3 text-gray-500">{item.session_id ?? "—"}</td>
                         <td className="px-4 py-3 max-w-xs">
@@ -419,7 +427,7 @@ export default function SupervisorReview() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
