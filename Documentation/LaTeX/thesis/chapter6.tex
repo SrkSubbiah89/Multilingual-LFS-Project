@@ -475,6 +475,99 @@ measurement --- every figure above is from a single local development
 machine.
 
 % ------------------------------------------------------------
+\section{Synthetic Pilot-Scale Operational Validation}
+\label{sec:res-synthetic-pilot}
+% ------------------------------------------------------------
+
+The randomised, ethics-approved pilot described in
+Section~\ref{sec:eval-pilot} was not conducted within this project's
+timeline --- no application was submitted to the institutional ethics
+committee, so no real-respondent data of any kind exists for this thesis.
+Rather than leave that gap entirely unaddressed, a deliberately narrower,
+explicitly synthetic, single-arm (AI only) operational validation was run
+at the same pilot scale ($n=30$). This section reports exactly what that
+validation can and cannot support; it is not presented as, and must not be
+read as, a substitute for the planned pilot.
+
+\textbf{Method.} Thirty synthetic respondent profiles were constructed by
+reusing 30 of 60 already-generated, quality-checked (job title, industry,
+education) triples grounded in real ISCO-08 official definitions (the same
+taxonomy-grounded LLM paraphrase methodology used for the ISIC/ISCED-F
+synthetic benchmark in Section~\ref{sec:res-isic-isced}), combined with
+schema-valid canonical answers for the remaining $\sim$35 non-free-text
+survey fields. Each profile was driven through the complete, live
+conversational system end-to-end via its real HTTP API --- not mocked,
+not replayed --- covering the full field-by-field interview, the
+validation/confirmation step, and session completion. Classification used
+this project's safe, default configuration (21.19\%-class ISCO-08
+accuracy; see Section~\ref{sec:res-validity} for why the better-tested
+configuration was not used here).
+
+\begin{table}[htbp]
+\centering
+\caption{Synthetic pilot-scale operational results ($n=30$, 100\% completion, English only).}
+\label{tab:ch6-synthetic-pilot}
+\small\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lc}
+\toprule
+\textbf{Metric} & \textbf{Result} \\
+\midrule
+Sessions completed & 30/30 (100\%) \\
+Mean completion time (system-side wall clock) & 111.6\,s \\
+Mean turns per session & 45.4 \\
+Sessions with $\geq$1 clarification turn & 30/30 (100\%) \\
+HIGH-severity cross-standard contradiction detected (SRE) & 18/30 (60.0\%) \\
+Sessions flagged incoherent overall (SRE) & 22/30 (73.3\%) \\
+Live-conversation exact-match ISCO-08 accuracy (default config) & 5/30 (16.7\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{What these numbers do and do not mean, stated plainly.}
+``Completion time'' here is scripted-driver processing wall-clock time ---
+it excludes any human reading, typing, or thinking time, and is therefore
+\emph{not} an estimate of a real respondent's completion time, which is
+precisely what the planned pilot's own completion-time outcome is designed
+to measure. The 100\% clarification-turn rate is likely partly an
+artefact of the canonical, machine-phrased answers used to drive the
+script (e.g.\ the literal string \texttt{under\_5000}) rather than a
+signal about real question difficulty. The 16.7\% live ISCO-08 accuracy
+is consistent with, not an independent confirmation of, the already-known
+21.19\% default-configuration baseline established on the full 18,747-case
+WISCO heldout (Section~\ref{sec:res-isco}) --- at $n=30$ this is within
+ordinary sampling variation around that rate, not a new result. The
+60\%/73.3\% contradiction rates are real, directly computed signals, but
+their magnitude is substantially driven by the live sessions' use of the
+lower-accuracy default classifier (so an incorrect ISCO code frequently
+and genuinely conflicts with the paired industry/education text) --- they
+should not be read as an estimate of how often a \emph{correctly}
+classified respondent's answers would be internally inconsistent.
+
+\textbf{On classification accuracy specifically}: a second, offline
+measurement of this project's best-tested configuration
+(flat retrieval, the enriched catalogue, \texttt{multilingual-e5-large})
+against these same 30 cases was attempted, in a process deliberately
+isolated from both the live system and the results above. It was not
+forced through: the attempt correctly halted under a built-in safety
+check after measuring only 463\,MB of genuinely available memory on the
+development machine --- the same condition that had caused a reproducible
+process crash earlier the same day (Section~\ref{sec:res-validity}). The
+existing, full-scale 40.95\% WISCO heldout result
+(Section~\ref{sec:res-isco}) is cited in its place, which is the more
+statistically defensible number in any case: its 18,747-case sample gives
+a materially tighter confidence interval than a fresh $n=30$ draw would.
+
+\textbf{Honest scope.} This validation provides real, synthetic-data,
+single-arm operational evidence: the system reliably completes a full
+multi-field interview (100\%/30) in bounded processing time, and the
+cross-standard contradiction-detection mechanism fires on a real,
+computable signal. It provides \emph{no} evidence on respondent
+satisfaction, no AI-versus-traditional-interviewer comparison, and no
+respondent-realistic completion-time figure --- exactly the primary
+outcomes the planned pilot (Section~\ref{sec:eval-pilot}) was designed to
+measure, and exactly what remains open, unchanged by this validation.
+
+% ------------------------------------------------------------
 \section{Objective-by-Objective Status}
 \label{sec:res-summary}
 % ------------------------------------------------------------
@@ -512,8 +605,13 @@ O7 & Person Register pre-fill; consistency rules &
   magnitude not measured against real respondents \\
 O8 & Audit trail; reports; HITL queue; deployment &
   Met: verified against the live system \\
---- & Randomised pilot study & \textbf{Not started.} Not submitted for
-  ethics approval as of this writing. No data exists. \\
+--- & Randomised pilot study (real respondents) & \textbf{Not started.} Not
+  submitted for ethics approval as of this writing. No real-respondent
+  data exists. A separate, explicitly synthetic, single-arm $n=30$
+  operational validation was completed instead
+  (Section~\ref{sec:res-synthetic-pilot}) --- real evidence that the
+  system completes a full interview reliably, but no substitute for the
+  outcomes this row's own study would measure \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -536,14 +634,32 @@ detailed fields --- stated exactly, not as ``100+ of 238'' as an earlier
 internal draft of this thesis stated (which understated the true official
 class count for ISIC Rev.~4 as well as overstating coverage).
 
-\textbf{The pilot study has not run.} Every claim in this thesis about
-respondent burden, cost reduction, or satisfaction versus a traditional
-interview is, at most, a target or a plan --- never a measured result.
+\textbf{The real, ethics-approved pilot study has not run.} Every claim in
+this thesis about respondent burden, cost reduction, or satisfaction
+versus a traditional interview is, at most, a target or a plan --- never a
+measured result. The synthetic $n=30$ operational validation
+(Section~\ref{sec:res-synthetic-pilot}) does not change this: it was
+explicitly scoped to measure only what synthetic data can honestly
+support, and respondent satisfaction and the traditional-interviewer
+comparison are not among those things.
 
-\textbf{Single-machine measurement.} All computational-efficiency figures
+\textbf{Single-machine measurement, and a real, caught production-stability
+finding.} All computational-efficiency figures
 (Section~\ref{sec:res-efficiency}) are from one local development machine,
 not a production environment, and that machine's own memory constraints
 directly blocked a planned re-computation of the ISIC/ISCED-F synthetic
 result at full dataset coverage (Section~\ref{sec:res-isic-isced}) ---
 disclosed as a real limitation of this thesis's own evaluation
-infrastructure, not glossed over.
+infrastructure, not glossed over. The same constraint was found to be more
+serious than a slow evaluation re-run: switching the live survey system's
+classifiers to the best-tested configuration (flat retrieval, the
+enriched catalogue, \texttt{multilingual-e5-large}) reproduced a genuine
+process crash on this machine under real memory pressure --- a catchable
+error in some attempts, an uncatchable segmentation fault that terminated
+the entire server process in others. This was caught by live-testing the
+change against the running system before accepting it, not assumed safe
+because unit tests passed, and was reverted the same day: the live system
+runs its earlier, lower-accuracy default configuration, while the
+better-tested configuration remains valid and is used only in isolated,
+memory-checked offline evaluation runs (exactly how every headline
+accuracy figure in this chapter was actually produced).
