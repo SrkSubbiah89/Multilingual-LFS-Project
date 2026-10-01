@@ -2671,6 +2671,36 @@ the actual committed evidence directly, not by trusting the prior text.
   False parameter is a minor dead-code smell, not fixed here — out of scope
   for a documentation-accuracy check and harmless as-is.)
 
+- **Real bug found and fixed, 2026-10-02: `report.js` displayed a benchmark
+  number next to live data in a way that implied it was the live result's
+  own accuracy.** Read `frontend/pages/report.js` in full (1,296 lines, the
+  page every completed survey routes to) as the next item in this session's
+  file-by-file review. Found a static `"Best-Tested Result: 40.95%"` badge
+  (line 697) sitting directly next to every respondent's actual ISCO-08
+  code in the per-session classification section — unqualified, with no
+  caveat at that location. Checked directly against this session's own
+  already-documented production state (the `7c909b6` attempt-and-revert
+  entry above): the live classifier
+  (`survey_routes.py`'s `_get_isco_classifier()`) is the bare
+  `ISCOClassifier()`, i.e. `LEGACY_PROFILE` (21.19% WISCO heldout), **not**
+  the `ENRICHED_E5LARGE_PROFILE` config the 40.95% figure describes — that
+  switch was tried and reverted this same session due to the e5-large
+  memory-crash. So a real reader (a pilot respondent, or a thesis committee
+  member looking at a live demo) would reasonably read "40.95%" as the
+  accuracy of the classification shown directly below it, when the actual
+  config that produced that code is the lower-accuracy one. The page's own
+  Section 9 (WISCO v2 comparison, further down) already handles this
+  correctly — extensive, carefully-worded caveats ("Controlled Benchmark,"
+  a dedicated "what this does not establish" box) — this top badge
+  contradicted that careful framing by presenting the same number with zero
+  context. **Fixed**: reworded the badge to `"Best-tested config (benchmark,
+  not live): 40.95%"` plus a `title` tooltip spelling out that it's a
+  different, non-production configuration and pointing to the WISCO
+  comparison section — same number preserved (it's real and worth showing),
+  now honestly scoped instead of implicitly misattributed. Live-verified:
+  frontend recompiled clean, `GET /report?session=1` returns 200 with no
+  compile-error markers.
+
 ## Do not
 
 - Do not resubmit on internal-only evidence — the real, external WISCO
