@@ -2649,6 +2649,28 @@ the actual committed evidence directly, not by trusting the prior text.
   corrected, 30 clean rows), `eval/run_synthetic_pilot_n30_live.py`,
   `eval/run_synthetic_pilot_n30_accuracy.py`.
 
+- **Spot-check, 2026-10-02: `frontend/pages/questionnaire.js`'s documented
+  field-gating confirmed accurate, no fix needed.** That page's docstring
+  claims verification against `_get_field_order()`
+  (`backend/agents/conversation_manager.py`) as of 2026-08-29; checked
+  directly rather than trusted, since that's over a month stale. The one
+  thing worth double-checking was `_skills_digital_feedback(include_
+  emiratization: bool)`'s gate for `emiratization_program` — its real
+  condition is `if include_emiratization or nationality == "uae_national"`,
+  an OR, while the page documents only the nationality half. Checked all 3
+  call sites (employed/unemployed/not_in_labour_force paths, lines
+  1000/1032/1049): **every one passes `include_emiratization=False`
+  explicitly** — the parameter is never `True` anywhere in the codebase, so
+  the OR's left side is dead in practice and the page's documented gate
+  ("only if nationality = UAE national") is a correct, complete description
+  of real runtime behaviour. Same spot-check also re-confirmed
+  `contract_type`/`monthly_wage_range` (paid-employee-only) and
+  `secondary_job_hours` (has-secondary-job-only) gates match exactly. No
+  code or doc change made — a confirmed-clean verification, not every check
+  in this file turns up a bug. (`include_emiratization` being an always-
+  False parameter is a minor dead-code smell, not fixed here — out of scope
+  for a documentation-accuracy check and harmless as-is.)
+
 ## Do not
 
 - Do not resubmit on internal-only evidence — the real, external WISCO
