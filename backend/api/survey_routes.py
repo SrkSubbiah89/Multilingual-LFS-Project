@@ -139,8 +139,8 @@ def _get_isco_classifier() -> ISCOClassifier:
     ):
         # Attempted 2026-10-01: switching this to the project's real,
         # heldout-confirmed best-tested config (force_flat=True,
-        # ENRICHED_E5LARGE_PROFILE -- 40.95% vs. LEGACY_PROFILE's 21.19% on
-        # the full 18,747-case WISCO heldout). Reverted the same day,
+        # ENRICHED_E5LARGE_PROFILE -- 40.95% on the full 18,747-case WISCO
+        # heldout). Reverted the same day,
         # live-caught, not assumed: on this machine's current real memory
         # conditions, loading multilingual-e5-large for the live survey
         # path reproduced the exact memory-exhaustion failure class already
@@ -156,6 +156,18 @@ def _get_isco_classifier() -> ISCOClassifier:
         # carefully offline, same discipline as every other e5-large use
         # in this codebase) -- only the LIVE production survey path was
         # reverted, not the evidence behind the number.
+        #
+        # Correction, 2026-10-02: this function's bare ISCOClassifier()
+        # call below uses isco_catalogue_profile's default, LEGACY_PROFILE
+        # -- a DIFFERENT, separately-built catalogue from the
+        # ENRICHED_E5LARGE_PROFILE/official_ilo2021_v1 family the 40.95%
+        # (and every 21.19%/29.70%/32.55% number elsewhere in this
+        # codebase) actually describes. The legacy profile here has never
+        # been measured against the full 18,747-case WISCO heldout at all;
+        # the only real measurement of it is a smaller 500-case subsample
+        # (Documentation/Phase_2/FINAL_RESULTS_PACKAGE.md): 8.6% flat /
+        # 11.0% hierarchical (this call's real path, force_flat defaults
+        # to False). Do not cite 21.19% or 40.95% as this call's accuracy.
         _isco_classifier = ISCOClassifier()
     return _isco_classifier
 

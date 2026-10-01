@@ -1545,7 +1545,10 @@ dedicated passing tests.
   **Correction, 2026-09-14/15, prompted directly by "check where there is
   wrong happening how to improve it"**: the 26.67% baseline above used
   `ISCOClassifier()` with every default, which is `LEGACY_PROFILE`
-  (21.19% on the full WISCO heldout) — NOT this project's own real
+  (a weaker, separate catalogue — see the 2026-10-02 critical correction
+  under "The actual published WISCO evaluation result" for what its real,
+  much lower accuracy actually is; 21.19% was wrongly attributed to it at
+  the time this entry was written) — NOT this project's own real
   best-tested config, `official_ilo2021_v1_enriched_e5large` (40.95%).
   This wasn't a deliberate scope choice, just an unexamined default — a
   real gap, caught only when asked directly to look for one. Re-ran with
@@ -1784,6 +1787,55 @@ Canonical source of these numbers, character-for-character:
 — blocked purely on Anthropic account credit as of this writing. A free
 local-model (Ollama `llama3.2:latest`) fallback result exists (17.19% on
 the 2,013-case dev split) but must never be cited as a Claude result.
+
+**Critical correction, 2026-10-02: the table above is NOT production's
+accuracy, and "LEGACY_PROFILE's 21.19%" (used repeatedly elsewhere in
+this document and in `survey_routes.py`'s own code comment) is a real,
+previously undisclosed mislabeling — found during a `backend/rag/` code
+review while tracing exactly which catalogue `ISCOClassifier()`'s bare
+defaults resolve to.** `isco_catalogue_profile` defaults to
+`LEGACY_PROFILE = "legacy"` (`backend/rag/hierarchical_store.py:160`) —
+this project's **original** ISCO-08 catalogue (`backend/rag/
+load_full_isco.py`, 10/43/131/441 groups). The table above, and every
+`official_ilo2021_v1*` number in this document (21.19%, 29.70%, 32.55%,
+40.95%, etc.), was measured against a **separate, later-built catalogue**
+(`official_ilo2021_v1`, 10/43/130/436 groups) — confirmed by this
+project's own canonical evidence file,
+`Documentation/Conference_I_Reviewer_2/
+OFFICIAL_WISCO_TIER1_CONTROLLED_RESULTS.md`, which states in its own
+words: *"This result was produced entirely against the official
+10/43/130/436 profile; the legacy 131/441 profile was not evaluated
+here."* These are two genuinely different Qdrant collections with
+different code counts, not two names for the same thing.
+
+Production's real default call — bare `ISCOClassifier()` in
+`survey_routes.py`'s `_get_isco_classifier()` — uses `LEGACY_PROFILE`
+with `force_flat=False` (also the default), i.e. the **legacy
+hierarchical** store, which has never been measured against the full
+18,747-case heldout at all. The only real measurement of the actual
+legacy profile that exists anywhere in this repo is a much smaller,
+older **500-case WISCO subsample**
+(`Documentation/Phase_2/FINAL_RESULTS_PACKAGE.md`, source
+`backend/evaluation/results_wisco.csv`, commit `cabcc75`, dated
+2026-08-15): **flat 8.6% top-1, hierarchical 11.0% top-1** — that
+document's own disclaimer already said "do not merge the two" with the
+canonical 18,747-case result, but nothing anywhere connected that
+warning to the fact that the *legacy* half of that disclaimer is also
+*production's own* profile. Whether this 500-case number still reflects
+the current, post-2026-08-12-fix 436-entry-equivalent legacy catalogue
+content, or an earlier state of it, was not re-verified in this pass —
+flagged honestly as uncertain rather than assumed either way.
+
+**Practical consequence**: every place in this document (and in
+`survey_routes.py`'s code comments) that says or implies "LEGACY_PROFILE
+achieves 21.19%" is wrong. The honest statement is: production's real
+accuracy has never been rigorously measured at full-heldout scale; the
+best available reference is the smaller 500-case legacy-hierarchical
+result (~11%), not 21.19%, and nowhere near 40.95%. This does not change
+any `official_ilo2021_v1*` number itself — those remain real, as
+measured — it changes which configuration they describe. Not yet fixed
+at every individual occurrence below as of this entry; each should be
+read with this correction in mind until they are.
 
 ## Evaluation code layout — everything now lives under `eval/`
 
@@ -2439,8 +2491,12 @@ the actual committed evidence directly, not by trusting the prior text.
   stability bug found and reverted the same day, 2026-10-01**: prompted
   directly by "double check we can improve the accuracy first." Checked
   directly rather than assumed: `survey_routes.py`'s `_get_isco_classifier()`
-  called bare `ISCOClassifier()` (every default → `LEGACY_PROFILE`,
-  21.19% on the full WISCO heldout), and `_get_isic_classifier()`/
+  called bare `ISCOClassifier()` (every default → `LEGACY_PROFILE` — a
+  separate, weaker catalogue genuinely distinct from the
+  `official_ilo2021_v1` family; see the 2026-10-02 critical correction
+  under "The actual published WISCO evaluation result" — 21.19% was
+  wrongly attributed to it at the time this entry was written), and
+  `_get_isic_classifier()`/
   `_get_isced_classifier()`'s `.classify()` calls passed no `method=`
   (→ the legacy keyword/LLM pipeline) — despite this project having
   spent weeks validating genuinely better configs for all three
@@ -2601,12 +2657,19 @@ the actual committed evidence directly, not by trusting the prior text.
   expects as cleanly as a natural-language answer would, so some
   clarification loops here may reflect the scripted answers' phrasing
   rather than genuine question difficulty — flagged honestly rather than
-  presented as evidence about real respondent experience. The 16.7%
-  live-conversation ISCO accuracy is consistent with, not a new measurement
-  of, the already-known ~21.19% default-config baseline (WISCO, 18,747
-  cases) — at n=30 this exact draw is well within normal sampling noise
-  around that established rate, not a fresh, independently meaningful
-  number in its own right. The 60%/73.3% contradiction rates are a real,
+  presented as evidence about real respondent experience. **Correction,
+  2026-10-02**: the paragraph originally here compared the 16.7%
+  live-conversation accuracy to "the already-known ~21.19% default-config
+  baseline" — that comparison was wrong, not because the 16.7% number is
+  wrong, but because 21.19% is not the default config's baseline (see the
+  critical correction under "The actual published WISCO evaluation
+  result"). This pilot ran through the live HTTP API, i.e. the actual
+  production `LEGACY_PROFILE` hierarchical path — the correct comparison
+  point is the real, smaller 500-case legacy measurement (11.0%
+  hierarchical), not 21.19%. 5/30 = 16.7% is still ordinary sampling
+  noise around an ~11% true rate at this sample size, so the pilot's own
+  number isn't contradicted — only the baseline it was compared against
+  was mislabeled. The 60%/73.3% contradiction rates are a real,
   directly-computed signal, but their magnitude is substantially driven by
   the live sessions using the SAFE, LOWER-accuracy default classifier
   config (so a wrong ISCO code frequently and genuinely conflicts with the
@@ -2682,10 +2745,15 @@ the actual committed evidence directly, not by trusting the prior text.
   already-documented production state (the `7c909b6` attempt-and-revert
   entry above): the live classifier
   (`survey_routes.py`'s `_get_isco_classifier()`) is the bare
-  `ISCOClassifier()`, i.e. `LEGACY_PROFILE` (21.19% WISCO heldout), **not**
-  the `ENRICHED_E5LARGE_PROFILE` config the 40.95% figure describes — that
-  switch was tried and reverted this same session due to the e5-large
-  memory-crash. So a real reader (a pilot respondent, or a thesis committee
+  `ISCOClassifier()`, i.e. `LEGACY_PROFILE` (**correction, 2026-10-02**:
+  this entry originally said "21.19% WISCO heldout" here — wrong, see the
+  critical correction under "The actual published WISCO evaluation
+  result"; the real reference is the much lower ~11% legacy-hierarchical
+  500-case measurement, which only strengthens this fix's own point),
+  **not** the `ENRICHED_E5LARGE_PROFILE` config the 40.95% figure
+  describes — that switch was tried and reverted this same session due to
+  the e5-large memory-crash. So a real reader (a pilot respondent, or a
+  thesis committee
   member looking at a live demo) would reasonably read "40.95%" as the
   accuracy of the classification shown directly below it, when the actual
   config that produced that code is the lower-accuracy one. The page's own
