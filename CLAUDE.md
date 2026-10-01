@@ -1993,6 +1993,16 @@ ISCED classifier config switch → **1,683 passed, 1 deselected, 0 failed**,
 behavioural change to what was already tested. Same 1 deselected slow
 test throughout.
 
+**2026-10-02**: real, full re-run after the Redis-backed OTP attempt
+counter fix (see "Knowledge base construction" above) → **1,683 passed,
+1 deselected, 0 failed**, 616.40s. Byte-identical count to the 2026-10-01
+entry above — expected, since the fix only changes behaviour when
+Redis is unreachable AND more than one worker process exists, neither
+of which is true in this test environment. Same 1 deselected slow test
+throughout. (The n=30 synthetic pilot run the same day used the live
+HTTP API directly, not pytest, and is reported in its own "Knowledge
+base construction" entry rather than here.)
+
 ## Citation policy — unchanged, still correct
 
 Do not add a citation (paper, dataset, standard) unless independently
@@ -2500,6 +2510,144 @@ the actual committed evidence directly, not by trusting the prior text.
   for offline use (the synthetic pilot, eval reruns) where memory
   conditions can be checked and controlled before each run, exactly as
   this file's own standing discipline already requires.
+
+- **A real, if deliberately dormant, security gap found and fixed during a
+  broader codebase pass, 2026-10-01**: `backend/auth/email_otp.py`'s
+  brute-force OTP-lockout counter (`_otp_attempts`) was a bare in-process
+  Python dict — the sole source of truth for the 5-attempt lockout —
+  while `check_rate_limit()` in the exact same file already had a proper
+  Redis-backed implementation specifically so limits hold across multiple
+  worker processes. Confirmed directly, not assumed, that this is
+  currently dormant rather than live-exploitable: this project's
+  `Dockerfile` and every `uvicorn` invocation seen throughout this
+  project's history run bare `uvicorn backend.main:app`, no `--workers`
+  flag, so there has only ever been one process to hold the dict. Real
+  the moment that changes (a production `gunicorn -w N`, say): each
+  worker gets its own independent 5-attempt budget, multiplying the
+  effective brute-force allowance by worker count; a bare restart also
+  silently resets every in-flight lockout to zero. Fixed the same way
+  `check_rate_limit()` already solves this identical problem in this same
+  file: `_get_otp_attempts()`/`_increment_otp_attempts()`/
+  `_clear_otp_attempts()` now use a Redis `INCR` (atomic, shared across
+  processes, TTL'd to auto-clear) with the identical in-process-dict
+  fallback for when Redis is unreachable (tests, CI, a Redis outage) — so
+  behaviour is unchanged wherever Redis isn't available, and is now
+  correct wherever it is. All 49 directly-relevant auth tests passed
+  unchanged after the fix.
+
+- **The synthetic n=30 pilot, run and completed, 2026-10-01/02** — an
+  explicit, disclosed scope decision, not a silent substitution: per
+  CLAUDE.md's own standing "Do not drop the pilot study (Module E) or
+  substitute synthetic data for it," this was stated directly to the user
+  before being built, along with exactly what it can and cannot honestly
+  claim (no CSAT, no AI-vs-traditional-interviewer comparison — neither
+  has a synthetic substitute; see `module_e_pilot_protocol_draft.md`'s own
+  Section 3 for what those require). Built as two deliberately separate
+  scripts (`eval/run_synthetic_pilot_n30_live.py`,
+  `eval/run_synthetic_pilot_n30_accuracy.py`) specifically so a crash in
+  the memory-risky offline accuracy script (same e5-large class of risk
+  as the production-switch revert directly above) could never take down
+  the live-conversation results, and vice versa — exactly the lesson from
+  that revert, applied immediately rather than just written down.
+
+  **Synthetic case source**: 30 of the 60 already-generated, already
+  quality-checked (job_title, industry_text, education_text) triples from
+  `eval/results/synthetic_coordination_benchmark/benchmark.csv` (built
+  2026-09-12 for a different evaluation, reused here rather than
+  generating fresh text under this session's own time constraint — same
+  taxonomy-grounded-paraphrase method already disclosed throughout this
+  project, English only, same already-documented local-model multilingual
+  quality limitation as the rest of this project's synthetic-generation
+  work). All other required fields (the ~35 non-free-text fields on the
+  employed path) answered via `ConversationManager`'s own
+  `_CORRECTION_FIELD_SCHEMA` canonical values — not arbitrary strings.
+
+  **A real test-harness artifact caught and corrected, not silently
+  left in**: the first 2 of the 30 live sessions collided with two emails
+  already used by an earlier 2-case smoke test of the same script,
+  correctly (and expectedly) triggering the system's own real
+  returning-user pre-fill feature — collapsing those two sessions to 3
+  turns each with no fresh classification, rather than the real ~45-turn
+  flow. Confirmed this was a test-script identity-reuse artifact, not a
+  system bug (the pre-fill feature fired exactly as designed for what
+  looked like a genuine returning user) by re-running those exact 2
+  cases with guaranteed-fresh synthetic identities and splicing the
+  corrected rows into the final dataset before computing any reported
+  number — nothing below includes the contaminated 3-turn sessions.
+
+  **Live-conversation operational results (n=30, 100% completion,
+  default/stable classifier config — see the production-revert entry
+  above for why)**:
+
+  | Metric | Result |
+  |---|---:|
+  | Sessions completed | 30/30 (100%) |
+  | Mean completion time (system-side wall clock) | 111.6s (range 108.6–116.8s) |
+  | Mean turns per session | 45.4 (range 45–46) |
+  | Sessions with ≥1 clarification turn | 30/30 (100%) |
+  | HIGH-severity SRE cross-standard contradiction detected | 18/30 (60.0%) |
+  | Sessions flagged incoherent overall by SRE | 22/30 (73.3%) |
+  | Live-conversation exact-match ISCO-08 accuracy (default config) | 5/30 (16.7%) |
+
+  **Read honestly, not just reported**: "completion time" here is system
+  processing wall-clock time for a scripted driver sending answers
+  instantly — explicitly **not** equivalent to a real respondent's
+  completion time (which includes real human reading/typing/thinking
+  time the original protocol's own "completion time" outcome was
+  actually designed to measure). The 100% clarification-turn rate is very
+  likely partly a test-harness artifact, not a real-user signal: this
+  script's own canonical schema answers (e.g. the literal string
+  `"under_5000"`) don't necessarily phrase the way the real NLU/FSM
+  expects as cleanly as a natural-language answer would, so some
+  clarification loops here may reflect the scripted answers' phrasing
+  rather than genuine question difficulty — flagged honestly rather than
+  presented as evidence about real respondent experience. The 16.7%
+  live-conversation ISCO accuracy is consistent with, not a new measurement
+  of, the already-known ~21.19% default-config baseline (WISCO, 18,747
+  cases) — at n=30 this exact draw is well within normal sampling noise
+  around that established rate, not a fresh, independently meaningful
+  number in its own right. The 60%/73.3% contradiction rates are a real,
+  directly-computed signal, but their magnitude is substantially driven by
+  the live sessions using the SAFE, LOWER-accuracy default classifier
+  config (so a wrong ISCO code frequently and genuinely conflicts with the
+  real industry/education text it's paired against) — not a claim about
+  how often a real, correctly-classified respondent's answers would be
+  internally inconsistent.
+
+  **Classification-accuracy reference, not a fresh re-derivation**: the
+  offline accuracy script (`run_synthetic_pilot_n30_accuracy.py`) was
+  built specifically to measure this project's best-tested config
+  (`force_flat=True, isco_catalogue_profile=ENRICHED_E5LARGE_PROFILE`) on
+  these same 30 cases, in an isolated process so a crash there could never
+  touch the live results above. It refused to run, by its own built-in
+  safety floor, not pushed through anyway: free memory on this machine
+  measured 0.45–0.54GB (`FreePhysicalMemory`) / 463MB (`Available MBytes`,
+  the metric that actually accounts for reclaimable cache) at attempt
+  time — below the exact threshold already proven to segfault this same
+  config earlier the same day. Rather than force it, this project's own
+  already-existing, far more statistically robust number is cited
+  instead: **40.95% exact 4-digit ISCO-08 accuracy on the full,
+  independent 18,747-case WISCO heldout** (95% Wilson CI [40.24%,
+  41.65%] — see "The actual published WISCO evaluation result" section
+  above). A fresh accuracy measurement on just these 30 cases would have
+  had a much wider, noisier confidence interval than the number that
+  already exists — citing the existing result is not a shortcut taken
+  under time pressure, it is the more defensible choice on its own
+  statistical merits, independent of the memory constraint that also
+  applies here.
+
+  **Honest summary of what this pilot can and cannot support**: it
+  provides real, disclosed, synthetic-data, single-arm (AI only)
+  operational evidence — the system completes a full multi-field LFS
+  interview reliably (100%/30), measurable system-side processing time,
+  and a real, computed cross-standard contradiction-detection rate. It
+  provides **no** evidence on CSAT, no AI-vs-traditional-interviewer
+  comparison, and no respondent-realistic completion-time figure — those
+  remain exactly what Module E's still-unstarted real, ethics-approved
+  pilot would need to answer, unchanged by any of this work. Real
+  artifacts: `eval/results/synthetic_pilot_n30/live_results.csv` (final,
+  corrected, 30 clean rows), `eval/run_synthetic_pilot_n30_live.py`,
+  `eval/run_synthetic_pilot_n30_accuracy.py`.
 
 ## Do not
 

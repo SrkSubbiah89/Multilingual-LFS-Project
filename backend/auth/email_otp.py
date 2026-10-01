@@ -99,8 +99,65 @@ def check_rate_limit(key: str, max_requests: int, window_seconds: int) -> bool:
 # ---------------------------------------------------------------------------
 # Per-OTP attempt counter (brute-force lockout)
 # ---------------------------------------------------------------------------
+# Real gap found 2026-10-01 during a broader codebase pass: this counter was
+# a bare in-process dict, the sole source of truth for the lockout, while
+# check_rate_limit() right above went to the trouble of a proper Redis-backed
+# implementation specifically so limits hold across multiple worker
+# processes. Currently dormant, not actively exploitable -- confirmed
+# directly, not assumed: this project's own Dockerfile and every uvicorn
+# invocation used throughout this project's history run bare
+# `uvicorn backend.main:app`, no --workers flag, so there has only ever been
+# one process to hold this dict. But it's a real, latent weakening the
+# moment that changes (e.g. a production `gunicorn -w N`): each worker would
+# get its own independent _MAX_OTP_ATTEMPTS budget, multiplying the
+# effective brute-force attempts by worker count. A restart also silently
+# resets every in-flight lockout to zero, independent of worker count.
+# Fixed the same way check_rate_limit() already solves this exact problem
+# in this same file -- a Redis INCR (atomic, shared across processes) with
+# the identical in-process fallback for when Redis is unreachable (tests,
+# CI, Redis outage), so behaviour is unchanged wherever Redis isn't
+# available, and is now correct wherever it is.
 
-_otp_attempts: dict[int, int] = {}  # otp_entry.id → failed attempt count
+_otp_attempts: dict[int, int] = {}  # otp_entry.id → failed attempt count (fallback only)
+_OTP_ATTEMPT_TTL_SECONDS = OTP_EXPIRY_MINUTES * 60 + 60  # outlives the OTP itself, then auto-clears
+
+
+def _get_otp_attempts(otp_id: int) -> int:
+    r = _get_rl_redis()
+    if r is not None:
+        try:
+            val = r.get(f"lfs:otp_attempts:{otp_id}")
+            return int(val) if val is not None else 0
+        except Exception:
+            pass
+    return _otp_attempts.get(otp_id, 0)
+
+
+def _increment_otp_attempts(otp_id: int) -> int:
+    r = _get_rl_redis()
+    if r is not None:
+        try:
+            key = f"lfs:otp_attempts:{otp_id}"
+            pipe = r.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, _OTP_ATTEMPT_TTL_SECONDS)
+            results = pipe.execute()
+            return int(results[0])
+        except Exception:
+            pass
+    new_count = _otp_attempts.get(otp_id, 0) + 1
+    _otp_attempts[otp_id] = new_count
+    return new_count
+
+
+def _clear_otp_attempts(otp_id: int) -> None:
+    r = _get_rl_redis()
+    if r is not None:
+        try:
+            r.delete(f"lfs:otp_attempts:{otp_id}")
+        except Exception:
+            pass
+    _otp_attempts.pop(otp_id, None)
 
 # Delivery channel flags
 _USE_SMS_OTP = os.getenv("USE_SMS_OTP", "false").lower() == "true"
@@ -286,7 +343,7 @@ def verify_otp(db: Session, user_id: int, code: str) -> bool:
         return False
 
     # Brute-force guard: lock after too many wrong attempts
-    attempts = _otp_attempts.get(otp_entry.id, 0)
+    attempts = _get_otp_attempts(otp_entry.id)
     if attempts >= _MAX_OTP_ATTEMPTS:
         otp_entry.is_used = True   # permanently lock this OTP entry
         db.commit()
@@ -294,16 +351,16 @@ def verify_otp(db: Session, user_id: int, code: str) -> bool:
         return False
 
     if otp_entry.code != code:
-        _otp_attempts[otp_entry.id] = attempts + 1
+        new_count = _increment_otp_attempts(otp_entry.id)
         logger.debug(
             "OTP mismatch for user %d (attempt %d/%d).",
-            user_id, attempts + 1, _MAX_OTP_ATTEMPTS,
+            user_id, new_count, _MAX_OTP_ATTEMPTS,
         )
         return False
 
     # Valid — consume and clear attempt counter
     otp_entry.is_used = True
-    _otp_attempts.pop(otp_entry.id, None)
+    _clear_otp_attempts(otp_entry.id)
     db.commit()
     return True
 
