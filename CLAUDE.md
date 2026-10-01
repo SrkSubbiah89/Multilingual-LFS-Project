@@ -1985,6 +1985,14 @@ coherence violations, see "Knowledge base construction" above) →
 1,679 baseline (`TestSREHighSeverityBackstop` in
 `test_report_generator.py`). Same 1 deselected slow test throughout.
 
+**2026-10-01**: real, full re-run after attempting (then reverting, same
+day — see "Knowledge base construction" above) the production ISCO/ISIC/
+ISCED classifier config switch → **1,683 passed, 1 deselected, 0 failed**,
+538.08s. Byte-identical count to the 2026-09-19 entry above, as expected
+— the net change after the revert is documentation/comments only, no
+behavioural change to what was already tested. Same 1 deselected slow
+test throughout.
+
 ## Citation policy — unchanged, still correct
 
 Do not add a citation (paper, dataset, standard) unless independently
@@ -2415,6 +2423,83 @@ the actual committed evidence directly, not by trusting the prior text.
   A's session correctly 404s, no data leak), and report-on-incomplete-
   session correctly 409s rather than 500ing. All 4 frontend pages load
   clean.
+
+- **The production survey path had never been switched to this project's
+  own best-tested classifier configs — attempted, and a real, serious
+  stability bug found and reverted the same day, 2026-10-01**: prompted
+  directly by "double check we can improve the accuracy first." Checked
+  directly rather than assumed: `survey_routes.py`'s `_get_isco_classifier()`
+  called bare `ISCOClassifier()` (every default → `LEGACY_PROFILE`,
+  21.19% on the full WISCO heldout), and `_get_isic_classifier()`/
+  `_get_isced_classifier()`'s `.classify()` calls passed no `method=`
+  (→ the legacy keyword/LLM pipeline) — despite this project having
+  spent weeks validating genuinely better configs for all three
+  standards and documenting them as the thesis's own headline numbers.
+  Confirmed the required Qdrant collections were live and fully
+  populated locally before touching any code (`isco08_*_enriched_e5large`
+  436 points, `isic_rev4_classes_flat_enriched_e5large` 121 points,
+  `iscedf2013_detailed_fields_flat_enriched_e5large` 61 points — all
+  `status: green`). Switched all three to `force_flat=True,
+  isco_catalogue_profile=ENRICHED_E5LARGE_PROFILE` / `method=
+  ISIC_FLAT_RETRIEVAL` / `method=ISCEDF_FLAT_RETRIEVAL`. All 134
+  directly-relevant tests passed.
+
+  **Live-verified before declaring done, per this project's own standing
+  discipline — and a real, serious bug was caught doing so, not shipped
+  blind.** A live HTTP request with a real job title ("software
+  engineer") through the actual `/message` endpoint never returned —
+  the connection was forcibly reset and `/health` stopped responding
+  entirely. Root-caused with a standalone, isolated reproduction (bypassing
+  the HTTP layer and the full turn pipeline, to rule out everything else
+  as the cause): `ISCOClassifier(force_flat=True,
+  isco_catalogue_profile=ENRICHED_E5LARGE_PROFILE).classify(...)` on this
+  machine's real, current memory conditions (~0.95GB free) reproduces the
+  exact memory-exhaustion failure class already extensively documented
+  elsewhere in this file for e5-large loads — but inconsistently: one
+  reproduction raised a catchable `RuntimeError: ... paging file is too
+  small ...` (survivable — caught by the existing try/except, degrades to
+  no classification), while the live HTTP attempt produced a hard,
+  **uncatchable segfault that killed the entire backend process**. Which
+  outcome occurs depends on exact memory pressure at that moment — not
+  something code can fully control. Checked the real cause of the memory
+  cost before reverting, not just the symptom: none of `backend/rag/`'s
+  `SentenceTransformer(...)` construction sites share or cache a model
+  instance across callers — `ISCOClassifier`, `ISICClassifier`, and
+  `ISCEDClassifier` each construct their **own independent**
+  `multilingual-e5-large` instance (~1-1.5GB each, per this file's own
+  prior measurements) when all three are switched together, on a machine
+  that already has well under 1GB free before any of them load.
+
+  **Reverted all three**, same day, same session — a classifier that can
+  crash the entire backend on a real request is a strictly worse outcome
+  than one that's simply less accurate; stability has to come first for
+  anything meant to serve real respondents. This does **not** retract or
+  weaken any of this project's actual accuracy numbers (40.95% ISCO-08,
+  80.71%/88.14% ISIC/ISCED-F on the synthetic benchmark) — every one of
+  those was already produced via careful, memory-conscious `eval/`
+  scripts, run offline, the same discipline this file has documented
+  repeatedly for e5-large work on this machine; none of them were ever
+  produced by the live production server, so none of them depended on
+  this switch succeeding. Live-reverified after reverting: the identical
+  real-job-title request against the reverted code returned a normal
+  200 with `/health` staying healthy throughout. Full suite re-run: see
+  Testing section timestamped 2026-10-01.
+
+  **Real path forward, not attempted in this pass**: this switch is
+  correct and ready to re-attempt the moment it can run on hardware with
+  real headroom — the Oracle Cloud free-tier VM path discussed earlier
+  this session (up to 24GB RAM, 15-20x what's free on this machine right
+  now) would very plausibly make this a non-issue outright. On this
+  specific laptop, the two remaining options are the same ones already on
+  record elsewhere in this file for the identical class of problem: free
+  several GB by closing other applications before retrying, or run on
+  different hardware. Given the user's own stated time constraint
+  ("don't have time for deployment"), neither was pursued in this pass —
+  the live survey path stays on its safe, lower-accuracy default, and the
+  validated best-tested configs remain available and already proven
+  for offline use (the synthetic pilot, eval reruns) where memory
+  conditions can be checked and controlled before each run, exactly as
+  this file's own standing discipline already requires.
 
 ## Do not
 

@@ -137,6 +137,25 @@ def _get_isco_classifier() -> ISCOClassifier:
     if _isco_classifier is None or (
         _isco_classifier._hierarchical_store is None and _isco_classifier._flat_store is None
     ):
+        # Attempted 2026-10-01: switching this to the project's real,
+        # heldout-confirmed best-tested config (force_flat=True,
+        # ENRICHED_E5LARGE_PROFILE -- 40.95% vs. LEGACY_PROFILE's 21.19% on
+        # the full 18,747-case WISCO heldout). Reverted the same day,
+        # live-caught, not assumed: on this machine's current real memory
+        # conditions, loading multilingual-e5-large for the live survey
+        # path reproduced the exact memory-exhaustion failure class already
+        # extensively documented elsewhere in this file -- sometimes a
+        # graceful "paging file too small" RuntimeError (caught, degrades
+        # to no classification), sometimes a hard segfault that killed the
+        # entire backend process outright (confirmed via a real live
+        # request that never returned and left /health unresponsive).
+        # A classifier that can crash the whole server is worse than one
+        # that's simply less accurate -- stability wins here. The e5-large
+        # config remains real, valid, and used for this project's actual
+        # citable accuracy numbers (produced via eval/ scripts, run
+        # carefully offline, same discipline as every other e5-large use
+        # in this codebase) -- only the LIVE production survey path was
+        # reverted, not the evidence behind the number.
         _isco_classifier = ISCOClassifier()
     return _isco_classifier
 
@@ -1044,6 +1063,15 @@ def _send_message_impl(
                 if _COORDINATED_CLASSIFICATION and isco_results
                 else None
             )
+            # Switching this to method=ISIC_FLAT_RETRIEVAL was attempted and
+            # reverted 2026-10-01, same real memory-exhaustion finding as
+            # the ISCO revert above (both load multilingual-e5-large) --
+            # see that comment for the full story. The legacy keyword/LLM
+            # path stays the live production default; the flat_retrieval+
+            # enriched_e5large result (80.71% vs. 12.99% on the synthetic
+            # ISIC/ISCED-F benchmark, CLAUDE.md) remains real and evidenced,
+            # produced via eval/ scripts offline, just not wired into the
+            # live, memory-constrained survey path on this machine.
             isic_clf = _get_isic_classifier().classify(industry_text, cross_hints=_isic_cross_hints)
             isic_result = ISICResult(
                 industry_text=industry_text,
@@ -1077,6 +1105,8 @@ def _send_message_impl(
     )
     if edu_text:
         try:
+            # Same revert and reasoning as ISIC's Stage 4b above --
+            # method=ISCEDF_FLAT_RETRIEVAL also loads multilingual-e5-large.
             isced_clf = _get_isced_classifier().classify(edu_text)
             isced_result = ISCEDResult(
                 education_text=edu_text,
