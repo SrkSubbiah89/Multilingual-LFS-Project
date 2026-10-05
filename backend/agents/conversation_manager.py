@@ -67,6 +67,7 @@ from typing import Optional
 from crewai import Agent, Crew, Task
 
 from backend.llm import TaskType, get_llm
+from backend.llm.llm_client import is_local_only_enabled
 from backend.agents.survey_option_aliases import OPTION_VALUE_ALIASES
 
 _logger = logging.getLogger(__name__)
@@ -163,7 +164,7 @@ _STATE_INSTRUCTIONS: dict[ConversationState, dict[str, str]] = {
             "Greet the respondent warmly and introduce yourself as the UAE LFS "
             "survey assistant. Briefly explain the purpose of the survey "
             "(understanding employment and labour market conditions in the UAE). "
-            "Ask whether they prefer to continue in English or Arabic, then "
+            "Ask whether they prefer English, Arabic, Urdu, Hindi, or Tagalog, then "
             "invite them to begin when ready."
         ),
         "ar": (
@@ -809,14 +810,15 @@ class ConversationManager:
                 goal=(
                     "Guide respondents through the Labour Force Survey accurately "
                     "and empathetically, collecting complete and unambiguous "
-                    "employment data in English or Arabic."
+                    "employment data in English, Arabic (including Gulf dialect), "
+                    "Urdu, Hindi, or Tagalog, honoring the respondent's selected language."
                 ),
                 backstory=(
                     "You are a seasoned LFS survey interviewer trained by the UAE "
                     "Federal Competitiveness and Statistics Centre. You understand "
                     "that precise employment data drives government policy and you "
                     "are skilled at keeping conversations focused, natural, and "
-                    "culturally sensitive across both English and Arabic-speaking "
+                    "culturally sensitive across English, Arabic, Urdu, Hindi, and Tagalog-speaking "
                     "respondents in the UAE."
                 ),
                 llm=self._llm,
@@ -3438,11 +3440,14 @@ class ConversationManager:
         # Clear the one-shot correction flag now that it has been consumed by the prompt
         ctx.correction_applied = False
 
-        expected_output = (
-            "A natural, conversational interviewer reply in English."
-            if pk == "en"
-            else "ردٌّ طبيعي وتفاعلي من المحاور باللغة العربية."
-        )
+        expected_output = {
+            "en": "A natural, conversational interviewer reply in English.",
+            "ar": "ردٌّ طبيعي وتفاعلي من المحاور باللغة العربية.",
+            "ar-gulf": "ردٌّ طبيعي وتفاعلي من المحاور باللغة العربية (اللهجة الخليجية مقبولة).",
+            "ur": "A natural, conversational interviewer reply entirely in Urdu (اردو).",
+            "hi": "A natural, conversational interviewer reply entirely in Hindi (हिन्दी).",
+            "tl": "A natural, conversational interviewer reply entirely in Filipino/Tagalog.",
+        }.get(lang, "A natural, conversational interviewer reply in English.")
 
         return Task(
             description=description,
@@ -3553,7 +3558,14 @@ class ConversationManager:
                 if (
                     ctx.clarification_count >= 3
                     and target
-                    and target != "employment_status"
+                    # Routing gates must retain canonical values even when
+                    # clarification is exhausted. Free-text answers and
+                    # supported refusal choices keep their existing behavior.
+                    and target not in (
+                        "employment_status", "education_level", "employment_nature",
+                        "secondary_job", "job_search_active", "available_for_work",
+                        "ever_worked", "platform_work",
+                    )
                     and len(user_message.strip()) >= 3
                 ):
                     ctx.collected_data[target] = user_message.strip()
@@ -3666,6 +3678,62 @@ class ConversationManager:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _match_current_option_phrase(field: Optional[str], text: str) -> tuple[Optional[str], bool]:
+        """Read one unambiguous option phrase in the current answer.
+
+        Localized display labels can occur inside a natural sentence. Reject
+        conflicting labels and negation outside the matched option instead of
+        allowing the legacy catch-all to store a sentence as a routing value.
+        Exact option labels, including negative ones, are handled by the caller.
+        The boolean indicates that a recognized answer needs clarification.
+        """
+        aliases = OPTION_VALUE_ALIASES.get(field, {})
+        matches = []
+        for phrase, value in aliases.items():
+            # Keep dependent vowel signs inside a word; regex \\b alone treats
+            # the Hindi bachelor's label as a prefix of other Hindi words.
+            if not _contains_whole_phrase(text, phrase):
+                continue
+            start = 0
+            while (start := text.find(phrase, start)) >= 0:
+                end = start + len(phrase)
+                if _contains_whole_phrase(text[start:end], phrase):
+                    left = text[start - 1] if start else ""
+                    right = text[end] if end < len(text) else ""
+                    is_word = lambda char: bool(char) and (
+                        char.isalnum() or char == "_" or unicodedata.category(char).startswith("M")
+                    )
+                    if not is_word(left) and not is_word(right):
+                        matches.append((start, end, value))
+                start = end
+        # A longer label owns any nested token, e.g. 'no formal education'
+        # must not conflict with a shorter category phrase it contains.
+        matches = [
+            match for match in matches
+            if not any(
+                other[0] <= match[0] and match[1] <= other[1]
+                and (other[0], other[1]) != (match[0], match[1])
+                for other in matches
+            )
+        ]
+        if not matches:
+            return None, False
+        values = {value for _, _, value in matches}
+        if len(values) != 1:
+            return None, True
+        remainder = text
+        for start, end, _ in sorted(matches, reverse=True):
+            remainder = remainder[:start] + " " * (end - start) + remainder[end:]
+        negations = (
+            "no", "not", "never", "don't", "do not", "isn't", "wasn't", "cannot", "can't",
+            "لا", "ليس", "ليست", "لم", "لن", "غير",
+            "نہیں", "نہ", "नहीं", "नही", "मत", "hindi", "wala", "ayaw",
+        )
+        if any(_contains_whole_phrase(remainder, phrase) for phrase in negations):
+            return None, True
+        return next(iter(values)), False
+
+    @staticmethod
     def _parse_wage_range(text: str, *, require_wage_context: bool = False) -> Optional[str]:
         """Read wage categories before interpreting a bare numeric amount."""
         lower = unicodedata.normalize("NFKC", text).lower().strip()
@@ -3768,6 +3836,22 @@ class ConversationManager:
         if canonical is not None:
             data[answer_field] = canonical
             self._reroute_unavailable_jobseeker(data)
+            return
+
+        # A natural answer is scoped to the question being collected, rather
+        # than inferring a current question during greeting or summary states.
+        canonical, needs_clarification = (
+            self._match_current_option_phrase(
+                answer_field, unicodedata.normalize("NFKC", text).lower().strip(),
+            )
+            if ctx.state in (ConversationState.COLLECTING_INFO, ConversationState.CLARIFYING)
+            else (None, False)
+        )
+        if canonical is not None:
+            data[answer_field] = canonical
+            self._reroute_unavailable_jobseeker(data)
+            return
+        if needs_clarification:
             return
 
         # ── Employment status ─────────────────────────────────────────────────
@@ -4599,8 +4683,17 @@ class ConversationManager:
         maps to job_duties), so the class of respondent phrasing this guard
         exists to admit is still covered.
         """
-        lowered = text.lower()
-        for alias in _FIELD_ALIASES:
+        lowered = unicodedata.normalize("NFKC", text).lower()
+        aliases = list(_FIELD_ALIASES)
+        # The correction extractor accepts all five interview languages. Its
+        # guard must recognize the native field names shown in those interviews.
+        for labels in (
+            ConversationManager._FIELD_LABELS_UR,
+            ConversationManager._FIELD_LABELS_HI,
+            ConversationManager._FIELD_LABELS_TL,
+        ):
+            aliases.extend(unicodedata.normalize("NFKC", label).lower() for label in labels.values())
+        for alias in aliases:
             if alias in lowered:
                 return True
             if (
@@ -4683,7 +4776,9 @@ class ConversationManager:
         guarantee structured output and a hard 100-second timeout (covers a
         real measured cold-start worst case of ~78s against the actual
         default model -- see _CORRECTION_TIMEOUT's own comment).  Falls back to
-        Anthropic API if Ollama is unreachable.  Returns True if ≥1 field updated.
+        Anthropic API if Ollama is unreachable, unless LFS_LOCAL_ONLY is enabled.
+        Local-only mode uses Ollama even when CORRECTION_LLM_PROVIDER names a cloud provider.
+        Returns True if ≥1 field updated.
         Handles all 60+ fields, all 5 languages, implicit + multi-field corrections.
 
         `valid_fields` is restricted to the respondent's actual field path (via
@@ -4782,7 +4877,9 @@ class ConversationManager:
         # without this a Groq rate-limit/outage previously had nowhere real
         # to fall back to.
         provider = os.getenv("CORRECTION_LLM_PROVIDER", "ollama").strip().lower()
-        if provider == "groq":
+        if is_local_only_enabled():
+            raw = self._call_ollama_json(prompt, schema=correction_schema)
+        elif provider == "groq":
             raw = (
                 self._call_groq_json(prompt, schema=correction_schema)
                 or self._call_anthropic_json(prompt)
@@ -4996,6 +5093,8 @@ class ConversationManager:
         correction_schema_for()'s own output, so the Ollama path (still the
         local-dev default) is completely unaffected.
         """
+        if is_local_only_enabled():
+            return None
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             return None
@@ -5085,6 +5184,8 @@ class ConversationManager:
 
     def _call_anthropic_json(self, prompt: str) -> str | None:
         """Call Anthropic Claude as fallback for correction extraction. Returns raw text or None."""
+        if is_local_only_enabled():
+            return None
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             return None
@@ -5146,6 +5247,8 @@ class ConversationManager:
         fallback-of-a-fallback doesn't need to duplicate every layer to stay
         safe.
         """
+        if is_local_only_enabled():
+            return None
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return None

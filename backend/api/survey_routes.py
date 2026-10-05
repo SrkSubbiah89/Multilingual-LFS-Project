@@ -8,12 +8,16 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
 from typing import Optional
+from types import SimpleNamespace
 
 from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env", override=False)
 
 _FAST_MODE = os.getenv("LFS_FAST_MODE", "false").lower() in ("1", "true", "yes")
+_CREW_CLASSIFICATION_ENABLED = os.getenv(
+    "ENABLE_SURVEY_CLASSIFICATION_CREW", "true"
+).lower() in ("1", "true", "yes")
 
 # Real, opt-in cross-standard coordination (2026-09-12) -- default False
 # reproduces every existing turn's behaviour exactly. See
@@ -606,6 +610,8 @@ class MessageOut(BaseModel):
     emotional_support_message: Optional[str] = None  # shown to interviewer when distress detected
     validation_issues: list[str] = []                # rule violations when in VALIDATING state
     is_data_valid: Optional[bool] = None             # None outside VALIDATING state
+    agent_execution: dict[str, str] = Field(default_factory=dict)
+    classification_execution: Optional[dict] = None
     # Real field keys -> current values (2026-09-16), so the frontend's
     # structured correction picker can list actual fields/values without
     # re-parsing the rendered summary text back into field keys (fragile --
@@ -925,6 +931,13 @@ def _send_message_impl(
     # both to queue/time-out.  Sequential keeps each call within the timeout.
     t_parallel = time.perf_counter()
     lp_result = _empty_lp_result(msg, ctx.language) if skip_ner else lang_proc.process(msg)
+    agent_execution = {"LanguageProcessor": "skipped" if skip_ner else "completed"}
+    # The response generated on this turn must use the detected language.
+    if not body.preferred_language and lp_result.detected_language in (
+        "en", "ar", "ar-gulf", "ur", "hi", "tl"
+    ):
+        ctx.language = lp_result.detected_language
+        session.language = lp_result.detected_language
     _structured_correction = (
         (body.correction_field, body.correction_value)
         if body.correction_field and body.correction_value
@@ -933,6 +946,7 @@ def _send_message_impl(
     _answer_options = {"structured_answer": (body.answer_field, body.answer_value)} if body.answer_field is not None else {}
     try:
         reply = conv_mgr.process_message(ctx, msg, structured_correction=_structured_correction, **_answer_options)
+        agent_execution["ConversationManager"] = "completed"
     except ValueError as exc:
         from backend.agents.conversation_manager import StructuredAnswerError
         if isinstance(exc, StructuredAnswerError):
@@ -943,12 +957,83 @@ def _send_message_impl(
     # Fields set for the first time in this turn
     _fields_new = {key for key, value in ctx.collected_data.items() if key not in _values_before or _values_before[key] != value}
 
-    # ── Stage 2: update context language (only when no explicit preference set)
-    if not body.preferred_language and lp_result.detected_language in (
-        "en", "ar", "ar-gulf", "ur", "hi", "tl"
-    ):
-        ctx.language = lp_result.detected_language
-        session.language = lp_result.detected_language
+    # Changed classification inputs share one CrewAI workflow. Original tool
+    # results retain their codes, confidence, hierarchy and review requirements.
+    classification_execution = {
+        "mode": "fast" if _FAST_MODE else "independent",
+        "crew_attempted": False, "crew_completed": False,
+        "requested_dimensions": [],
+    }
+    classification_batch = None
+    title_input = ""
+    industry_input = ""
+    education_input = ""
+    occupation_field = "last_job_title" if ctx.collected_data.get("employment_status") in (
+        "unemployed", "not_in_labour_force"
+    ) else "job_title"
+    occupation_fields = {occupation_field, "job_duties", "industry", "employment_sector", "employment_nature"}
+    if _CREW_CLASSIFICATION_ENABLED and not _FAST_MODE:
+        if _fields_new.intersection(occupation_fields):
+            title_input = str(ctx.collected_data.get(occupation_field, "")).strip()
+            if len(title_input) < 3 or title_input in ("N/A", "never_worked"):
+                title_input = ""
+        if "industry" in _fields_new:
+            industry_input = str(ctx.collected_data.get("industry", "")).strip()
+        if _fields_new.intersection({"education_level", "field_of_study"}):
+            education_input = " ".join(filter(None, (
+                ctx.collected_data.get("education_level"), ctx.collected_data.get("field_of_study")
+            )))
+        if title_input or industry_input or education_input:
+            from backend.agents.survey_classification_crew import SurveyClassificationCrew
+            def lazy_classifier(getter):
+                return SimpleNamespace(classify=lambda text, **kwargs: getter().classify(text, **kwargs))
+            context_parts = [f"language={lp_result.detected_language}"] + [
+                str(ctx.collected_data[field]) for field in
+                ("job_duties", "industry", "employment_sector", "employment_nature")
+                if ctx.collected_data.get(field)
+            ]
+            classification_batch = SurveyClassificationCrew(
+                isco_classifier=lazy_classifier(_get_isco_classifier) if title_input else None,
+                isic_classifier=lazy_classifier(_get_isic_classifier) if industry_input else None,
+                isced_classifier=lazy_classifier(_get_isced_classifier) if education_input else None,
+            ).classify(
+                job_title=title_input, industry_text=industry_input, education_text=education_input,
+                language=ctx.language, isco_context=" | ".join(context_parts), use_llm=True,
+                isic_cross_hints="from_isco" if _COORDINATED_CLASSIFICATION and title_input else None,
+            )
+            classification_execution = classification_batch.execution
+            for dimension, name in (("isco", "ISCOClassifier"), ("isic", "ISICClassifier"), ("isced", "ISCEDClassifier")):
+                if dimension in classification_execution.get("requested_dimensions", []):
+                    agent_execution[name] = "completed" if getattr(classification_batch, dimension) is not None else "failed"
+            if classification_execution.get("audit_tool_executed"):
+                agent_execution["ClassificationEvidenceAuditor"] = "completed"
+
+    def classify_occupation(text, **kwargs):
+        if classification_batch is not None and text == title_input and title_input:
+            if classification_batch.isco is None:
+                raise RuntimeError("Occupation classification failed in the survey crew")
+            return classification_batch.isco
+        result = _get_isco_classifier().classify(text, **kwargs)
+        agent_execution["ISCOClassifier"] = "completed"
+        return result
+
+    def classify_industry(text, **kwargs):
+        if classification_batch is not None and text == industry_input and industry_input:
+            if classification_batch.isic is None:
+                raise RuntimeError("Industry classification failed in the survey crew")
+            return classification_batch.isic
+        result = _get_isic_classifier().classify(text, **kwargs)
+        agent_execution["ISICClassifier"] = "completed"
+        return result
+
+    def classify_education(text):
+        if classification_batch is not None and text == education_input and education_input:
+            if classification_batch.isced is None:
+                raise RuntimeError("Education classification failed in the survey crew")
+            return classification_batch.isced
+        result = _get_isced_classifier().classify(text)
+        agent_execution["ISCEDClassifier"] = "completed"
+        return result
 
     # ── Stage 4: ISCO classification for every JOB_TITLE entity ─────────────
     # Occupation persistence follows the questionnaire answer, not unrelated
@@ -969,7 +1054,7 @@ def _send_message_impl(
                     _ctx_parts.append(_val)
             _isco_context = " | ".join(_ctx_parts)
 
-            clf = _get_isco_classifier().classify(
+            clf = classify_occupation(
                 entity.text,
                 context=_isco_context,
             )
@@ -1042,7 +1127,7 @@ def _send_message_impl(
                     if _val:
                         _ctx_parts.append(_val)
                 _isco_context = " | ".join(_ctx_parts)
-                clf = _get_isco_classifier().classify(_stored_title, context=_isco_context, use_llm=not _FAST_MODE)
+                clf = classify_occupation(_stored_title, context=_isco_context, use_llm=not _FAST_MODE)
                 _fb_resp = save_response_revision(db, session_id, "job_title", _stored_title,
                     isco_code=clf.primary.code or None, confidence_score=clf.primary.confidence)
                 if clf.hitl_required:
@@ -1083,17 +1168,45 @@ def _send_message_impl(
             except Exception as _isco_err:
                 _logger.warning("ISCO fallback classify failed for %r: %s", _stored_title, _isco_err)
 
+    # The unemployed path codes the last occupation with the same evidence
+    # workflow and revision/review rules as a current occupation.
+    if occupation_field == "last_job_title" and "last_job_title" in _fields_new:
+        previous_title = str(ctx.collected_data.get("last_job_title", "")).strip()
+        if previous_title and previous_title not in ("N/A", "never_worked"):
+            try:
+                clf = classify_occupation(previous_title, context=f"language={ctx.language}", use_llm=not _FAST_MODE)
+                response = save_response_revision(db, session_id, "last_job_title", previous_title,
+                    isco_code=clf.primary.code or None, confidence_score=clf.primary.confidence)
+                if clf.hitl_required:
+                    review = HITLQueue(session_id=session_id, response_id=response.id,
+                        raw_text=previous_title, ai_code=clf.primary.code, ai_confidence=clf.primary.confidence,
+                        ai_reasoning=getattr(clf, "reasoning", None),
+                        priority="HIGH" if clf.primary.confidence < 0.50 else "MEDIUM",
+                        status="pending", created_at=datetime.utcnow())
+                    db.add(review)
+                    _hitl_entries_this_turn.append(review)
+                isco_results = [ISCOResult(job_title=previous_title,
+                    primary_code=clf.primary.code, primary_title_en=clf.primary.title_en,
+                    primary_title_ar=clf.primary.title_ar, confidence=clf.primary.confidence,
+                    method=clf.method, stage_confidences=clf.stage_confidences,
+                    hierarchy_path=clf.hierarchy_path, hitl_required=clf.hitl_required,
+                    alternatives=[ISCOAlternative(code=alt.code, title_en=alt.title_en,
+                        title_ar=alt.title_ar, confidence=alt.confidence) for alt in clf.alternatives])]
+            except Exception as exc:
+                _logger.warning("Last occupation classification failed for session=%s: %s", session_id, type(exc).__name__)
+
     # ── Stage 4 cache-replay: surface previous ISCO result on later turns ───────
     # ISCO only computes on the turn job_title is first stored (expensive model).
     # On all subsequent turns (including VALIDATING) isco_results is empty even
     # though the DB has a classification.  Re-surface it so the UI always shows
     # a result once a job title has been classified.
-    if not isco_results and ctx.collected_data.get("job_title"):
+    if not isco_results and ctx.collected_data.get(occupation_field):
         _prev_row = (
             db.query(SurveyResponse)
             .filter(
                 SurveyResponse.session_id == session_id,
-                SurveyResponse.question_id == "job_title",
+                SurveyResponse.question_id == occupation_field,
+                SurveyResponse.answer == str(ctx.collected_data[occupation_field]),
                 SurveyResponse.deleted_at.is_(None),
                 SurveyResponse.isco_code.isnot(None),
             )
@@ -1101,9 +1214,10 @@ def _send_message_impl(
             .first()
         )
         if _prev_row:
+            agent_execution.setdefault("ISCOClassifier", "cached")
             _kb_entry = _ISCO_TITLE_MAP.get(_prev_row.isco_code, {})
             isco_results = [ISCOResult(
-                job_title=_prev_row.answer or ctx.collected_data["job_title"],
+                job_title=_prev_row.answer or ctx.collected_data[occupation_field],
                 primary_code=_prev_row.isco_code,
                 primary_title_en=_kb_entry.get("title_en", ""),
                 primary_title_ar=_kb_entry.get("title_ar", ""),
@@ -1111,7 +1225,7 @@ def _send_message_impl(
                 method="cached",
                 stage_confidences={},
                 hierarchy_path=[],
-                hitl_required=(_prev_row.confidence_score or 1.0) < 0.70,
+                hitl_required=(_prev_row.confidence_score if _prev_row.confidence_score is not None else 0.0) < 0.70,
                 alternatives=[],
             )]
 
@@ -1129,7 +1243,7 @@ def _send_message_impl(
                 if _val:
                     _ctx_parts.append(_val)
             _isco_context = " | ".join(_ctx_parts)
-            clf = _get_isco_classifier().classify(_stored_title, context=_isco_context, use_llm=not _FAST_MODE)
+            clf = classify_occupation(_stored_title, context=_isco_context, use_llm=not _FAST_MODE)
             refined_response = save_response_revision(db, session_id, "job_title", _stored_title,
                 isco_code=clf.primary.code or None, confidence_score=clf.primary.confidence)
             if clf.hitl_required:
@@ -1183,7 +1297,7 @@ def _send_message_impl(
             # ISIC/ISCED-F benchmark, CLAUDE.md) remains real and evidenced,
             # produced via eval/ scripts offline, just not wired into the
             # live, memory-constrained survey path on this machine.
-            isic_clf = _get_isic_classifier().classify(industry_text, cross_hints=_isic_cross_hints)
+            isic_clf = classify_industry(industry_text, cross_hints=_isic_cross_hints)
             isic_result = ISICResult(
                 industry_text=industry_text,
                 section=isic_clf.section,
@@ -1218,7 +1332,7 @@ def _send_message_impl(
         try:
             # Same revert and reasoning as ISIC's Stage 4b above --
             # method=ISCEDF_FLAT_RETRIEVAL also loads multilingual-e5-large.
-            isced_clf = _get_isced_classifier().classify(edu_text)
+            isced_clf = classify_education(edu_text)
             isced_result = ISCEDResult(
                 education_text=edu_text,
                 level=isced_clf.level,
@@ -1310,7 +1424,7 @@ def _send_message_impl(
                                 confidence=_old_primary.confidence,
                             )],
                         )
-                        promoted_response = save_response_revision(db, session_id, "job_title", _old_primary.job_title,
+                        promoted_response = save_response_revision(db, session_id, occupation_field, _old_primary.job_title,
                             isco_code=_promoted.code, confidence_score=_promoted.confidence)
                         _hitl_entries_this_turn = [entry for entry in _hitl_entries_this_turn if entry.status == "pending"]
                         promoted_review = HITLQueue(session_id=session_id, response_id=promoted_response.id,
@@ -1330,7 +1444,7 @@ def _send_message_impl(
                 isco_code    = isco_results[0].primary_code,
                 isic_section = isic_result.section if isic_result else None,
                 isced_level  = isced_raw,
-                job_title    = str(ctx.collected_data.get("job_title", "")),
+                job_title    = str(ctx.collected_data.get(occupation_field, "")),
                 language     = lp_result.detected_language,
             )
             import dataclasses
@@ -1344,6 +1458,7 @@ def _send_message_impl(
             # silently None in the API response for every case that had
             # any violation at all -- exactly the cases where it mattered.
             semantic_coherence_out = dataclasses.asdict(sc)
+            agent_execution["SemanticRelationEngine"] = "completed"
 
             # ── Mandatory HITL escalation for HIGH-severity SRE violations ──
             # Added 2026-08-16 (Conference I Reviewer #2 response, Module D
@@ -1388,7 +1503,7 @@ def _send_message_impl(
                             _hq = HITLQueue(
                             session_id=session_id,
                             response_id=occupation.id if occupation else None,
-                            raw_text=str(ctx.collected_data.get("job_title", "")),
+                            raw_text=str(ctx.collected_data.get(occupation_field, "")),
                             ai_code=sc.isco_code,
                             ai_confidence=sc.score,
                             ai_reasoning=_sre_context,
@@ -1416,6 +1531,7 @@ def _send_message_impl(
         try:
             _ei_result = _get_emotional_intelligence().analyze(msg, ctx.language)
             emotional_state = _ei_result.state
+            agent_execution["EmotionalIntelligence"] = "completed"
             # Surface a support message to the interviewer when distress is detected
             if _ei_result.state in ("stressed", "frustrated", "confused", "distressed"):
                 emotional_support_message = (
@@ -1439,6 +1555,7 @@ def _send_message_impl(
                 language=ctx.language,
             )
             is_data_valid = _val_result.is_valid
+            agent_execution["ValidationAgent"] = "completed"
             validation_issues = [
                 (v.message_en if ctx.language in ("en", "ur", "hi", "tl") else v.message_ar)
                 for v in _val_result.rule_violations
@@ -1477,8 +1594,8 @@ def _send_message_impl(
             _now = datetime.utcnow()
             _period = f"{_now.year}-Q{(_now.month - 1) // 3 + 1}"
             _isco = None
-            _isic = None
-            _isced = None
+            _isic = isic_result.division_code if isic_result else None
+            _isced = isced_result.level if isced_result else None
             if isco_results:
                 _isco = isco_results[0].primary_code if hasattr(isco_results[0], "primary_code") else None
             _get_person_register_svc().update_from_session(
@@ -1501,6 +1618,28 @@ def _send_message_impl(
         _ensure_isco_classification(db, session_id, ctx.collected_data)
         _trigger_quality_review(session_id)
 
+    # Queue state is authoritative for the interview badge: semantic review
+    # can be pending despite high confidence, and a completed human decision
+    # must not be presented as pending when a classification is replayed.
+    for occupation_result in isco_results:
+        pending_review = db.query(HITLQueue.id).outerjoin(
+            SurveyResponse, HITLQueue.response_id == SurveyResponse.id,
+        ).filter(
+            HITLQueue.session_id == session_id,
+            HITLQueue.status == "pending",
+            (
+                (SurveyResponse.session_id == session_id)
+                & (SurveyResponse.question_id == occupation_field)
+                & SurveyResponse.deleted_at.is_(None)
+                & (SurveyResponse.answer == occupation_result.job_title)
+            ) | (
+                HITLQueue.response_id.is_(None)
+                & (HITLQueue.raw_text == occupation_result.job_title)
+                & (HITLQueue.ai_code == occupation_result.primary_code)
+            ),
+        ).first()
+        occupation_result.hitl_required = pending_review is not None
+
     # ── ContextMemory: persist full session state to Redis after every turn ─────
     # Survives server restarts and allows context sharing across multiple workers.
     # Persistence and lock-ownership errors propagate; a worker must not report
@@ -1516,6 +1655,7 @@ def _send_message_impl(
             session_id=session_id,
             user_id=current_user.id,
         )
+        agent_execution["AuditLogger"] = "completed"
     except Exception:
         pass
 
@@ -1534,7 +1674,9 @@ def _send_message_impl(
     next_field = None
     survey_progress: Optional[SurveyProgress] = None
     _field_order = ConversationManager._get_field_order(ctx.collected_data)
-    if ctx.state == ConversationState.COLLECTING_INFO:
+    if ctx.state == ConversationState.CLARIFYING:
+        next_field = ctx.clarification_target
+    elif ctx.state == ConversationState.COLLECTING_INFO:
         next_field = next((f for f in _field_order if f not in ctx.collected_data), None)
     _answered = [f for f in _field_order if f in ctx.collected_data]
     _total    = max(len(_field_order), 1)
@@ -1568,6 +1710,8 @@ def _send_message_impl(
         validation_issues=validation_issues,
         is_data_valid=is_data_valid,
         collected_data={k: str(v) for k, v in ctx.collected_data.items() if v is not None},
+        agent_execution=agent_execution,
+        classification_execution=classification_execution,
     )
 
 
@@ -1925,7 +2069,7 @@ def _ensure_isco_classification(
     status = collected_data.get("employment_status", "")
 
     # For unemployed respondents the relevant occupation is their last job
-    if status == "unemployed":
+    if status in ("unemployed", "not_in_labour_force"):
         occ_field = "last_job_title"
         occ_value = collected_data.get("last_job_title", "")
         # If they never worked there's nothing to classify
@@ -1960,6 +2104,7 @@ def _ensure_isco_classification(
         clf = _get_isco_classifier().classify(
             isco_query,
             context=f"industry={industry}",
+            use_llm=not _FAST_MODE,
         )
         occ_row.isco_code        = clf.primary.code or None
         occ_row.confidence_score = clf.primary.confidence

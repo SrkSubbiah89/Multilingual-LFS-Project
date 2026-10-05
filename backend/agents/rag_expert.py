@@ -54,8 +54,9 @@ for cand in result.candidates:
 from __future__ import annotations
 
 import json
+import logging
 import re
-from typing import Optional
+from typing import Literal, Optional
 
 from crewai import Agent, Crew, Task
 from pydantic import BaseModel, Field
@@ -69,6 +70,7 @@ from backend.rag.vector_store import _ISCO_DATA
 # ---------------------------------------------------------------------------
 
 _CODE_MAP: dict[str, dict] = {entry["code"]: entry for entry in _ISCO_DATA}
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +104,7 @@ class OccupationCandidate(BaseModel):
     hierarchy: HierarchyInfo               # parent group path
     explanation_en: str                    # why this matches (English)
     explanation_ar: str                    # why this matches (Arabic / عربي)
+    explanation_method: Literal["llm", "template", "mixed"] = "template"
     retrieval_stage: str                   # "semantic" | "hierarchical_expansion"
 
 
@@ -149,17 +152,26 @@ class RAGExpert:
       1. Broad semantic search via VectorStore (multilingual-e5-small / Qdrant).
       2. Hierarchical expansion — parent major/sub-major groups are added for
          every unit-group hit that lacks an explicit parent in the result set.
-      3. Bilingual explanation generation by Claude 3.5 Sonnet (CrewAI).
+      3. Bilingual explanation generation by Claude 3.5 Sonnet (CrewAI),
+         with source-based templates when generation is unavailable.
 
-    The agent always returns up to five ranked `OccupationCandidate` objects,
+    The agent returns up to top_k ranked `OccupationCandidate` objects,
     each carrying the full ISCO-08 hierarchy path and match explanations in
     English and Arabic.
     """
 
     def __init__(self) -> None:
         self._store = get_vector_store()
-        self._llm   = get_llm(TaskType.CRITICAL)   # Claude 3.5 Sonnet, temp 0.0
-        self._agent = Agent(
+        self._llm = None
+        self._agent = None
+        try:
+            self._llm = get_llm(TaskType.CRITICAL)
+            self._agent = self._build_agent()
+        except Exception as exc:
+            _logger.warning("RAG explanation agent unavailable (%s); using retrieved-source templates.", exc)
+
+    def _build_agent(self) -> Agent:
+        return Agent(
             role="ISCO-08 Hierarchical Classification Expert",
             goal=(
                 "Analyse occupation candidates from an ISCO-08 hierarchical search "
@@ -386,8 +398,8 @@ class RAGExpert:
         lang: str,
     ) -> list[OccupationCandidate]:
         """
-        Ask Claude 3.5 Sonnet to produce bilingual match explanations for
-        each candidate, then merge with candidate metadata.
+        Generate bilingual match explanations and retain retrieved candidates
+        with labelled template explanations if the generation provider fails.
         """
         lang_note = {
             "ar":    "The query is written in Arabic.",
@@ -405,6 +417,9 @@ class RAGExpert:
             for i, (c, h, _) in enumerate(enriched)
         )
 
+        if self._agent is None:
+            return self._parse_explanations("[]", enriched)
+
         task = Task(
             description=(
                 f"{_EXPLANATION_INSTRUCTIONS}\n\n"
@@ -419,8 +434,12 @@ class RAGExpert:
             agent=self._agent,
         )
 
-        crew     = Crew(agents=[self._agent], tasks=[task], verbose=False)
-        raw_out  = str(crew.kickoff()).strip()
+        try:
+            crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
+            raw_out = str(crew.kickoff()).strip()
+        except Exception as exc:
+            _logger.warning("RAG explanation generation failed (%s); preserving retrieved candidates.", exc)
+            raw_out = "[]"
 
         return self._parse_explanations(raw_out, enriched)
 
@@ -455,9 +474,11 @@ class RAGExpert:
                 if not isinstance(item, dict):
                     continue
                 code   = str(item.get("code", "")).strip()
-                en_exp = str(item.get("explanation_en", "")).strip()
-                ar_exp = str(item.get("explanation_ar", "")).strip()
-                if code and en_exp:
+                en_value = item.get("explanation_en")
+                ar_value = item.get("explanation_ar")
+                en_exp = en_value.strip() if isinstance(en_value, str) else ""
+                ar_exp = ar_value.strip() if isinstance(ar_value, str) else ""
+                if code and (en_exp or ar_exp):
                     exp_map[code] = (en_exp, ar_exp)
 
         results: list[OccupationCandidate] = []
@@ -468,7 +489,16 @@ class RAGExpert:
             fallback_ar = (
                 f"يطابق '{match.title_ar}' بناءً على التشابه الدلالي مع الاستعلام."
             )
-            exp_en, exp_ar = exp_map.get(match.code, (fallback_en, fallback_ar))
+            if stage == "hierarchical_expansion":
+                fallback_en = f"Parent group '{match.title_en}' in the ISCO hierarchy of a retrieved occupation."
+                fallback_ar = f"المجموعة الأصل '{match.title_ar}' في التسلسل الهرمي لتصنيف ISCO لمهنة مسترجعة."
+            generated_en, generated_ar = exp_map.get(match.code, ("", ""))
+            exp_en = generated_en or fallback_en
+            exp_ar = generated_ar or fallback_ar
+            explanation_method = (
+                "llm" if generated_en and generated_ar else
+                "mixed" if generated_en or generated_ar else "template"
+            )
 
             results.append(OccupationCandidate(
                 rank=rank,
@@ -481,6 +511,7 @@ class RAGExpert:
                 hierarchy=hier,
                 explanation_en=exp_en,
                 explanation_ar=exp_ar,
+                explanation_method=explanation_method,
                 retrieval_stage=stage,
             ))
 

@@ -376,15 +376,17 @@ class LanguageProcessor:
                 role="Multilingual NER Specialist",
                 goal=(
                     "Extract all LFS-relevant named entities from survey messages "
-                    "written in English, Arabic, or a mixture of both. "
+                    "written in English, Arabic (including Gulf dialect), Urdu, "
+                    "Hindi, Tagalog, or code-switched combinations of these languages. "
+                    "Preserve each entity's original wording and language. "
                     "Return results as a precise, parseable JSON array."
                 ),
                 backstory=(
-                    "You are a computational linguist with deep expertise in Arabic "
-                    "and English NLP. You have processed thousands of Labour Force "
+                    "You are a computational linguist with expertise in English, "
+                    "Arabic, Urdu, Hindi, and Tagalog NLP. You have processed Labour Force "
                     "Survey responses and excel at identifying employment-related "
                     "entities — job titles, organisations, industries, locations — "
-                    "across both scripts, including code-switched messages."
+                    "across Arabic, Devanagari, and Latin scripts, including code-switched messages."
                 ),
                 llm=self._llm,
                 verbose=False,
@@ -436,9 +438,9 @@ class LanguageProcessor:
         is_code_switched, segments, ar_ratio, lat_ratio, dev_ratio = (
             self._segment_scripts(text)
         )
-        # NER runs on normalised text when available so the LLM sees MSA tokens
-        ner_text = normalised if normalised else text
-        entities = self._run_ner(ner_text, detected_lang, is_code_switched)
+        # Entity text and offsets must refer to the respondent's original answer.
+        # Normalisation assists interpretation without replacing that source.
+        entities = self._run_ner(text, detected_lang, is_code_switched, normalised)
 
         return LanguageProcessorResult(
             raw_text=text,
@@ -640,7 +642,7 @@ class LanguageProcessor:
             if not stripped:
                 continue
             lang = None
-            if len(stripped) >= 4 and script in ("arabic", "latin"):
+            if len(stripped) >= 4 and script in ("arabic", "devanagari", "latin"):
                 lang, _ = self._detect_language(stripped)
             segments.append(CodeSegment(
                 text=seg_text,
@@ -659,6 +661,7 @@ class LanguageProcessor:
         text: str,
         language: str,
         is_code_switched: bool,
+        normalised_text: Optional[str] = None,
     ) -> list[Entity]:
         """
         Ask the CrewAI NER agent to extract entities and return parsed results.
@@ -681,11 +684,21 @@ class LanguageProcessor:
             label = _LANG_LABELS.get(language, language.upper())
             lang_ctx = f"The message is written in {label}."
 
+        normalisation_note = ""
+        if normalised_text and normalised_text != text:
+            normalisation_note = (
+                "\n\nNormalised wording for interpretation only:\n"
+                f'"""\n{normalised_text}\n"""\n'
+                "Extract entity text only from the original survey message above. "
+                "Do not substitute translations or normalised wording for the original entities."
+            )
+
         task = Task(
             description=(
                 f"{_NER_INSTRUCTIONS}\n\n"
                 f"Language context: {lang_ctx}\n\n"
-                f'Survey message:\n"""\n{text}\n"""'
+                f'Original survey message:\n"""\n{text}\n"""'
+                f"{normalisation_note}"
             ),
             expected_output=(
                 "A JSON array of entity objects. "

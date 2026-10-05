@@ -1,0 +1,122 @@
+{
+  "checked_at_utc": "2026-10-05T21:39:15.460218+00:00",
+  "configuration": {
+    "LFS_FAST_MODE": "false",
+    "LFS_LOCAL_ONLY": "true",
+    "ENABLE_SURVEY_CLASSIFICATION_CREW": "true",
+    "OLLAMA_MODEL": "qwen2.5:3b",
+    "CREWAI_TRACING_ENABLED": "false",
+    "OTEL_SDK_DISABLED": "true"
+  },
+  "configuration_applied_to_fresh_backend_process": true,
+  "backend_url": "http://127.0.0.1:8000",
+  "backend_ready": {
+    "status": "ready",
+    "database": "connected",
+    "redis": "connected"
+  },
+  "backend_health": {
+    "status": "ok",
+    "fast_mode": false,
+    "lfs_fast_mode_env": "false",
+    "services": {
+      "redis": "ok",
+      "qdrant": "ok",
+      "ollama": "ok"
+    }
+  },
+  "frontend": {
+    "url": "http://127.0.0.1:3000",
+    "http_status": 200,
+    "compiled_api_url": "http://localhost:8000",
+    "production_build_passed": true,
+    "routes_built": 7
+  },
+  "database": {
+    "revision": "d841b2079c65",
+    "row_counts": {
+      "audit_logs": 10747,
+      "survey_responses": 2452,
+      "otp_codes": 664,
+      "survey_sessions": 588,
+      "users": 216,
+      "data_access_logs": 5203,
+      "agent_decision_logs": 729,
+      "quality_reviews": 72,
+      "survey_report_records": 108,
+      "person_register": 38,
+      "hitl_queue": 849,
+      "alembic_version": 1
+    },
+    "row_counts_unchanged_during_final_check": true,
+    "no_row_count_decreased_since_prior_activation": true,
+    "prior_activation_counts_exact_match": false,
+    "count_increases_since_prior_activation": {
+      "audit_logs": {
+        "previous": 10745,
+        "current": 10747,
+        "increase": 2
+      },
+      "survey_responses": {
+        "previous": 2424,
+        "current": 2452,
+        "increase": 28
+      },
+      "otp_codes": {
+        "previous": 662,
+        "current": 664,
+        "increase": 2
+      },
+      "survey_sessions": {
+        "previous": 587,
+        "current": 588,
+        "increase": 1
+      },
+      "data_access_logs": {
+        "previous": 5202,
+        "current": 5203,
+        "increase": 1
+      },
+      "quality_reviews": {
+        "previous": 71,
+        "current": 72,
+        "increase": 1
+      },
+      "survey_report_records": {
+        "previous": 107,
+        "current": 108,
+        "increase": 1
+      },
+      "person_register": {
+        "previous": 37,
+        "current": 38,
+        "increase": 1
+      }
+    },
+    "note": "New records exist since the earlier activation. Their contents were not changed or removed by this verification; count increases are recorded without assuming their source."
+  },
+  "supervisor": {
+    "configured_user_id": 5,
+    "account_active": true,
+    "queue_http_status": 200
+  },
+  "browser_smoke_cleanup": {
+    "fixture_backend_stopped": true,
+    "task_owned_containers_removed": true
+  },
+  "existing_infrastructure": {
+    "lfs_postgres": {
+      "original_container_preserved": true,
+      "running": true
+    },
+    "lfs_redis": {
+      "original_container_preserved": true,
+      "running": true
+    },
+    "lfs_qdrant": {
+      "original_container_preserved": true,
+      "running": true
+    }
+  },
+  "scope": "Read-only readiness, local configuration, supervisor queue access and database-count verification. No real interview, OTP delivery or respondent-answer writes."
+}

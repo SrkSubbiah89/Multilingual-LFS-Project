@@ -1,0 +1,73 @@
+{
+  "timestamp": "2026-10-05T21:35:03.050Z",
+  "frontend_url": "http://127.0.0.1:3000",
+  "smoke_api_url": "http://127.0.0.1:8001",
+  "scope": "Real Chromium and actual reject/report API paths using verified task-owned synthetic fixtures; original API requests intercepted exclusively to the fixture backend.",
+  "checks": [
+    {
+      "name": "EN rejected report retains human decision without ISCO code",
+      "status": "passed",
+      "duration_ms": 298,
+      "detail": {
+        "isco_code": null,
+        "pending_review": false,
+        "human_review_status": "rejected",
+        "rejection_badge_visible": true,
+        "pending_badge_visible": false,
+        "verified_badge_visible": false,
+        "direction": "ltr"
+      }
+    },
+    {
+      "name": "AR rejected report retains human decision without ISCO code",
+      "status": "passed",
+      "duration_ms": 296,
+      "detail": {
+        "isco_code": null,
+        "pending_review": false,
+        "human_review_status": "rejected",
+        "rejection_badge_visible": true,
+        "pending_badge_visible": false,
+        "verified_badge_visible": false,
+        "direction": "rtl"
+      }
+    }
+  ],
+  "runtime_errors": [],
+  "unexpected_requests": [],
+  "blocked_optional_assets": [
+    {
+      "origin": "https://fonts.gstatic.com",
+      "path": "/s/notosansarabic/v33/nwpCtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlj41v4rqxzLI.woff2"
+    },
+    {
+      "origin": "https://fonts.gstatic.com",
+      "path": "/s/notosansarabic/v33/nwpCtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlj4wv4rqxzLIhjE.woff2"
+    },
+    {
+      "origin": "https://fonts.gstatic.com",
+      "path": "/s/notosansarabic/v33/nwpxtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlhQ5l3sQWIHPqzCf-myvuA.woff"
+    },
+    {
+      "origin": "https://fonts.gstatic.com",
+      "path": "/s/notosansarabic/v33/nwpxtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlhQ5l3sQWIHPqzCfFmuvuA.woff"
+    },
+    {
+      "origin": "https://fonts.gstatic.com",
+      "path": "/s/notosansarabic/v33/nwpxtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlhQ5l3sQWIHPqzCfyGyvuA.woff"
+    },
+    {
+      "origin": "https://fonts.gstatic.com",
+      "path": "/s/notosansarabic/v33/nwpCtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlj5bv4rqxzLIhjE.woff2"
+    },
+    {
+      "origin": "https://fonts.gstatic.com",
+      "path": "/s/notosansarabic/v33/nwpCtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlj5Jv4rqxzLIhjE.woff2"
+    }
+  ],
+  "screenshots": [
+    "Software/local_activation/rejected-report-en.png",
+    "Software/local_activation/rejected-report-ar.png"
+  ],
+  "browser": "154.0.8037.98"
+}

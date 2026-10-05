@@ -29,8 +29,10 @@ Environment variables
 ---------------------
 OLLAMA_BASE_URL   Base URL of the Ollama server (default: http://localhost:11434)
 OLLAMA_MODEL      Override the Ollama model name   (default: llama3.2)
+LFS_LOCAL_ONLY    When true/1/yes, GENERAL and CRITICAL both use the configured
+                  Ollama model and fail if unavailable; no automatic cloud fallback.
 ANTHROPIC_API_KEY Required for TaskType.CRITICAL; also used as GENERAL fallback
-                  when Ollama is unreachable
+                  when Ollama is unreachable (unless LFS_LOCAL_ONLY is enabled)
 """
 
 from __future__ import annotations
@@ -144,6 +146,11 @@ def _get_claude_llm(temperature: float) -> LLM:
 # Public factory
 # ---------------------------------------------------------------------------
 
+def is_local_only_enabled() -> bool:
+    """Whether application inference must use local Ollama without cloud fallback."""
+    return os.getenv("LFS_LOCAL_ONLY", "false").strip().lower() in ("true", "1", "yes")
+
+
 # 2026-08-24: full GENERAL-task fallback chain. Local Ollama first (free,
 # private), then cloud providers in this fixed order if Ollama is down or
 # a later provider itself fails -- Claude, then Gemini, then Groq, then
@@ -251,6 +258,28 @@ def _get_general_llm_with_fallback(temp: float, trace: Optional[dict]) -> LLM:
     )
 
 
+def _get_local_only_llm(task: TaskType, temp: float, trace: Optional[dict]) -> LLM:
+    """Select the configured, installed Ollama model without provider fallback."""
+    if trace is not None:
+        trace.pop("resolved_provider", None)
+        trace.pop("resolved_model", None)
+        trace.update(local_only=True, attempted_providers=["ollama"], failure_reasons={})
+    try:
+        llm = get_llm_strict(MODEL_GENERAL, temperature=temp)
+    except Exception as exc:
+        if trace is not None:
+            trace["failure_reasons"] = {"ollama": str(exc)}
+        raise RuntimeError(
+            f"get_llm({task.value}): LFS_LOCAL_ONLY=true requires configured "
+            f"Ollama model {MODEL_GENERAL!r} at {_OLLAMA_BASE_URL}, but it is "
+            f"unavailable: {exc}. Cloud fallback is disabled."
+        ) from exc
+    if trace is not None:
+        trace["resolved_provider"] = "ollama"
+        trace["resolved_model"] = getattr(llm, "model", MODEL_GENERAL)
+    return llm
+
+
 def get_llm(
     task_type: TaskType | str = TaskType.GENERAL,
     temperature: float | None = None,
@@ -274,17 +303,20 @@ def get_llm(
         "critical" → Claude 3.5 Sonnet (ANTHROPIC_API_KEY required, no
                      fallback — CRITICAL tasks are meant to pin a single,
                      high-accuracy model).
+        With LFS_LOCAL_ONLY=true, both task types use OLLAMA_MODEL without
+        cloud fallback; their default temperatures remain task-specific.
     temperature : float | None
         Override the default temperature for this task type.
         If None, uses the task-appropriate default (0.3 general / 0.0 critical).
     trace : dict, optional
-        When supplied (GENERAL tasks only), populated with
+        When supplied for GENERAL tasks or either local-only task, populated with
         ``resolved_provider``, ``resolved_model``, ``attempted_providers``
         (in the order tried), and ``failure_reasons`` (provider → error
         string, for every provider that was tried and skipped) — so an
         automatic fallback substitution is always inspectable by a caller
         that cares which model actually answered, never silent. Existing
         callers that omit this (default None) are unaffected.
+        Local-only selection also records ``local_only=True``.
 
     Returns
     -------
@@ -300,7 +332,8 @@ def get_llm(
     RuntimeError
         If TaskType.GENERAL is requested and every provider in the
         fallback chain (Ollama, Anthropic, Gemini, Groq, OpenRouter) is
-        unavailable or unconfigured.
+        unavailable or unconfigured, or the configured Ollama model is
+        unavailable while LFS_LOCAL_ONLY is enabled for either task type.
     """
     try:
         task = TaskType(task_type)
@@ -308,6 +341,12 @@ def get_llm(
         valid = [t.value for t in TaskType]
         raise ValueError(
             f"Unknown task_type {task_type!r}. Valid options: {valid}"
+        )
+
+    if is_local_only_enabled():
+        default_temp = _TEMP_GENERAL if task == TaskType.GENERAL else _TEMP_CRITICAL
+        return _get_local_only_llm(
+            task, temperature if temperature is not None else default_temp, trace,
         )
 
     if task == TaskType.GENERAL:

@@ -206,7 +206,7 @@ class ValidationAgent:
             backstory=(
                 "You are a senior data quality analyst at a national statistics "
                 "office. You have reviewed hundreds of thousands of Labour Force "
-                "Survey responses in both English and Arabic. You know the "
+                "Survey responses in English, Arabic, Urdu, Hindi, and Tagalog. You know the "
                 "typical employment patterns of the region, understand common "
                 "response errors, and can spot contradictions that rule-based "
                 "systems miss — such as a job title that doesn't match the "
@@ -587,8 +587,13 @@ class ValidationAgent:
         (is_valid, llm_confidence, issues, explanation_en, explanation_ar)
         """
         lang_note = {
+            "en": "The survey was conducted in English.",
             "ar": "The survey was conducted in Arabic.",
-        }.get(language, "The survey was conducted in English.")
+            "ar-gulf": "The survey was conducted in Gulf Arabic.",
+            "ur": "The survey was conducted in Urdu.",
+            "hi": "The survey was conducted in Hindi.",
+            "tl": "The survey was conducted in Tagalog (Filipino).",
+        }.get(language, "The survey language is unspecified; interpret each answer in its original language.")
 
         response_block = "\n".join(
             f"  {k}: {v}" for k, v in sorted(data.items()) if v

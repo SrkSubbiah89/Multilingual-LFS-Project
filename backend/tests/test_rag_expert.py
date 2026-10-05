@@ -272,6 +272,24 @@ class TestParseExplanations:
                '"explanation_ar": "شرح عربي."}]')
         result = exp._parse_explanations(raw, enriched)
         assert result[0].explanation_en == "Custom EN explanation."
+        assert result[0].explanation_method == "llm"
+
+    @pytest.mark.parametrize("invalid_ar", [None, "", "   ", ["invalid type"]])
+    def test_missing_arabic_explanation_uses_template_and_labels_mixed_output(self, exp, invalid_ar):
+        import json
+        raw = json.dumps([{"code": "2512", "explanation_en": "Custom EN.", "explanation_ar": invalid_ar}])
+        result = exp._parse_explanations(raw, self._make_enriched())
+        assert result[0].explanation_en == "Custom EN."
+        assert result[0].explanation_ar.strip()
+        assert result[0].explanation_ar != "None"
+        assert result[0].explanation_method == "mixed"
+
+    def test_null_explanations_use_bilingual_templates(self, exp):
+        raw = '[{"code": "2512", "explanation_en": null, "explanation_ar": null}]'
+        result = exp._parse_explanations(raw, self._make_enriched())
+        assert result[0].explanation_en != "None"
+        assert result[0].explanation_ar != "None"
+        assert result[0].explanation_method == "template"
 
     def test_explanation_ar_populated_from_llm(self, exp):
         enriched = self._make_enriched("2512")
@@ -342,6 +360,34 @@ class TestRetrieveEdgeCases:
         result = expert.retrieve("something obscure")
         assert result.candidates == []
         assert result.total_retrieved == 0
+
+    def test_explanation_provider_failure_preserves_retrieval_and_hierarchy(self, expert, mock_store, mock_crew):
+        mock_store.search.return_value = [make_match(confidence=0.80)]
+        mock_crew.kickoff.side_effect = RuntimeError("provider timeout")
+        result = expert.retrieve("software developer")
+        primary = result.candidates[0]
+        assert result.total_retrieved == 1
+        assert result.method == "hierarchical"
+        assert primary.code == "2512"
+        assert primary.confidence == 0.80
+        assert primary.hierarchy.sub_major_code == "25"
+        assert all(c.explanation_method == "template" for c in result.candidates)
+        assert all(c.explanation_en and c.explanation_ar for c in result.candidates)
+        assert all(
+            "Parent group" in c.explanation_en for c in result.candidates
+            if c.retrieval_stage == "hierarchical_expansion"
+        )
+
+    def test_missing_generation_credentials_still_allows_retrieval(self, monkeypatch, mock_store, mock_crew):
+        monkeypatch.setattr("backend.agents.rag_expert.get_vector_store", lambda: mock_store)
+        monkeypatch.setattr(
+            "backend.agents.rag_expert.get_llm", MagicMock(side_effect=EnvironmentError("no provider key")),
+        )
+        expert = RAGExpert()
+        result = expert.retrieve("software developer")
+        assert result.candidates[0].code == "2512"
+        assert all(c.explanation_method == "template" for c in result.candidates)
+        mock_crew.kickoff.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

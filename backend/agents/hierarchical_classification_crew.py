@@ -1,31 +1,11 @@
 """
 backend/agents/hierarchical_classification_crew.py
 
-Real CrewAI multi-agent delegation (Item 3 of the 2026-09-12 multi-agent
-RAG work) -- the first and only Crew in this codebase's 18+
-Crew(agents=[...], tasks=[...]) construction sites to use
-process=Process.hierarchical + manager_llm. Every other site defaults to
-CrewAI's plain sequential process; there is otherwise zero real
-manager-delegates-to-workers orchestration anywhere in this codebase.
-
-Deliberately kept SEPARATE from backend/agents/cross_standard_coordinator.py
-(Item 1's deterministic coordinator) rather than built on top of it -- the
-two are meant to be compared (does a real, non-deterministic LLM manager
-add anything over deterministic coordination?), not conflated. See
-CLAUDE.md's "Knowledge base construction" section for the full rationale:
-this project has 7 independent, already-confirmed-null results for "add
-more LLM/agent sophistication on top of retrieval" and zero data points
-for "does delegation itself help" -- genuinely untested territory, not a
-safe assumption of benefit.
-
-Standalone and eval-only: this module is NOT imported by
-backend/api/survey_routes.py's per-turn path. It wraps the three
-ALREADY-CONSTRUCTED classifiers (no reimplemented retrieval/reranking/
-corrective-retry logic) as CrewAI tools behind three worker Agents
-(allow_delegation=False, same as every one of this codebase's 13 existing
-agent-constructing modules), orchestrated by a manager LLM that decides
-invocation order/delegation at runtime -- the genuinely different
-mechanism from Item 1's fixed, deterministic call order.
+Standalone experimental CrewAI hierarchical delegation around the existing
+ISCO/ISIC/ISCED classifiers. Live survey collaboration uses the bounded
+sequential ``survey_classification_crew`` instead. The manager's JSON must
+match specialist tool evidence; missing, malformed or invented results use
+the direct fallback. Delegation itself has no established accuracy benefit.
 """
 
 from __future__ import annotations
@@ -81,6 +61,8 @@ def _valid_isic_section(value) -> Optional[str]:
 def _valid_isced_level(value) -> Optional[int]:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return None
+    if isinstance(value, float) and not value.is_integer():
+        return None
     level = int(value)
     return level if 0 <= level <= 8 else None
 
@@ -89,9 +71,8 @@ class HierarchicalClassificationCoordinator:
     """Wraps ISCOClassifier/ISICClassifier/ISCEDClassifier behind a real
     CrewAI hierarchical crew. Every failure mode (manager LLM unreachable,
     malformed tool output, delegation loop, timeout) falls back to calling
-    all three classifiers directly and sequentially -- i.e. degrades to
-    today's exact survey_routes.py Stage 4/4b/4c behaviour -- never raises,
-    never leaves a partial/inconsistent result."""
+    unfinished classifiers directly and sequentially. Completed tool results
+    are retained; unavailable dimensions remain None with fallback disclosed."""
 
     def __init__(
         self,
@@ -113,7 +94,7 @@ class HierarchicalClassificationCoordinator:
         self._isic = isic_classifier
         self._isced = isced_classifier
         self._manager_llm_pin = manager_llm
-        self._manager_llm = manager_llm or get_llm(TaskType.GENERAL)
+        self._manager_llm = manager_llm
 
     def classify_all(
         self,
@@ -125,14 +106,19 @@ class HierarchicalClassificationCoordinator:
         """Classify whichever of job_title/industry_text/education_text
         are non-empty, via the real hierarchical crew. Falls back to a
         direct sequential call to all three classifiers on ANY failure."""
+        completed = {}
+        if not any((job_title, industry_text, education_text)):
+            return CoordinatedResult()
         try:
-            return self._classify_via_crew(job_title, industry_text, education_text, language)
+            return self._classify_via_crew(job_title, industry_text, education_text, language,
+                                           completed=completed)
         except Exception as exc:
             log.warning(
                 "HierarchicalClassificationCoordinator: crew failed (%s); "
                 "falling back to direct sequential classification.", exc,
             )
-            return self._classify_sequential(job_title, industry_text, education_text)
+            return self._classify_sequential(job_title, industry_text, education_text,
+                                             completed=completed)
 
     # ------------------------------------------------------------------
     # Fallback path -- degrades to today's exact independent-classifier
@@ -140,19 +126,30 @@ class HierarchicalClassificationCoordinator:
     # ------------------------------------------------------------------
 
     def _classify_sequential(
-        self, job_title: str, industry_text: str, education_text: str
+        self, job_title: str, industry_text: str, education_text: str, completed=None
     ) -> CoordinatedResult:
-        isco_code = isic_section = None
-        isced_level = None
-        if job_title:
-            isco_code = self._isco.classify(job_title).primary.code
-        if industry_text:
-            isic_section = self._isic.classify(industry_text).section
-        if education_text:
-            isced_level = self._isced.classify(education_text).level
+        completed = completed if completed is not None else {}
+        fallback_errors = []
+        callbacks = (
+            ("isco_code", job_title, lambda: _valid_isco_code(self._isco.classify(job_title).primary.code)),
+            ("isic_section", industry_text, lambda: _valid_isic_section(self._isic.classify(industry_text).section)),
+            ("isced_level", education_text, lambda: _valid_isced_level(self._isced.classify(education_text).level)),
+        )
+        for key, text, callback in callbacks:
+            if not text or key in completed:
+                continue
+            try:
+                completed[key] = callback()
+            except Exception as exc:
+                completed[key] = None
+                fallback_errors.append(f"{key}: {type(exc).__name__}")
         return CoordinatedResult(
-            isco_code=isco_code, isic_section=isic_section, isced_level=isced_level,
-            fallback_used=True, fallback_reason="sequential fallback (crew unavailable or failed)",
+            isco_code=completed.get("isco_code") if job_title else None,
+            isic_section=completed.get("isic_section") if industry_text else None,
+            isced_level=completed.get("isced_level") if education_text else None,
+            fallback_used=True,
+            fallback_reason="sequential fallback (crew unavailable or failed)" +
+                            ("; " + ", ".join(fallback_errors) if fallback_errors else ""),
         )
 
     # ------------------------------------------------------------------
@@ -163,48 +160,72 @@ class HierarchicalClassificationCoordinator:
     # ------------------------------------------------------------------
 
     def _classify_via_crew(
-        self, job_title: str, industry_text: str, education_text: str, language: str
+        self, job_title: str, industry_text: str, education_text: str, language: str,
+        completed=None,
     ) -> CoordinatedResult:
         from crewai import Agent, Crew, Process, Task
         from crewai.tools import tool
 
         isco_clf, isic_clf, isced_clf = self._isco, self._isic, self._isced
+        completed = completed if completed is not None else {}
+        manager_llm = self._manager_llm or get_llm(TaskType.GENERAL)
 
         @tool("Classify Occupation")
         def classify_occupation(text: str) -> str:
             """Classify a respondent's job title / occupation description to an ISCO-08 4-digit code."""
+            if not job_title or text != job_title:
+                raise ValueError("Occupation tool must use the exact non-empty survey input")
+            if "isco_code" in completed:
+                return str(completed["isco_code"])
+            completed["isco_code"] = None
             result = isco_clf.classify(text)
+            completed["isco_code"] = _valid_isco_code(result.primary.code)
             return f"{result.primary.code} ({result.primary.title_en})"
 
         @tool("Classify Industry")
         def classify_industry(text: str) -> str:
             """Classify a respondent's industry description to an ISIC Rev.4 section and class code."""
+            if not industry_text or text != industry_text:
+                raise ValueError("Industry tool must use the exact non-empty survey input")
+            if "isic_section" in completed:
+                return str(completed["isic_section"])
+            completed["isic_section"] = None
             result = isic_clf.classify(text)
+            completed["isic_section"] = _valid_isic_section(result.section)
             return f"{result.section} / {result.class_code} ({result.class_title})"
 
         @tool("Classify Education")
         def classify_education(text: str) -> str:
             """Classify a respondent's education description to an ISCED 2011 attainment level."""
+            if not education_text or text != education_text:
+                raise ValueError("Education tool must use the exact non-empty survey input")
+            if "isced_level" in completed:
+                return str(completed["isced_level"])
+            completed["isced_level"] = None
             result = isced_clf.classify(text)
+            completed["isced_level"] = _valid_isced_level(result.level)
             return f"level {result.level} ({result.level_title})"
 
         occupation_agent = Agent(
             role="Occupation Classification Specialist",
             goal="Classify occupation descriptions to ISCO-08 codes using the Classify Occupation tool",
             backstory="ISCO-08 coding specialist with 15 years of LFS experience.",
-            tools=[classify_occupation], llm=self._manager_llm, verbose=False, allow_delegation=False,
+            tools=[classify_occupation], llm=manager_llm, verbose=False, allow_delegation=False,
+            max_iter=4, max_retry_limit=0, max_execution_time=180,
         )
         industry_agent = Agent(
             role="Industry Classification Specialist",
             goal="Classify industry descriptions to ISIC Rev.4 codes using the Classify Industry tool",
             backstory="ISIC Rev.4 coding specialist with 15 years of LFS experience.",
-            tools=[classify_industry], llm=self._manager_llm, verbose=False, allow_delegation=False,
+            tools=[classify_industry], llm=manager_llm, verbose=False, allow_delegation=False,
+            max_iter=4, max_retry_limit=0, max_execution_time=180,
         )
         education_agent = Agent(
             role="Education Classification Specialist",
             goal="Classify education descriptions to ISCED 2011 levels using the Classify Education tool",
             backstory="ISCED 2011 coding specialist with 15 years of LFS experience.",
-            tools=[classify_education], llm=self._manager_llm, verbose=False, allow_delegation=False,
+            tools=[classify_education], llm=manager_llm, verbose=False, allow_delegation=False,
+            max_iter=4, max_retry_limit=0, max_execution_time=180,
         )
 
         task = Task(
@@ -221,18 +242,32 @@ class HierarchicalClassificationCoordinator:
                 '"isced_level": N or null}'
             ),
             expected_output='JSON: {"isco_code": ..., "isic_section": ..., "isced_level": ...}',
-            agent=occupation_agent,
         )
 
+        manager_agent = Agent(
+            role="Classification Manager",
+            goal="Delegate each non-empty survey input and preserve specialist tool classifications.",
+            backstory="Coordinator for occupation, industry and education specialists.",
+            llm=manager_llm, allow_delegation=True, verbose=False,
+            max_iter=8, max_retry_limit=0, max_execution_time=240,
+        )
         crew = Crew(
             agents=[occupation_agent, industry_agent, education_agent],
             tasks=[task],
             process=Process.hierarchical,
-            manager_llm=self._manager_llm,
+            manager_llm=manager_llm,
+            manager_agent=manager_agent,
             verbose=False,
         )
         raw = str(crew.kickoff()).strip()
-        return self._parse_crew_result(raw)
+        parsed = self._parse_crew_result(raw)
+        for key, text in (("isco_code", job_title), ("isic_section", industry_text),
+                          ("isced_level", education_text)):
+            if not text:
+                setattr(parsed, key, None)
+            elif key not in completed or completed[key] is None or getattr(parsed, key) != completed[key]:
+                raise ValueError("Manager result lacks matching specialist tool evidence")
+        return parsed
 
     @staticmethod
     def _parse_crew_result(raw: str) -> CoordinatedResult:
@@ -245,8 +280,12 @@ class HierarchicalClassificationCoordinator:
             if m:
                 try:
                     data = json.loads(m.group())
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as exc:
+                    raise ValueError("Malformed manager classification JSON") from exc
+            else:
+                raise ValueError("Missing manager classification JSON")
+        if not isinstance(data, dict):
+            raise ValueError("Manager classification JSON must be an object")
 
         return CoordinatedResult(
             isco_code=_valid_isco_code(data.get("isco_code")),

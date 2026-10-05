@@ -63,6 +63,22 @@ class TestDecompose:
         result = planner.decompose("text", "occupation", max_subqueries=2)
         assert result == ["a", "b"]
 
+    def test_duplicate_phrases_do_not_count_as_independent_subqueries(self, planner, monkeypatch):
+        _set_kickoff_response(monkeypatch, "1. taxi driver\n2. TAXI  DRIVER\n3. farmer")
+        result = planner.decompose("taxi driver and farmer", "occupation", max_subqueries=2)
+        assert result == ["taxi driver", "farmer"]
+
+    @pytest.mark.parametrize("configured,expected_count", [(100, 3), (0, 1), (-2, 1), (None, 3)])
+    def test_subquery_limit_cannot_disable_bounding(self, planner, monkeypatch, configured, expected_count):
+        _set_kickoff_response(monkeypatch, "a\nb\nc\nd\ne")
+        result = planner.decompose("original", "occupation", max_subqueries=configured)
+        assert len(result) == expected_count
+
+    def test_leading_digits_in_search_phrase_are_preserved(self, planner, monkeypatch):
+        _set_kickoff_response(monkeypatch, "3D printing technician\n24 hour convenience store")
+        result = planner.decompose("original", "occupation")
+        assert result == ["3D printing technician", "24 hour convenience store"]
+
     def test_empty_response_falls_back_to_original_text(self, planner, monkeypatch):
         _set_kickoff_response(monkeypatch, "")
         result = planner.decompose("original text", "occupation")
@@ -95,6 +111,13 @@ class TestReconcile:
         # lower individual scores; 2512 appears once with a higher score.
         # The frequency tiebreak means 6111 wins.
         result = QueryPlanner.reconcile([("2512", 0.95), ("6111", 0.60), ("6111", 0.55)])
+        assert result == ("6111", 0.60)
+
+    def test_most_repeated_identifier_wins_before_score_tiebreak(self):
+        result = QueryPlanner.reconcile([
+            ("2512", 0.95), ("2512", 0.90),
+            ("6111", 0.60), ("6111", 0.55), ("6111", 0.50),
+        ])
         assert result == ("6111", 0.60)
 
     def test_empty_list_raises(self):

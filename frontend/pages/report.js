@@ -716,6 +716,32 @@ export default function ReportPage() {
                 </div>
 
                 <div className="px-4 py-4 space-y-4">
+                  {/* Human rejection can leave the occupation without a code. */}
+                  <div className="flex items-center justify-end">
+                    {reviewStatus === "pending" ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-50 border border-amber-300 text-amber-700 px-2.5 py-1.5 rounded-lg">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        {t.hitlRequired}
+                      </span>
+                    ) : reviewStatus === "rejected" ? (
+                      <span className="text-xs bg-red-50 border border-red-300 text-red-700 px-2.5 py-1.5 rounded-lg">
+                        {t.hitlRejected}
+                      </span>
+                    ) : reviewStatus === "reviewed" ? (
+                      <span className="text-xs bg-blue-50 border border-blue-300 text-blue-700 px-2.5 py-1.5 rounded-lg">
+                        {t.hitlReviewed}
+                      </span>
+                    ) : reviewStatus === "verified" ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-emerald-50 border border-emerald-300 text-emerald-700 px-2.5 py-1.5 rounded-lg">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        {t.hitlOk}
+                      </span>
+                    ) : (
+                      <span className="text-xs bg-gray-100 border border-gray-300 text-gray-600 px-2.5 py-1.5 rounded-lg">
+                        {t.qualityStatus.unknown}
+                      </span>
+                    )}
+                  </div>
                   {p.isco_code ? (
                     <>
                       {/* Code + major group */}
@@ -734,32 +760,6 @@ export default function ReportPage() {
                             </span>
                           </div>
                         )}
-                        {/* HITL flag */}
-                        <div className="flex-shrink-0 self-center">
-                          {reviewStatus === "pending" ? (
-                            <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-50 border border-amber-300 text-amber-700 px-2.5 py-1.5 rounded-lg">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                              {t.hitlRequired}
-                            </span>
-                          ) : reviewStatus === "rejected" ? (
-                            <span className="text-xs bg-red-50 border border-red-300 text-red-700 px-2.5 py-1.5 rounded-lg">
-                              {t.hitlRejected}
-                            </span>
-                          ) : reviewStatus === "reviewed" ? (
-                            <span className="text-xs bg-blue-50 border border-blue-300 text-blue-700 px-2.5 py-1.5 rounded-lg">
-                              {t.hitlReviewed}
-                            </span>
-                          ) : reviewStatus === "verified" ? (
-                            <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-emerald-50 border border-emerald-300 text-emerald-700 px-2.5 py-1.5 rounded-lg">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              {t.hitlOk}
-                            </span>
-                          ) : (
-                            <span className="text-xs bg-gray-100 border border-gray-300 text-gray-600 px-2.5 py-1.5 rounded-lg">
-                              {t.qualityStatus.unknown}
-                            </span>
-                          )}
-                        </div>
                       </div>
 
                       {/* Confidence bar */}

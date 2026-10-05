@@ -1,0 +1,312 @@
+{
+  "verification_date": "2026-10-05",
+  "observed_at_utc": "2026-10-05T18:14:31.242602+00:00",
+  "source": "Existing local Qdrant, metadata GET and non-mutating points/count POST with exact=true",
+  "collections_modified": false,
+  "catalogue_payloads_read": false,
+  "model_identity_verified_by_vector_dimension": false,
+  "accuracy_evaluation": false,
+  "collections": [
+    {
+      "name": "iscedf2013_broad_fields",
+      "exact_point_count": 11,
+      "metadata_point_count": 11,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "iscedf2013_broad_fields_e5large",
+      "exact_point_count": 11,
+      "metadata_point_count": 11,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "iscedf2013_detailed_fields",
+      "exact_point_count": 63,
+      "metadata_point_count": 63,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "iscedf2013_detailed_fields_e5large",
+      "exact_point_count": 63,
+      "metadata_point_count": 63,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "iscedf2013_detailed_fields_flat_e5large",
+      "exact_point_count": 63,
+      "metadata_point_count": 63,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "iscedf2013_detailed_fields_flat_enriched_e5large",
+      "exact_point_count": 61,
+      "metadata_point_count": 61,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "iscedf2013_narrow_fields",
+      "exact_point_count": 25,
+      "metadata_point_count": 25,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "iscedf2013_narrow_fields_e5large",
+      "exact_point_count": 25,
+      "metadata_point_count": 25,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_major_groups",
+      "exact_point_count": 10,
+      "metadata_point_count": 10,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_major_groups_ilo2021_v1",
+      "exact_point_count": 10,
+      "metadata_point_count": 10,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_major_groups_ilo2021_v1_e5large",
+      "exact_point_count": 10,
+      "metadata_point_count": 10,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_major_groups_ilo2021_v1_enriched",
+      "exact_point_count": 10,
+      "metadata_point_count": 10,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_major_groups_ilo2021_v1_enriched_e5large",
+      "exact_point_count": 10,
+      "metadata_point_count": 10,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_minor_groups",
+      "exact_point_count": 130,
+      "metadata_point_count": 130,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_minor_groups_ilo2021_v1",
+      "exact_point_count": 130,
+      "metadata_point_count": 130,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_minor_groups_ilo2021_v1_e5large",
+      "exact_point_count": 130,
+      "metadata_point_count": 130,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_minor_groups_ilo2021_v1_enriched",
+      "exact_point_count": 130,
+      "metadata_point_count": 130,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_minor_groups_ilo2021_v1_enriched_e5large",
+      "exact_point_count": 130,
+      "metadata_point_count": 130,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_submajor_groups",
+      "exact_point_count": 43,
+      "metadata_point_count": 43,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_submajor_groups_ilo2021_v1",
+      "exact_point_count": 43,
+      "metadata_point_count": 43,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_submajor_groups_ilo2021_v1_e5large",
+      "exact_point_count": 43,
+      "metadata_point_count": 43,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_submajor_groups_ilo2021_v1_enriched",
+      "exact_point_count": 43,
+      "metadata_point_count": 43,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_submajor_groups_ilo2021_v1_enriched_e5large",
+      "exact_point_count": 43,
+      "metadata_point_count": 43,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_unit_groups",
+      "exact_point_count": 436,
+      "metadata_point_count": 436,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_unit_groups_flat_ilo2021_v1",
+      "exact_point_count": 436,
+      "metadata_point_count": 436,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_unit_groups_flat_ilo2021_v1_e5large",
+      "exact_point_count": 436,
+      "metadata_point_count": 436,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_unit_groups_flat_ilo2021_v1_enriched",
+      "exact_point_count": 436,
+      "metadata_point_count": 436,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_unit_groups_flat_ilo2021_v1_enriched_e5large",
+      "exact_point_count": 436,
+      "metadata_point_count": 436,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_unit_groups_ilo2021_v1",
+      "exact_point_count": 436,
+      "metadata_point_count": 436,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_unit_groups_ilo2021_v1_e5large",
+      "exact_point_count": 436,
+      "metadata_point_count": 436,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_unit_groups_ilo2021_v1_enriched",
+      "exact_point_count": 436,
+      "metadata_point_count": 436,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco08_unit_groups_ilo2021_v1_enriched_e5large",
+      "exact_point_count": 436,
+      "metadata_point_count": 436,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isco_occupations",
+      "exact_point_count": 124,
+      "metadata_point_count": 124,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_classes",
+      "exact_point_count": 134,
+      "metadata_point_count": 134,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_classes_e5large",
+      "exact_point_count": 134,
+      "metadata_point_count": 134,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_classes_flat_e5large",
+      "exact_point_count": 134,
+      "metadata_point_count": 134,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_classes_flat_enriched_e5large",
+      "exact_point_count": 121,
+      "metadata_point_count": 121,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_divisions",
+      "exact_point_count": 68,
+      "metadata_point_count": 68,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_divisions_e5large",
+      "exact_point_count": 68,
+      "metadata_point_count": 68,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_groups",
+      "exact_point_count": 118,
+      "metadata_point_count": 118,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_groups_e5large",
+      "exact_point_count": 118,
+      "metadata_point_count": 118,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_sections",
+      "exact_point_count": 21,
+      "metadata_point_count": 21,
+      "vector_dimension": 384,
+      "distance": "Cosine"
+    },
+    {
+      "name": "isic_rev4_sections_e5large",
+      "exact_point_count": 21,
+      "metadata_point_count": 21,
+      "vector_dimension": 1024,
+      "distance": "Cosine"
+    }
+  ]
+}

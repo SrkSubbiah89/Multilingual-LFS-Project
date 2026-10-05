@@ -1,0 +1,168 @@
+{
+  "verification_date": "2026-10-06",
+  "observed_at_utc": "2026-10-05T21:14:04.527132+00:00",
+  "model_pin": "ollama/qwen2.5:3b",
+  "success": true,
+  "status": "completed",
+  "limits": {
+    "inference_timeout_seconds": 30.0,
+    "hard_process_deadline_seconds": 180.0
+  },
+  "scope": {
+    "inputs": "one synthetic English employment profile",
+    "crewai": "real sequential specialist agents and evidence auditor; no mocked CrewAI runtime",
+    "occupation": "real running backend semantic retrieval, bridged through read-only /debug/isco",
+    "industry_and_education": "actual project keyword/rule classifiers, with local-only LLM configuration",
+    "occupation_bridge_limits": [
+      "no context or language forwarded",
+      "no occupation LLM reranking",
+      "debug endpoint does not expose full classifier trace, hierarchy or HITL decision"
+    ],
+    "respondent_database_writes": false,
+    "otp_or_external_messages": false,
+    "accuracy_evaluation": false,
+    "survey_route_persistence_test": false
+  },
+  "synthetic_profile": {
+    "job_title": "software developer",
+    "industry_text": "computer programming and software development company",
+    "education_text": "bachelor degree in computer science",
+    "language": "en"
+  },
+  "elapsed_seconds": 84.98,
+  "observed_classifier_calls": {
+    "isco": [
+      {
+        "input": "software developer",
+        "endpoint": "/debug/isco/{job_title}",
+        "response": {
+          "code": "2512",
+          "title": "Software Developers",
+          "conf": 0.849,
+          "ms": 2031
+        },
+        "elapsed_ms": 2335.21,
+        "context_forwarded": false,
+        "language_forwarded": false,
+        "llm_reranking": false
+      }
+    ],
+    "isic": [
+      {
+        "input": "computer programming and software development company",
+        "method": "keyword",
+        "elapsed_ms": 10.33
+      }
+    ],
+    "isced": [
+      {
+        "input": "bachelor degree in computer science",
+        "method": "keyword",
+        "elapsed_ms": 28.37
+      }
+    ]
+  },
+  "blocked_network_targets": [],
+  "runtime_logging_observations": [],
+  "package_versions": {
+    "crewai": "1.9.3",
+    "litellm": "1.75.3"
+  },
+  "execution": {
+    "mode": "crewai_sequential",
+    "crew_attempted": true,
+    "crew_completed": true,
+    "requested_dimensions": [
+      "isco",
+      "isic",
+      "isced"
+    ],
+    "tool_executed_dimensions": [
+      "isco",
+      "isic",
+      "isced"
+    ],
+    "fallback_dimensions": [],
+    "failed_dimensions": [],
+    "failure_reasons": {},
+    "agent_roles": [
+      "Occupation Classification Specialist",
+      "Industry Classification Specialist",
+      "Education Classification Specialist",
+      "Classification Evidence Auditor"
+    ],
+    "audit_tool_executed": true,
+    "cooperation_verified": true,
+    "guardrail_rejections": {},
+    "llm_transport": "ollama_native_chat",
+    "llm_model": "ollama/qwen2.5:3b",
+    "inference_timeout_seconds": 30,
+    "inference_budget_seconds": 120
+  },
+  "classification_results": {
+    "isco": {
+      "primary": {
+        "code": "2512",
+        "title_en": "Software Developers",
+        "title_ar": "",
+        "confidence": 0.849
+      },
+      "method": "read_only_debug_isco_semantic_bridge",
+      "hitl_required": null,
+      "hierarchy_path": null
+    },
+    "isic": {
+      "section": "J",
+      "section_title": "Information and Communication",
+      "division_code": "62",
+      "division_title": "Computer programming, consultancy and related activities",
+      "group_code": "620",
+      "group_title": "Computer programming, consultancy and related activities",
+      "class_code": "6201",
+      "class_title": "Computer programming activities",
+      "confidence": 0.75,
+      "method": "keyword",
+      "alternatives": [
+        {
+          "class_code": "2620",
+          "class_title": "Manufacture of computers and peripheral equipment",
+          "division_code": "26",
+          "section": "C",
+          "confidence": 0.25
+        },
+        {
+          "class_code": "9511",
+          "class_title": "Repair of computers and peripheral equipment",
+          "division_code": "95",
+          "section": "S",
+          "confidence": 0.25
+        }
+      ],
+      "raw_text": "computer programming and software development company",
+      "hierarchy_path": [],
+      "stage_confidences": {},
+      "hitl_required": null,
+      "fallback_used": false,
+      "fallback_reason": null
+    },
+    "isced": {
+      "level": 6,
+      "level_title": "Bachelor's or equivalent level",
+      "broad_code": "06",
+      "broad_title": "Information and Communication Technologies",
+      "narrow_code": "061",
+      "narrow_title": "Information and communication technologies",
+      "detailed_code": "0613",
+      "detailed_title": "Software and applications development and analysis",
+      "confidence": 1.0,
+      "method": "keyword",
+      "raw_text": "bachelor degree in computer science",
+      "hierarchy_path": [],
+      "stage_confidences": {},
+      "top_candidates": [],
+      "hitl_required": null,
+      "fallback_used": false,
+      "fallback_reason": null
+    }
+  }
+}

@@ -1,10 +1,10 @@
-# Multilingual LFS Conversational AI
+# Multilingual Conversational AI for Labour Force Surveys: A Multi-Agent RAG System with CrewAI Framework
 
-> **Last Updated: 2026-08-21** · 2,282 tests passing (`pytest backend/tests eval/ -q`; 1,450 in `backend/tests`, 832 in `eval/`) · 11 DB tables · 89 test files (44 + 45)
+> **Reviewed: 2026-10-06** · CrewAI 1.9.3 · 11 database tables · [Title alignment and verification](Documentation/TITLE_ALIGNMENT_2026-10-06.md)
 
-An AI-powered **Labour Force Survey (LFS)** system that conducts employment interviews in **English, Arabic (MSA + Gulf dialect), Urdu, Hindi, and Tagalog**, classifies job titles to [ISCO-08](https://www.ilo.org/public/english/bureau/stat/isco/isco08/) codes (4-digit unit groups), classifies industries to [ISIC Rev.4](https://unstats.un.org/unsd/publication/seriesm/seriesm_4rev4e.pdf) (full 4-level hierarchy: Section → Division → Group → **4-digit Class**), classifies education field of specialisation to [ISCED-F 2013](https://uis.unesco.org/en/topic/international-standard-classification-education-isced) (Broad → Narrow → **4-digit Detailed field**) plus attainment level to [ISCED 2011](https://uis.unesco.org/en/topic/international-standard-classification-education-isced) (levels 0–8), and implements the complete **UAE Labour Force Survey questionnaire** (Sections A–K, 56 fields, ILO ICLS-19 standards) with dynamic skip logic across three employment paths.
+An AI-powered **Labour Force Survey (LFS)** research system that conducts employment interviews in **English, Arabic (MSA + Gulf dialect), Urdu, Hindi, and Tagalog**, classifies job titles to [ISCO-08](https://www.ilo.org/public/english/bureau/stat/isco/isco08/) codes (4-digit unit groups), classifies industries to [ISIC Rev.4](https://unstats.un.org/unsd/publication/seriesm/seriesm_4rev4e.pdf) (Section → Division → Group → **4-digit Class**), and classifies education field and attainment using [ISCED-F 2013 and ISCED 2011](https://uis.unesco.org/en/topic/international-standard-classification-education-isced). Its project-adapted questionnaire has Sections A–K and 56 fields, with dynamic skip logic across three employment paths. Questionnaire implementation does not establish official UAE questionnaire approval or independently verified ICLS-19 compliance.
 
-A key thesis contribution is the **Semantic Relation Engine** — a three-way crosswalk that cross-validates ISCO-08, ISIC Rev.4, and ISCED 2011 classifications against each other using hand-built, domain-reasoning crosswalk tables (verified directly against the primary ILO/UNESCO sources: no official ISCO-to-ISIC correspondence table or ISCED-2011-to-occupation mapping was found to exist for this purpose — see `semantic_relation.py`'s module docstring), producing a **SemanticCoherence score (0–1)** that adjusts ISCO confidence and triggers real HITL escalation on HIGH-severity violations.
+A project contribution is the **Semantic Relation Engine** — a three-way crosswalk that compares ISCO-08, ISIC Rev.4, and ISCED 2011 outputs using hand-built plausibility rules. The project's source review found no official ISCO-to-ISIC correspondence table or ISCED-2011-to-occupation mapping for these checks; see `semantic_relation.py`'s module docstring. The resulting **SemanticCoherence score (0–1)** accompanies the stored classifier confidence, and HIGH-severity rule violations trigger HITL escalation.
 
 ---
 
@@ -13,7 +13,7 @@ A key thesis contribution is the **Semantic Relation Engine** — a three-way cr
 1. [Architecture](#architecture)
 2. [Tech Stack](#tech-stack)
 3. [Semantic Relation Engine (Thesis Contribution)](#semantic-relation-engine-thesis-contribution)
-4. [UAE LFS Questionnaire — Complete Field Reference](#uae-lfs-questionnaire--complete-field-reference)
+4. [Project LFS Questionnaire — Complete Field Reference](#project-lfs-questionnaire--complete-field-reference)
 5. [System Flowcharts](#system-flowcharts)
 6. [Skip Logic Gates](#skip-logic-gates)
 7. [Security Features](#security-features)
@@ -30,81 +30,38 @@ A key thesis contribution is the **Semantic Relation Engine** — a three-way cr
 
 ## Architecture
 
+The API coordinates interview state and persistence. Outside fast mode, changed coding inputs enter a live **CrewAI sequential crew**: occupation, industry, and education specialists invoke the existing classifiers, followed by an evidence auditor that consumes their task outputs. Tools hold the exact input, and the API uses original classifier objects rather than LLM-generated replacement codes.
+
+```mermaid
+flowchart TD
+    UI[Next.js: five-language interview and supervisor review] --> API[FastAPI survey routes]
+    API --> Language[LanguageProcessor: detection, normalization and NER]
+    Language --> Conversation[ConversationManager: interview state and next question]
+    Conversation --> Crew[SurveyClassificationCrew: changed coding inputs]
+    Crew --> Occupation[Occupation specialist]
+    Crew --> Industry[Industry specialist]
+    Crew --> Education[Education specialist]
+    Occupation --> RAG[ISCOClassifier: hierarchical retrieval and optional reranking]
+    RAG --> Qdrant[Qdrant: multilingual catalogue vectors]
+    Industry --> ISIC[ISICClassifier: configured keyword or retrieval method]
+    Education --> ISCED[ISCEDClassifier: attainment and field coding]
+    RAG --> Auditor[Evidence auditor: original tool results]
+    ISIC --> Auditor
+    ISCED --> Auditor
+    Auditor --> Coherence[SemanticRelationEngine: project heuristic checks]
+    Coherence --> Review[HITL quality assessment and authorized human review]
+    API --> PostgreSQL[PostgreSQL: answer revisions and reports]
+    API --> Redis[Redis: shared context and session locks]
+    PostgreSQL --> Report[ReportGenerator: bilingual EN/AR narrative]
 ```
-┌────────────────────────────────────────────────────────────────────────────┐
-│  Browser                                                                   │
-│  Next.js 14  (login / OTP → chat interface, EN + AR RTL)                  │
-│  Supervisor Review Dashboard (HITL queue)                                  │
-└────────────────────────┬───────────────────────────────────────────────────┘
-                         │ HTTP (REST / JSON)  X-Request-ID correlation header
-┌────────────────────────▼───────────────────────────────────────────────────┐
-│  FastAPI Backend                                                           │
-│                                                                            │
-│  ① LanguageProcessor   — langdetect + Unicode script analysis             │
-│     • 6 language codes: en / ar / ar-gulf / ur / hi / tl                  │
-│     • Gulf Arabic normalisation (79 dialect→MSA token replacements)       │
-│     • Code-switch detection & per-segment labelling                       │
-│     • NER via CrewAI Agent (Ollama / llama3.2, Claude 3.5 fallback)       │
-│                                                                            │
-│  ② ConversationManager — 5-state FSM (CrewAI + Ollama)                   │
-│     GREETING → COLLECTING_INFO ↔ CLARIFYING → VALIDATING → COMPLETING    │
-│     56-field UAE LFS questionnaire, 3 employment paths, dynamic skip logic│
-│                                                                            │
-│  ③ ISCOClassifier — four-stage hierarchical RAG pipeline                  │
-│     • Stage 1: major group   (1-digit)  semantic search                   │
-│     • Stage 2: sub-major     (2-digit)  parent-filtered search            │
-│     • Stage 3: minor group   (3-digit)  parent-filtered search            │
-│     • Stage 4: unit group    (4-digit)  parent-filtered + LLM re-ranking  │
-│       (LLM skipped when top similarity ≥ 0.92)                            │
-│     • HITL escalation when confidence < 0.70                              │
-│     • Weighted confidence: 0.10×s1 + 0.20×s2 + 0.20×s3 + 0.50×s4        │
-│                                                                            │
-│  ④ ISICClassifier   — ISIC Rev.4 full 4-level hierarchy (keyword + LLM)  │
-│     • Section (A–U) → Division (2-digit) → Group (3-digit) → Class (4-digit)│
-│     • e.g. J → 62 → 620 → 6201 "Computer programming activities"         │
-│  ⑤ ISCEDClassifier  — dual ISCED classification (keyword-only)            │
-│     • ISCED 2011 attainment level (0–8)                                   │
-│     • ISCED-F 2013 field of specialisation (4-digit detailed code)        │
-│       Broad (2-digit) → Narrow (3-digit) → Detailed (4-digit)             │
-│       e.g. 06 → 061 → 0613 "Software and applications development"        │
-│  ⑥ NationalityClassifier — UN M49 + ISO 3166-1 alpha-3 (50 countries)   │
-│  ⑦ ValidationAgent  — 10 cross-answer rules R01–R10 (ILO ICLS-19)       │
-│  ⑧ PersonRegister   — pre-fill from previous rounds (40–50% fewer Qs)    │
-│  ⑨ HITLQualityManager — automated quality scoring + escalation queue     │
-│  ⑩ AuditLogger      — immutable GDPR audit trail (10-year retention)     │
-│  ⑪ ReportGenerator  — bilingual EN+AR employment report                  │
-│  ⑫ EmotionalIntelligence — abandonment-risk detection                    │
-│  ⑬ SemanticRelationEngine — ISCO↔ISIC↔ISCED three-way crosswalk          │
-│     • SemanticCoherence score 0–1 (ISIC 55% + ISCED 45% weight)          │
-│     • Adjusts ISCO confidence: +10% coherent / −20% strong mismatch      │
-│     • HIGH-severity violations trigger a real HITL escalation             │
-│     • Hand-built crosswalk tables (no official ILO/UNESCO correspon-      │
-│       dence table for ISCO↔ISIC or ISCO↔ISCED was found to exist)         │
-│  ⑭ SurveyOrchestrator — top-level agent coordinator                      │
-└──────┬──────────────────────────────┬──────────────────────────────────────┘
-       │                              │
-┌──────▼──────┐           ┌──────────▼──────────────────────────────────────┐
-│  PostgreSQL │           │  Qdrant vector DB                               │
-│  Users      │           │  4 hierarchical ISCO-08 collections:            │
-│  Sessions   │           │    • isco08_major_groups      (10 groups)       │
-│  Responses  │           │    • isco08_submajor_groups   (43 groups)       │
-│  HITLQueue  │           │    • isco08_minor_groups     (130 groups)       │
-│  QualityRev │           │    • isco08_unit_groups      (436 groups)       │
-│  PersonReg  │           │  multilingual-e5-small embeddings               │
-│  AuditLogs  │           │  (384-dim, handles en/ar/ur/hi/tl)              │
-│  SurveyRpts │           └─────────────────────────────────────────────────┘
-│  (11 tables)│
-└──────┬──────┘
-       │
-┌──────▼──────────────┐    ┌─────────────────────────────────────────────────┐
-│  Redis 7            │    │  LLM Routing (llm_client.py)                    │
-│  Session context    │    │  TaskType.GENERAL → Ollama / llama3.2           │
-│  TTL: 24 h          │    │    temp 0.3 — NER, conversation, summaries      │
-│  Key: lfs:session:* │    │    graceful fallback → Claude 3.5 Sonnet        │
-└─────────────────────┘    │  TaskType.CRITICAL → Claude 3.5 Sonnet          │
-                           │    temp 0.0 — ISCO re-rank, validation, reports │
-                           └─────────────────────────────────────────────────┘
-```
+
+**RAG hierarchy and CrewAI process are separate choices.** The live ISCO retriever traverses major, sub-major, minor and unit groups. The live collaborative crew uses `Process.sequential`; an experimental `HierarchicalClassificationCoordinator` also exists for manager-delegation comparisons. The title does not require that the crew itself use a hierarchical process.
+
+`ENABLE_SURVEY_CLASSIFICATION_CREW=true` enables the live crew (the default). `LFS_FAST_MODE=true` explicitly bypasses conversation/NER generation and the collaborative crew for demos. API execution metadata distinguishes successful cooperation, direct fallback, cached output, skipped work, and failure. Fast mode is not evidence of live multi-agent generation. Optional `RAGExpert` and `QueryPlanner` modules support configured/evaluation paths; the live ISCO classifier supplies the survey's retrieval path.
+
+The live default uses multilingual-e5-small with four populated legacy ISCO collections (10/43/130/436 groups). Other catalogue profiles and ISIC/ISCED-F vector methods exist, but their evaluated results do not establish the accuracy of this default. ISIC and ISCED-F keyword coverage remains a subset of their official catalogues. Reports and auxiliary support narratives remain EN/AR; interview and report UI labels cover all five languages.
+
+The shipped environment example selects `qwen2.5:3b`, the local model used in the successful bounded specialist-and-auditor probe. The verified local configuration enables the crew and local-only inference with fast mode disabled. The LLM factory's fallback default when `OLLAMA_MODEL` is unset remains `llama3.2`; that default has not inherited the probe's tool-calling evidence. See the verification report for the probe's synthetic-input and read-only retrieval-bridge limits.
 
 ---
 
@@ -114,8 +71,8 @@ A key thesis contribution is the **Semantic Relation Engine** — a three-way cr
 |---|---|
 | Frontend | Next.js 14, React 18, Tailwind CSS, Noto Sans Arabic (RTL support) |
 | Backend | FastAPI, SQLAlchemy, Alembic |
-| AI Agents | CrewAI, Ollama / llama3.2 (general tasks), Claude 3.5 Sonnet (critical tasks) |
-| Semantic Crosswalk | Deterministic ILO/UNESCO lookup tables; no LLM for core logic (speed + auditability) |
+| AI Agents | CrewAI; configured Ollama model for general tasks; Claude for critical tasks by default; `LFS_LOCAL_ONLY=true` selects local Ollama for both |
+| Semantic Crosswalk | Project heuristic crosswalk tables; deterministic core checks and explicit HITL warnings |
 | Embeddings | `intfloat/multilingual-e5-small` (sentence-transformers, 384-dim) |
 | Vector DB | Qdrant (4 hierarchical collections, 436 ISCO-08 unit groups) |
 | Auth | Email OTP (Gmail SMTP / SendGrid fallback) → JWT (HS256) + sliding-window rate limiting |
@@ -127,7 +84,7 @@ A key thesis contribution is the **Semantic Relation Engine** — a three-way cr
 
 ## Classification Standards
 
-The system applies four complementary ILO/UNESCO classification standards to every survey response:
+The system uses four international classification standards when the corresponding occupation, industry or education answers are available:
 
 | Standard | Scope | Output depth | Example |
 |---|---|---|---|
@@ -142,7 +99,7 @@ The system applies four complementary ILO/UNESCO classification standards to eve
 
 ## Semantic Relation Engine (Thesis Contribution)
 
-The **Semantic Relation Engine** (`backend/agents/semantic_relation.py`) is the novel contribution of this thesis. It cross-validates the three international classification outputs — ISCO-08 (occupation), ISIC Rev.4 (industry, 4-digit class), ISCED 2011 (attainment level, from the dual ISCED classifier) — against each other to detect inconsistencies that a single-standard classifier would miss.
+The **Semantic Relation Engine** (`backend/agents/semantic_relation.py`) is a project contribution. Its heuristic checks compare ISCO occupation groups, the ISIC **section** from the industry hierarchy, and ISCED 2011 attainment level to flag potentially inconsistent combinations. These checks do not establish whether an individual classification is correct.
 
 ### How it works
 
@@ -168,25 +125,29 @@ Step 3 — Weighted coherence score
   isced_score = 1.0  (no violation)
   final_score = 0.55 × 1.0 + 0.45 × 1.0 = 1.00
 
-Step 4 — Confidence adjustment
-  score >= 0.90  →  +10% to ISCO confidence
+Step 4 — Legacy proposal metadata
+  score >= 0.90  →  confidence_adjustment = +0.10
+  Stored classifier confidence remains unchanged.
 ```
 
-### Violation severity
+### Coherence metadata and review
 
-| Severity | Condition | Confidence Δ | HITL |
-|---|---|---|---|
-| None | score ≥ 0.90 | +10% | No |
-| LOW | score ≥ 0.70 | +5% | No |
-| MODERATE | score ≥ 0.50 | −5% | No |
-| HIGH | score < 0.50 | −20% | Yes → HITLQueue |
+| Coherence score | Legacy `confidence_adjustment` proposal | Applied to classifier confidence |
+|---|---|---|
+| ≥ 0.90 | +0.10 | No |
+| ≥ 0.70 and < 0.90 | +0.05 | No |
+| ≥ 0.50 and < 0.70 | −0.05 | No |
+| < 0.50 | −0.20 | No |
+
+The proposal is retained as API metadata for compatibility. **Violation severity is assigned by individual rules**, rather than by these score bands. HIGH-severity violations trigger HITL escalation; a low score alone does not define a HIGH violation or establish human approval.
 
 ### Sub-major group rules
 
-Stricter rules apply for specific sub-major groups, e.g.:
-- Sub-major `22` (Health Professionals): ISCED ≥ 7 required
+Project heuristic rules include the following expectations; they are not official qualification requirements:
+
+- Sub-major `22` (Health Professionals): ISCED ≥ 7 expected by this heuristic
 - Sub-major `25` (ICT Professionals): ISIC section J preferred
-- Sub-major `11` (Chief Executives): ISCED ≥ 6 required
+- Sub-major `23` (Teaching Professionals): ISCED ≥ 6 expected by this heuristic
 
 ### Demo (10 test cases)
 
@@ -224,9 +185,9 @@ The report page (`/report`) displays a **Cross-Standard Coherence** panel with s
 
 ---
 
-## UAE LFS Questionnaire — Complete Field Reference
+## Project LFS Questionnaire — Complete Field Reference
 
-The system implements the **complete UAE Labour Force Survey** (Sections A–K) following ILO ICLS-19 standards. Questions adapt dynamically based on employment status via skip logic.
+The system implements its **project-adapted labour force questionnaire** (Sections A–K). Questions adapt dynamically based on employment status via the project's skip logic.
 
 ### Section A — Authentication / Identification
 > Handled automatically by the auth system (OTP + JWT). No conversational questions.
@@ -303,7 +264,7 @@ The system implements the **complete UAE Labour Force Survey** (Sections A–K) 
 | F5 | `desired_job_type` | What type of job or occupation are you looking for? | ما نوع الوظيفة أو المهنة التي تبحث عنها؟ | Full-time / Part-time / Any |
 | F7 | `ever_worked` | Have you ever worked before? | هل عملت من قبل؟ | Yes, within 1 yr / Yes, 1–3 yrs ago / Yes, > 3 yrs ago / Never worked |
 
-> **ILO ICLS-19 re-routing rule:** If F1=No AND F3=No → respondent is automatically reclassified as **not in labour force** and redirected to the Outside LF path (F6 question).
+> **Project re-routing gate:** If F1=No AND F3=No → respondent is automatically reclassified as **not in labour force** and redirected to the Outside LF path (F6 question).
 
 #### Outside Labour Force Path
 
@@ -454,7 +415,7 @@ User opens chat
   C5a job_duties           └─ only if F1=yes      G1 last_job_title
   C6 industry           F3 available_for_work     G2 last_job_sector
   D1 actual_hours          │                      G4 prev_salary
-  D2 hours_per_week        │ ⚡ ILO gate:          │
+  D2 hours_per_week        │ ⚡ Project gate:      │
   D3 secondary_job         │ F1=no AND F3=no?      │
   └─ D4 secondary_hours    │ → reclassify to ──────┘
      only if D3=yes        │   not_in_labour_force
@@ -507,16 +468,16 @@ Frontend (Next.js 14)
     FastAPI Backend  (X-Request-ID middleware)
           │
           ├─► LanguageProcessor ─────────────────► Ollama (GENERAL)
-          │     detect lang + NER                   llama3.2, temp 0.3
+          │     detect lang + NER                   configured local model
           │                                          ↓ if unreachable
-          ├─► ConversationManager ──────────────►  Claude 3.5 Sonnet
-          │     FSM + field extraction              (fallback or CRITICAL)
+          ├─► ConversationManager ──────────────►  configured task models
+          │     FSM + field extraction              (local-only option)
           │     heuristic regex extraction
           │     Redis context persistence (ContextMemory)
           │
           ├─► ISCOClassifier ──────────────────►  Qdrant (4 collections)
           │     4-stage hierarchical RAG            hierarchical search
-          │     LLM re-rank if confidence < 0.92 ► Claude 3.5 Sonnet
+          │     optional LLM re-rank < 0.92     ► configured GENERAL model
           │     HITL flag if confidence < 0.70  ► HITLQueue (DB)
           │
           ├─► ISICClassifier ──────────────────►  keyword → LLM
@@ -532,24 +493,26 @@ Frontend (Next.js 14)
           │
           ├─► SemanticRelationEngine ──────────►  deterministic crosswalk
           │     ISCO↔ISIC↔ISCED coherence score
-          │     ±5–20% confidence adjustment
+          │     separate heuristic coherence score
           │
-          ├─► ValidationAgent ─────────────────►  Claude 3.5 Sonnet
-          │     10 ILO ICLS-19 rules (R01–R10)
+          ├─► ValidationAgent ─────────────────►  configured CRITICAL model
+          │     10 project consistency rules (R01–R10)
           │     runs in VALIDATING state
           │
           ├─► EmotionalIntelligence ───────────►  Ollama
           │     abandonment-risk detection
           │     culturally adapted support messages
           │
-          ├─► ReportGenerator ─────────────────►  Claude 3.5 Sonnet
+          ├─► ReportGenerator ─────────────────►  configured CRITICAL model
           │     bilingual EN+AR report
           │
           └─► AuditLogger ─────────────────────►  PostgreSQL
-                GDPR trail + subject access          immutable append-only
+                interaction/access/decision logs     retention-controlled records
                 SESSION_STARTED / MESSAGE_SENT
                 ISCO decisions, HITL escalations
 ```
+
+Outside fast mode, the occupation, industry and education stages above are invoked through `SurveyClassificationCrew` specialists and an evidence auditor. The provider arrows describe defaults: `LFS_LOCAL_ONLY=true` keeps unpinned application tasks on the configured Ollama model. A configured fallback or explicit evaluation model pin can select a different provider.
 
 ---
 
@@ -564,12 +527,12 @@ All conditional fields are evaluated at call time by `_get_field_order(collected
 | **D7 contract_type** | `employment_nature == "paid_employee"` | Insert contract_type after employment_type |
 | **E1 wage gate** ⚡ | `employment_nature == "paid_employee"` | Insert monthly_wage_range — **skipped for employers/self-employed** |
 | **F2 job_search_methods** | `job_search_active == "yes"` | Insert job_search_methods after job_search_active |
-| **F3 ILO re-route** ⚡ | `job_search_active == "no"` AND `available_for_work == "no"` | Reclassify `employment_status → not_in_labour_force`; switch to outside-LF path |
+| **F3 re-route** ⚡ | `job_search_active == "no"` AND `available_for_work == "no"` | Reclassify `employment_status → not_in_labour_force`; switch to outside-LF path |
 | **G-section gate** | `ever_worked != "never_worked"` | Insert last_job_title, last_job_sector, (reason_left_job for unemployed), highest_previous_salary |
 | **H4 emiratization** | `nationality == "uae_national"` | Insert emiratization_program after training_participation |
 | **I2/I3 platform details** | `platform_work ∈ {yes_primary, yes_supplementary}` | Insert platform_names + platform_hours |
 | **HITL escalation** | ISCO confidence < 0.70 | Flag to HITLQueue; supervisor review required |
-| **LLM re-rank skip** | ISCO top-1 similarity ≥ 0.92 | Skip Claude re-ranking call (cost/latency saving) |
+| **LLM re-rank skip** | Hierarchical ISCO confidence ≥ 0.92 | Skip configured re-ranking call |
 
 ---
 
@@ -635,7 +598,7 @@ Sessions, users, and responses are never physically deleted. A `deleted_at` time
 |---|---|
 | `User` | `deleted_at` set; filtered from auth lookups |
 | `SurveySession` | `deleted_at` set; hidden from list/get/message endpoints |
-| `SurveyResponse` | Retained with parent session for GDPR audit trail |
+| `SurveyResponse` | Retained with parent session as answer revision history |
 
 ### Graceful Shutdown
 
@@ -691,7 +654,7 @@ Copy `.env.example` to `.env` and fill in:
 
 | Variable | Description |
 |---|---|
-| `ANTHROPIC_API_KEY` | Powers Claude 3.5 Sonnet (ISCO re-rank, validation, reports) |
+| `ANTHROPIC_API_KEY` | Needed for default Claude critical tasks, such as validation and reports, unless `LFS_LOCAL_ONLY=true`; optional general-task fallback |
 | `JWT_SECRET` | Random secret for signing JWTs (e.g. `openssl rand -hex 32`) |
 | `GMAIL_USER` | Gmail address for OTP email delivery (primary) |
 | `GMAIL_APP_PASSWORD` | 16-char Gmail App Password (Google Account → Security → App passwords) |
@@ -703,15 +666,17 @@ Copy `.env.example` to `.env` and fill in:
 | Variable | Default | Description |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
-| `OLLAMA_MODEL` | `llama3.2` | Ollama model for general tasks (NER, conversation) |
+| `OLLAMA_MODEL` | `qwen2.5:3b` in `.env.example` | Configured local model; factory fallback is `llama3.2` when unset |
 | `DATABASE_URL` | postgres://… | Overridden automatically in Docker |
 | `QDRANT_HOST` | `localhost` | Overridden automatically in Docker |
 | `REDIS_URL` | `redis://localhost:6379` | Overridden automatically in Docker |
 | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Token lifetime |
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated list of allowed frontend origins |
 | `LFS_FAST_MODE` | `false` | When `true`/`1`/`yes`: skips LLM calls for collecting_info/clarifying turns and NER, and skips ISCO LLM re-ranking — deterministic stub responses for fast local dev/demo without Ollama/Claude latency |
+| `ENABLE_SURVEY_CLASSIFICATION_CREW` | `true` | Runs changed coding inputs through CrewAI specialists and an evidence auditor outside fast mode; API metadata records actual tool execution and fallback |
+| `LFS_LOCAL_ONLY` | `false` | Keeps unpinned application tasks and natural correction fallbacks on the configured installed Ollama model; explicit evaluation provider pins remain unchanged |
 
-> **Note:** `OPENAI_API_KEY` is not required. General LLM tasks run on local Ollama with automatic fallback to Claude 3.5 Sonnet if Ollama is unreachable.
+> **Note:** `OPENAI_API_KEY` is not required. General tasks prefer configured Ollama; eligible configured providers form the fallback chain. `LFS_LOCAL_ONLY=true` disables cloud fallback for unpinned application tasks. Explicit evaluation pins retain their selected provider contract.
 
 ---
 
@@ -722,7 +687,7 @@ Copy `.env.example` to `.env` and fill in:
 docker compose -f docker/docker-compose.yml up -d postgres qdrant redis
 
 # ── Backend ─────────────────────────────────────
-pip install -r requirements.txt tf-keras
+pip install -r requirements.txt
 cp .env.example .env        # fill in secrets
 
 # Create or upgrade the database schema using Alembic
@@ -742,7 +707,7 @@ npm run dev
 # → http://localhost:3000
 
 # ── Ollama (local LLM) ───────────────────────────
-ollama pull llama3.2
+ollama pull qwen2.5:3b
 ollama serve
 # → http://localhost:11434
 ```
@@ -788,7 +753,7 @@ ollama serve
 | GET | `/survey/sessions` | — | List user's active sessions (soft-deleted excluded) |
 | GET | `/survey/sessions/{id}` | — | Get session |
 | PATCH | `/survey/sessions/{id}/complete` | — | Mark complete |
-| DELETE | `/survey/sessions/{id}` | — | Soft-delete session (responses retained for GDPR audit) |
+| DELETE | `/survey/sessions/{id}` | — | Soft-delete session (answer history retained) |
 
 ### Conversational Turn
 
@@ -892,7 +857,7 @@ Body:  { "message": "I work as a software engineer full time" }
 |---|---|---|
 | `emotional_state` | `string \| null` | Detected emotional state: `neutral`, `stressed`, `hesitant`, `disengaged` |
 | `emotional_support_message` | `string \| null` | Culturally adapted support message if abandonment risk detected |
-| `validation_issues` | `list[string]` | ILO rule violations surfaced during VALIDATING state |
+| `validation_issues` | `list[string]` | Project consistency-rule violations surfaced during VALIDATING state |
 | `is_data_valid` | `bool \| null` | `true` = all R01–R10 rules passed; `null` when not in VALIDATING state |
 
 ### Survey Responses (manual override)
@@ -933,12 +898,12 @@ Body:  { "message": "I work as a software engineer full time" }
 
 ```bash
 # From repo root
-pip install -r requirements.txt tf-keras
-pytest backend/tests/ -v
+pip install -r requirements.txt
+python scripts/run_review_tests.py backend/tests eval -q
 ```
 
-- **2,282 tests** (`backend/tests` + `eval/`) across **89 test files** — all passing as of 2026-08-21 (`pytest backend/tests eval/ -q`; 1 deselected slow test, 1 warning). `pytest backend/tests/ -v` alone: **1,450 tests**, 44 files.
-- Zero live infrastructure required — all external calls (DB, Redis, Qdrant, LLM APIs) are mocked or use in-memory fakes (SQLite, FakeRedis)
+- **Historical snapshot, 2026-08-21:** 2,282 tests (`backend/tests` + `eval/`) across 89 files passed; one slow test was deselected. Backend-only results were 1,450 tests across 44 files. Current verification is recorded in the [title alignment report](Documentation/TITLE_ALIGNMENT_2026-10-06.md).
+- The review runner supplies test-only credentials and storage, disables application warmup, and blocks external connections. Tests use mocks or in-memory fakes; the separate live inference and browser checks have their own documented scopes.
 - Load/stress tests are marked `@pytest.mark.slow` and excluded by default via `pytest.ini`; run them explicitly with `pytest -m slow`
 
 ```bash
@@ -1016,12 +981,12 @@ python eval/legacy_thesis_ch6/wisco/parse_wisco.py     # produces wisco_raw_pars
 │   │   ├── person_register.py       # Person Register pre-fill service
 │   │   ├── validation_agent.py      # Cross-answer consistency rules (R01–R10)
 │   │   ├── hitl_quality_manager.py  # Quality scoring + escalation queue
-│   │   ├── audit_logger.py          # GDPR-compliant immutable audit trail
+│   │   ├── audit_logger.py          # Interaction/access/decision audit records and subject export
 │   │   ├── emotional_intelligence.py # Survey abandonment detection + support messages
 │   │   ├── report_generator.py      # Bilingual EN+AR employment report
 │   │   ├── context_memory.py        # Redis-backed session memory (TTL 24 h)
 │   │   ├── rag_expert.py            # Hierarchical RAG search helper
-│   │   └── survey_orchestrator.py   # Top-level agent coordinator
+│   │   └── survey_classification_crew.py # Live CrewAI specialists and evidence auditor
 │   ├── api/
 │   │   ├── auth_routes.py      # OTP + JWT endpoints (per-IP + per-email rate limiting)
 │   │   └── survey_routes.py    # Session + message + HITL endpoints
@@ -1052,9 +1017,8 @@ python eval/legacy_thesis_ch6/wisco/parse_wisco.py     # produces wisco_raw_pars
 │   │   │                       # 4-digit format ("0110" etc.) instead of ISCO-08's own bare
 │   │   │                       # 3-digit convention — a coordinated project-wide decision,
 │   │   │                       # not fixed unilaterally.
-│   └── tests/                  # 51 test files (+ conftest + slow-marked load_test), 1,519 tests here
-│       │                       # (2,376 combined with eval/'s 47 files/857 tests), zero live infra required.
-│       │                       # Illustrative subset below, not exhaustive — see the folder itself for all 51.
+│   └── tests/                  # Regression tests; use scripts/run_review_tests.py for isolated execution
+│       │                       # Illustrative subset below; current counts are in the verification report.
 │       ├── conftest.py              # Shared fixtures: in-memory DB, auth client, rate limiter reset
 │       ├── test_auth_routes.py
 │       ├── test_auth_and_api_extended.py
@@ -1126,57 +1090,57 @@ covered by `CLAUDE.md` and `Documentation/PROJECT_FLOW_AND_STATUS.md`.
 | `users` | `deleted_at` | Registered respondents (email, OTP, JWT) |
 | `otp_codes` | — | Time-limited 6-digit OTP codes |
 | `survey_sessions` | `deleted_at` | Survey session per user per round |
-| `survey_responses` | `deleted_at` | Individual field answers + ISCO codes (retained after session soft-delete for GDPR) |
-| `audit_logs` | — | Immutable GDPR audit trail (agent decisions) |
-| `data_access_logs` | — | Per-row PII access log (GDPR Art. 15) |
-| `agent_decision_logs` | — | Full agent reasoning traces |
+| `survey_responses` | `deleted_at` | Individual field answers + ISCO codes; revision history retained after session soft-delete |
+| `audit_logs` | — | Interaction and audit events with configurable retention |
+| `data_access_logs` | — | Personal-data access records at instrumented application paths |
+| `agent_decision_logs` | — | Agent decision summaries and optional explanation text |
 | `quality_reviews` | — | HITLQualityManager scoring records |
 | `hitl_queue` | — | Low-confidence ISCO items pending supervisor review |
 | `survey_report_records` | — | Cached bilingual employment reports |
 | `person_register` | — | Pre-fill data from previous survey rounds |
 
-> Soft-deleted rows are filtered from all application queries but retained for audit and GDPR compliance. Physical deletion is handled by the AuditLogger purge process after the configured retention period.
+> Application queries filter soft-deleted respondents, sessions and answers. Answer revisions remain stored. `AuditLogger.purge_expired()` deletes expired **audit records** according to its configurable retention window (default 90 days); it does not purge survey answers, users or sessions. These mechanisms do not independently establish legal compliance or an immutable ledger.
 
 ---
 
 ## Implementation Status
 
-All thesis requirements fully implemented as of June 2026:
+Implemented components and their current scopes are listed below. The [title alignment report](Documentation/TITLE_ALIGNMENT_2026-10-06.md) records current verification and remaining empirical limits.
 
 | Component | Status | Detail |
 |---|---|---|
 | Email OTP + JWT Auth | Done | Gmail SMTP (SendGrid fallback) + HS256 JWT, auto-fill in dev mode |
 | Language Detection (6 codes) | Done | en / ar / ar-gulf / ur / hi / tl; Devanagari fast-path |
-| Gulf Arabic Normalisation | Done | 79 dialect→MSA token replacements before NER + embedding |
+| Gulf Arabic Normalisation | Done | Dialect→MSA normalization supplements original-text NER context |
 | Code-Switch Detection | Done | Arabic+Latin and Devanagari+Latin mixing detection |
 | NER — 5 languages | Done | CrewAI agent, JOB_TITLE / INDUSTRY / LOCATION / EDUCATION |
 | Conversation FSM (5 states) | Done | 56 fields, 3 employment paths, 11 conditional skip gates |
-| UAE LFS Questionnaire (A–K) | Done | All sections implemented; dynamic skip logic per ILO ICLS-19 |
-| ILO ICLS-19 E1 wage gate | Done | monthly_wage_range skipped for employer/self-employed |
-| ILO ICLS-19 F3 re-routing | Done | F1=no + F3=no → auto-reclassify to not_in_labour_force |
-| ISCO-08 Knowledge Base | Done | 436 unit groups across 4 Qdrant collections, matching official ISCO-08 exactly (fixed 2026-08-12) |
+| Project LFS Questionnaire (A–K) | Done | Project-adapted sections with dynamic skip logic; official questionnaire approval is not established |
+| E1 wage gate | Done | monthly_wage_range skipped for employer/self-employed |
+| F3 re-routing | Done | F1=no + F3=no → auto-reclassify to not_in_labour_force |
+| ISCO-08 Knowledge Base | Done | Live hierarchy has 10/43/130/436 groups; project uses padded Armed Forces unit codes; counts do not establish classification accuracy |
 | Hierarchical RAG (4-stage) | Done | Major→Sub-major→Minor→Unit with parent_code filtering |
 | Per-stage Confidence Scoring | Done | Weighted: 0.10×s1 + 0.20×s2 + 0.20×s3 + 0.50×s4 |
-| LLM Re-ranking | Done | Claude 3.5 Sonnet; skipped when top-1 similarity ≥ 0.92 |
+| LLM Re-ranking | Done | Configured GENERAL model; skipped when hierarchical confidence ≥ 0.92 or inference is disabled/unavailable |
 | HITL Escalation (< 0.70) | Done | HITLQueue DB + priority ordering (HIGH first) |
 | Supervisor Review Dashboard | Done | Approve / correct / reject with inline form |
 | Evaluation Framework | Done | BM25 / Flat / Hierarchical 3-system, 100 synthetic cases |
-| Validation Agent (R01–R10) | Done | ILO ICLS-19 cross-answer consistency rules; wired into VALIDATING FSM state |
+| Validation Agent (R01–R10) | Done | Project cross-answer consistency rules; wired into VALIDATING FSM state |
 | ISCO-08 Keyword Pre-filter | Done | Major-group anchor prevents semantic drift |
 | ISCO-08 Synonym Enrichment | Done | 50+ unit-group descriptions enriched with synonyms for better recall |
 | ISIC Rev.4 Classification (4-digit) | Done | Full Section→Division→Group→Class hierarchy; keyword + LLM; 100+ class entries; EN+AR |
 | ISCED-F 2013 Field of Specialisation (4-digit) | Done | ISCED-F 2013 Broad→Narrow→Detailed (0011–1041); keyword two-pass; 11 broad fields, 60+ detailed codes; EN+AR |
 | ISCED 2011 Attainment Level | Done | Levels 0–8, combined with ISCED-F in single classifier; EN+AR |
 | UN M49 Nationality Classification | Done | 50 countries, ISO 3166-1 alpha-3 + UN M49 codes, EN+AR+UR/HI/TL aliases; "United Kingdom"/"South Africa" alias collision fixed |
-| Person Register Pre-fill | Done | 40–50% question reduction from previous round |
-| Emotional Intelligence Monitor | Done | Abandonment-risk detection + culturally adapted responses; wired into every message turn |
-| Audit / GDPR Compliance | Done | Immutable trail, Art. 15 subject-access, 10-year retention; SESSION_STARTED + MESSAGE_SENT events |
+| Person Register Pre-fill | Done | Supplies up to five known answer fields from a previous round; no measured questionnaire-wide reduction is established |
+| Emotional Intelligence Monitor | Done | Heuristic abandonment-risk assessment and support text; runs on messages longer than ten characters |
+| Audit and Subject Export | Done | Interaction/access/decision records, subject export, configurable audit-record retention (default 90 days) |
 | Redis Context Persistence | Done | ContextMemory.load_session / save_session / delete_session around every turn |
 | Report Generator | Done | Bilingual EN+AR employment profile + recommendations |
 | Quick-reply Pill Buttons | Done | 39 categorical fields × 5 languages in frontend |
 | RTL Arabic Support | Done | Noto Sans Arabic, full RTL layout in chat + report |
-| **Semantic Relation Engine** | **Done** | ISCO↔ISIC↔ISCED three-way crosswalk; SemanticCoherence score; confidence adjustment ±5–20%; HITL on HIGH violations |
-| Cross-Standard Coherence API | Done | `semantic_coherence` field in every `/survey/sessions/{id}/message` response |
+| **Semantic Relation Engine** | **Done** | ISCO↔ISIC↔ISCED three-way crosswalk; SemanticCoherence score; classifier confidence preserved; HITL on HIGH violations |
+| Cross-Standard Coherence API | Done | Optional `semantic_coherence` result when occupation evidence is available; otherwise null |
 | Coherence Report Panel | Done | Score bar, ISIC/ISCED compatibility flags, violation list (EN+AR) on report page |
 | Semantic Demo Script | Done | `python -m eval.legacy_thesis_ch6.semantic_demo` — 10 cases, colour output for presentation |
 | **Rate Limiting** | **Done** | Sliding-window per-IP (OTP request) + per-email (OTP verify), in-process; plus `slowapi` 30 req/min per-IP limiter on `/message` |
@@ -1193,6 +1157,6 @@ All thesis requirements fully implemented as of June 2026:
 | **ValidationAgent Wiring** | **Done** | Runs when FSM enters VALIDATING; populates `validation_issues` + `is_data_valid` in response |
 | **HITL Auto-enqueue** | **Done** | `db.flush()` + `HITLQueue` insert when `clf.hitl_required=True`; AuditLogger records decision |
 | **Load Test Suite** | **Done** | `@pytest.mark.slow` test in `load_test.py`; 5 users, 2 workers, ≥80% success rate assertion |
-| **Test Suite** | **Done** | 2,282 tests (`backend/tests` + `eval/`), 89 files, zero live infrastructure; `pytest.ini` excludes slow tests by default |
+| **Test Suite** | **Done** | Isolated backend/evaluation regressions; current results in the verification report; slow load tests excluded by default |
 | **Nationality Quick-Options** | **Done** | Pills updated to top 8 UAE nationalities (Emirati/Indian/Pakistani/Filipino/Bangladeshi/Egyptian/British/Other) |
 | **Correction Acknowledgment** | **Done** | `_dev_stub_response` now shows "Got it, I've updated that" when correction applied in VALIDATING state |

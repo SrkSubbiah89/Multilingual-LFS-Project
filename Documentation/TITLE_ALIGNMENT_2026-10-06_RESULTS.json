@@ -1,0 +1,84 @@
+{
+  "verification_date": "2026-10-06",
+  "finalized_at_utc": "2026-10-05T21:41:33.306593+00:00",
+  "project_title": "Multilingual Conversational AI for Labour Force Surveys: A Multi-Agent RAG System with CrewAI Framework",
+  "base_commit": "db734cb",
+  "backend_and_evaluation": {
+    "passed": 2966,
+    "failed": 0,
+    "deselected": 1,
+    "warnings": 38,
+    "elapsed_seconds": 224.62,
+    "evidence": "TITLE_ALIGNMENT_2026-10-06_TEST_RESULTS.xml"
+  },
+  "frontend": {
+    "passed": 18,
+    "failed": 0,
+    "production_build_passed": true,
+    "routes_built": 7
+  },
+  "browser": {
+    "workflow_passed": 12,
+    "rejection_passed": 2,
+    "failed": 0,
+    "runtime_errors": 0,
+    "unexpected_requests": 0,
+    "synthetic_fixtures": true
+  },
+  "live_crewai": {
+    "cooperation_verified": true,
+    "specialist_tools": [
+      "isco",
+      "isic",
+      "isced"
+    ],
+    "evidence_auditor_executed": true,
+    "fallback_dimensions": [],
+    "model": "ollama/qwen2.5:3b",
+    "elapsed_seconds": 84.98,
+    "evidence": "TITLE_ALIGNMENT_2026-10-06_LIVE_CREW_RESULTS.json"
+  },
+  "runtime": {
+    "full_ai_ready": true,
+    "local_only": true,
+    "supervisor_access_preserved": true,
+    "database_counts_stable_during_final_verification": true,
+    "disposable_services_removed": true,
+    "evidence": "TITLE_ALIGNMENT_2026-10-06_RUNTIME_RESULTS.json"
+  },
+  "limits": [
+    "The native model probe uses one synthetic English profile and a read-only semantic ISCO bridge; it does not verify full interview persistence or multilingual accuracy.",
+    "Browser tests use synthetic accounts and controlled AI outputs; no real OTP delivery is exercised.",
+    "The 120-second native inference budget excludes classifier retrieval and fallback latency.",
+    "Live ISIC/ISCED defaults use subset keyword/rule catalogues. Auxiliary report/support narratives remain English/Arabic.",
+    "Historical embedding provenance, human usability, expert-reviewed accuracy and production load performance remain separate evaluation requirements.",
+    "Database records were added since the prior activation; runtime evidence records the increases without attributing them or altering their contents."
+  ],
+  "source_files_sha256": {
+    "backend/agents/conversation_manager.py": "5d4fc9314c790029bdaa8eb5765e0eacc1373553812eb5a93ba5de6e22d05b74",
+    "backend/agents/hierarchical_classification_crew.py": "0831d778e2cdb05f749dc80f7b2179d55fece2585232b0c5fe0f566a1637cd6d",
+    "backend/agents/language_processor.py": "02f0f942d1123473f892f456d319288270d2543652f890489be732d80bea05b9",
+    "backend/agents/query_planner.py": "d35f9ee9c91af333bca356b5ffeacd415f7e1682f44bc9b5350f4103c79f2bee",
+    "backend/agents/rag_expert.py": "aa77d3b3f91360c9e8f2ec1c5c379efb2e44c3a256ae162034947e3dfa54d898",
+    "backend/agents/validation_agent.py": "b6b747bbbaa24c3131f9fdea786984d802dddec0e63cec7dc03b6fc461b1d3b6",
+    "backend/agents/survey_classification_crew.py": "37b8b47225f5fa45c155505907b90ec24950f472c657e0268cd5e4d9b1147c0d",
+    "backend/api/survey_routes.py": "6d6cc4d3ac5dba04d83c6952e20f72acfd0804a769811f39aa45ca67d459797e",
+    "backend/llm/llm_client.py": "1c036a4c2761d5475d6d1d2cc5a6b66accee26d53d07e03b797ff0e5862a74cc",
+    "backend/tests/test_hierarchical_classification_crew.py": "f9c2ef7ca0746339232e4e7d140bc02f9a8a7eba65c578094b35dd429da1cb75",
+    "backend/tests/test_query_planner.py": "1a1db9166aab5e819cf5acd5b93c5c10f850dd1b8805f9efacacc61db0400c15",
+    "backend/tests/test_rag_expert.py": "edb887cbd1cba26a6906b9e9242d4d97e4dd5b98cac086f303464d389eda343b",
+    "backend/tests/test_conversation_local_only.py": "72064c97b32ba101b869367de1bc8970344b927334db0e095867f37551eb417f",
+    "backend/tests/test_llm_client_local_only.py": "12dbf1595463d20b8982a4abec105ba89db60ec2140798701f8c56ff8b010ed9",
+    "backend/tests/test_multilingual_agent_alignment.py": "a74ff31d2d2f442c19526dfa8ca501399168f6c9329ff0263f8c9e07cd37fede",
+    "backend/tests/test_survey_classification_crew.py": "36523b18aa3132aa896cdfb5ea4abd389b099e6ab0fd438d8e269bf24f8b9019",
+    "backend/tests/test_title_alignment_routes.py": "59d0bf0901216754b95fb6c8b6868512d18097ed6364310d84d3a0e8f62790fd",
+    "backend/tests/test_title_alignment_edge_cases.py": "dcd8820a7d85ff6ac61733f3254c68f3631e31a0bda2b33f948501f118ba4eef",
+    "frontend/components/agent-execution.js": "9a404a47b15be94f66a0d236435f9f9fe21b8cb7c6025490a69560c9c149c135",
+    "frontend/pages/chat.js": "bba0e6217dccfb033b4a2f1f81a9a5d4fcc4101c986d1676ad243ba8c3452c0b",
+    "frontend/pages/report.js": "2741bce454f3e9160b44413dd4e8616dcc5c514efe4f4bd61d1ab883b531b017",
+    "frontend/tests/agent-execution.test.cjs": "7c28da16c09f2e708d17e87a214fd1f54119cef451da76d5d95369d852d380d9",
+    "frontend/tests/report-review-rendering.test.cjs": "70a6f7cc67636b47ff6169f1621bd590a91b7ba7bd3a2d891dfff1a0e81399ff",
+    "scripts/run_review_tests.py": "c7da35e9f85baebc6a9f1348038900542ff662984c8e030547d90c874e4e714d",
+    "scripts/verify_live_classification_crew.py": "37c9b0914881bfdbaf3c9ad68f3a8de90fc4bfce0a274fe81124d3fc381c2348"
+  }
+}

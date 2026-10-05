@@ -34,6 +34,7 @@ from crewai import Agent, Crew, Task
 from backend.llm import TaskType, get_llm, get_llm_strict
 
 log = logging.getLogger(__name__)
+MAX_SUBQUERIES = 3
 
 
 class QueryPlanner:
@@ -70,6 +71,9 @@ class QueryPlanner:
             A short label for what's being classified (e.g. "occupation",
             "industry", "education field") -- included in the prompt only,
             purely to make the LLM's task concrete; not otherwise used.
+        max_subqueries : int
+            Clamped to 1--3. Duplicate phrases do not consume the limit
+            or contribute repeated evidence during reconciliation.
         usage_observer : callable, optional
             Receives the Crew, response-received flag, and call error after
             a successful or failed LLM attempt; observer failures are ignored.
@@ -77,6 +81,13 @@ class QueryPlanner:
         text = (text or "").strip()
         if not text:
             return [text]
+
+        # Keep decomposition bounded even when called outside a classifier.
+        # Invalid settings retain the default rather than defeating the
+        # fallback contract or allowing an unbounded list of retrieval calls.
+        if not isinstance(max_subqueries, int) or isinstance(max_subqueries, bool):
+            max_subqueries = MAX_SUBQUERIES
+        max_subqueries = max(1, min(max_subqueries, MAX_SUBQUERIES))
 
         call_error = None
         try:
@@ -127,8 +138,18 @@ class QueryPlanner:
                 except Exception as exc:
                     log.debug("QueryPlanner: could not record decomposition usage: %s", exc)
 
-        lines = [re.sub(r"^[\-\*\d\.\)]+\s*", "", ln).strip() for ln in raw.splitlines()]
-        lines = [ln for ln in lines if ln][:max_subqueries]
+        lines = []
+        seen = set()
+        for line in raw.splitlines():
+            # Remove list markers, not leading digits inside a search phrase.
+            phrase = re.sub(r"^\s*(?:[-*]\s+|\d+[.)]\s+)", "", line).strip()
+            key = " ".join(phrase.split()).casefold()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            lines.append(phrase)
+            if len(lines) == max_subqueries:
+                break
         return lines or [text]
 
     @staticmethod
@@ -157,5 +178,5 @@ class QueryPlanner:
 
         repeated = {k: v for k, v in groups.items() if len(v) >= 2}
         pool = repeated if repeated else groups
-        best_ident = max(pool, key=lambda k: max(pool[k]))
+        best_ident = max(pool, key=lambda k: (len(pool[k]), max(pool[k])))
         return best_ident, max(pool[best_ident])

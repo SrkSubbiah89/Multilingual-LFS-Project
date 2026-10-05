@@ -9,6 +9,7 @@ import { useRouter } from "next/router";
 import { ACTIVE_SESSION_KEY, openSurveySession, sendMessage, updateSessionLanguage } from "../components/api";
 import { QUICK_OPTIONS, getQuickOptions } from "../components/survey-options";
 import LanguageToggle from "../components/LanguageToggle";
+import { getAgentExecutionStatus } from "../components/agent-execution";
 
 // ── i18n strings ──────────────────────────────────────────────────────────────
 
@@ -194,16 +195,16 @@ const SECTIONS = [
 ];
 
 const AGENTS = [
-  { id:"A1",  label:"Language Processor" },
-  { id:"A2",  label:"ISCO Classifier" },
-  { id:"A3",  label:"ISIC Classifier" },
-  { id:"A4",  label:"ISCED Classifier" },
-  { id:"A5",  label:"RAG Expert" },
-  { id:"A6",  label:"Validation Agent" },
-  { id:"A7",  label:"Emotional Intel." },
-  { id:"A8",  label:"HITL Quality Mgr" },
-  { id:"A9",  label:"Audit Logger" },
-  { id:"A10", label:"Report Generator" },
+  { id:"A1",  label:"Language Processor", key:"LanguageProcessor" },
+  { id:"A2",  label:"ISCO Classifier", key:"ISCOClassifier" },
+  { id:"A3",  label:"ISIC Classifier", key:"ISICClassifier" },
+  { id:"A4",  label:"ISCED Classifier", key:"ISCEDClassifier" },
+  { id:"A5",  label:"Evidence Auditor", key:"ClassificationEvidenceAuditor" },
+  { id:"A6",  label:"Validation Agent", key:"ValidationAgent" },
+  { id:"A7",  label:"Emotional Intel.", key:"EmotionalIntelligence" },
+  { id:"A8",  label:"Semantic Checks", key:"SemanticRelationEngine" },
+  { id:"A9",  label:"Audit Logger", key:"AuditLogger" },
+  { id:"A10", label:"Conversation Manager", key:"ConversationManager" },
 ];
 
 const LLM_ROLES = {
@@ -318,18 +319,6 @@ export default function ChatPage() {
   const pathTotal   = surveyProgress?.total ?? null;
   const remaining   = pathTotal == null ? null : Math.max(0, pathTotal - asked);
   const curSection  = nextField ? FIELD_TO_SECTION[nextField] : null;
-
-  // Active agents derived from lastMeta + sending
-  const activeAgentIds = new Set();
-  if (sending) {
-    activeAgentIds.add("A1"); activeAgentIds.add("A7"); activeAgentIds.add("A9");
-    if (lastMeta?.isco?.length > 0) { activeAgentIds.add("A2"); activeAgentIds.add("A5"); }
-    if (lastMeta?.isic)  activeAgentIds.add("A3");
-    if (lastMeta?.isced) activeAgentIds.add("A4");
-    if (fsmState === "validating")  activeAgentIds.add("A6");
-    if (lastMeta?.hitl_required)    activeAgentIds.add("A8");
-    if (fsmState === "completing")  activeAgentIds.add("A10");
-  }
 
   // Section status
   const getSectionStatus = (sId) => {
@@ -967,11 +956,11 @@ export default function ChatPage() {
             {/* ── LLM ROLE IN THIS STEP ─────────────────────────────────── */}
             <div style={{ borderBottom: `1px solid ${C.border}`, padding: "14px 16px" }}>
               <p style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
-                LLM Role in This Step
+                Interview Step
               </p>
               <div style={{ background: C.amberBg, border: `1px solid ${C.amberBd}`, borderRadius: 8, padding: "10px 12px" }}>
                 <p style={{ fontSize: 9, fontWeight: 700, color: C.amber, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
-                  What Claude is doing now
+                  Current step
                 </p>
                 <p style={{ color: "#92400e", fontSize: 11, lineHeight: 1.5, fontWeight: 500 }}>
                   {LLM_ROLES[fsmState] ?? "Awaiting input"}
@@ -990,42 +979,32 @@ export default function ChatPage() {
               <button onClick={() => setAgentActivationOpen(v => !v)}
                 style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", padding: 0, cursor: "pointer", marginBottom: agentActivationOpen ? 10 : 0 }}>
                 <p style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", margin: 0 }}>
-                  Agent Activation
+                  Component Results
                 </p>
                 <span style={{ color: C.faint, fontSize: 9 }}>{agentActivationOpen ? "▲" : "▼"}</span>
               </button>
               {agentActivationOpen && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {AGENTS.map(ag => {
-                  const isActive = activeAgentIds.has(ag.id);
-                  const wasDone  = !sending && lastMeta && (
-                    ag.id === "A1" ||
-                    (ag.id === "A2" && lastMeta.isco?.length > 0) ||
-                    (ag.id === "A3" && lastMeta.isic) ||
-                    (ag.id === "A4" && lastMeta.isced) ||
-                    (ag.id === "A5" && lastMeta.isco?.length > 0) ||
-                    ag.id === "A9"
-                  );
-                  const status = isActive ? "active" : wasDone ? "done" : "idle";
+                  const status = getAgentExecutionStatus(lastMeta?.agentExecution, ag.key, sending);
+                  const hasResult = status === "done" || status === "cached";
                   return (
-                    <div key={ag.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 6px", borderRadius: 6, background: isActive ? "#f0fdf4" : "transparent" }}>
+                    <div key={ag.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 6px", borderRadius: 6 }}>
                       <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, width: 24, flexShrink: 0,
-                        color: status === "active" ? C.green : status === "done" ? C.muted : "#d1d5db" }}>
+                        color: hasResult ? C.green : C.faint }}>
                         {ag.id}
                       </span>
                       <span style={{ fontSize: 11, flex: 1,
-                        color: status === "active" ? C.text : status === "done" ? C.muted : "#d1d5db",
-                        fontWeight: status === "active" ? 600 : 400 }}>
+                        color: hasResult ? C.text : C.faint }}>
                         {ag.label}
                       </span>
                       <span style={{
                         fontFamily: MONO, fontSize: 8, fontWeight: 700, padding: "2px 6px", borderRadius: 99,
-                        background: status === "active" ? C.green : status === "done" ? "#f3f4f6" : "#f3f4f6",
-                        color:      status === "active" ? "#ffffff" : status === "done" ? C.faint : "#d1d5db",
+                        background: "#f3f4f6",
+                        color: status === "failed" ? "#b91c1c" : C.muted,
                         flexShrink: 0,
-                      }}
-                      className={status === "active" ? "animate-pulse" : ""}>
-                        {status === "active" ? "ACTIVE" : status === "done" ? "done" : "idle"}
+                      }}>
+                        {status}
                       </span>
                     </div>
                   );
@@ -1138,6 +1117,8 @@ function buildMeta(res) {
     nationality:   res.nationality_classification || null,
     latencyMs:     res.latency_ms || null,
     hitl_required: res.isco_classifications?.[0]?.hitl_required || false,
+    agentExecution: res.agent_execution || {},
+    classificationExecution: res.classification_execution || null,
   };
 }
 

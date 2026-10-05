@@ -20,6 +20,8 @@ os.environ.update({
     "CREWAI_TRACING_ENABLED": "false", "OTEL_SDK_DISABLED": "true",
     "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
     "HITL_REVIEWER_USER_IDS": "",
+    "ENABLE_SURVEY_CLASSIFICATION_CREW": "false",
+    "LFS_LOCAL_ONLY": "false",
 })
 import dotenv
 dotenv.load_dotenv = lambda *args, **kwargs: False
