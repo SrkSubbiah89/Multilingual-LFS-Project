@@ -15,7 +15,7 @@ load_dotenv()
 config = context.config
 
 # Override sqlalchemy.url from environment
-config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL"))
+config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"].replace("%", "%%"))
 
 # Set up Python logging from alembic.ini
 if config.config_file_name is not None:

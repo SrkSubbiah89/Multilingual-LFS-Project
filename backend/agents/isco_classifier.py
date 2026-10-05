@@ -986,7 +986,14 @@ class ISCOClassifier:
         # and is never conflated with the legacy label scheme.
         official_method = f"{method_prefix}_isco08_{self._isco_catalogue_profile}" if is_official_profile else None
 
-        # Fast path: unambiguous — skip LLM
+        candidate_gap = _top_candidate_gap(h.top_candidates)
+        is_ambiguous = candidate_gap is not None and candidate_gap < _MIN_TRUSTED_CANDIDATE_GAP
+        if trace is not None:
+            trace["top_candidate_gap"] = candidate_gap
+            trace["gap_ambiguous"] = is_ambiguous
+            trace["winning_attempt"] = "initial"
+
+        # High-confidence shortcut; ambiguity can still require human review.
         if h.confidence >= _HIGH_CONFIDENCE_THRESHOLD:
             if trace is not None:
                 trace["reranker_fired"] = False
@@ -998,10 +1005,12 @@ class ISCOClassifier:
                 method=official_method or f"{method_prefix}_semantic",
                 stage_confidences=h.stage_confidences,
                 hierarchy_path=h.hierarchy_path,
-                hitl_required=h.hitl_required,
+                hitl_required=h.hitl_required or (self._use_gap_aware_confidence and is_ambiguous),
                 reasoning=(
-                    f"Unambiguous {'hierarchical' if not h.fallback_used else 'flat'} "
+                    f"High-confidence {'hierarchical' if not h.fallback_used else 'flat'} "
                     f"semantic match (score {h.confidence:.2%})."
+                    + (" Candidate scores are closely tied; human review is required."
+                       if self._use_gap_aware_confidence and is_ambiguous else "")
                 ),
             )
 
@@ -1053,12 +1062,6 @@ class ISCOClassifier:
         # unconditionally -- cheap, pure arithmetic over scores already
         # retrieved -- but only ALLOWED to change reported behaviour when
         # explicitly opted into below.
-        candidate_gap = _top_candidate_gap(h.top_candidates)
-        is_ambiguous = candidate_gap is not None and candidate_gap < _MIN_TRUSTED_CANDIDATE_GAP
-        if trace is not None:
-            trace["top_candidate_gap"] = candidate_gap
-            trace["gap_ambiguous"] = is_ambiguous
-
         if self._use_gap_aware_confidence:
             hitl = hitl or is_ambiguous
 
@@ -1086,7 +1089,7 @@ class ISCOClassifier:
                 trace=trace,
             )
             if planned is not None:
-                retry_match, retry_reasoning = planned
+                retry_match, retry_reasoning, h = planned
                 primary_match = retry_match
                 reasoning = retry_reasoning
                 method = f"{method}_query_plan"
@@ -1109,22 +1112,22 @@ class ISCOClassifier:
                 trace=trace,
             )
             if corrective is not None:
-                retry_match, retry_reasoning = corrective
+                retry_match, retry_reasoning, h = corrective
                 primary_match = retry_match
                 reasoning = f"[Corrective retry] {retry_reasoning}"
                 method = f"{method}_corrective"
                 hitl = primary_match.confidence < HITL_THRESHOLD
                 if self._use_gap_aware_confidence:
-                    # Retry candidates weren't re-measured for gap here --
-                    # _maybe_corrective_retry only returns the winning
-                    # ISCOMatch, not its full candidate list -- so the gap
-                    # signal reverts to "not re-assessed" rather than
-                    # fabricating one. The pre-retry hitl-or-ambiguous
-                    # already earned this case a second look; that is not
-                    # lost, it's simply not compounded with a second,
-                    # unmeasured gap check.
+                    # Keep the previously triggered ambiguity escalation
+                    # so a reviewer can assess the accepted correction.
                     hitl = hitl or is_ambiguous
 
+        # Report evidence and alternatives from the winning retrieval attempt.
+        alternatives = [
+            ISCOMatch(code=c.code, title_en=c.label_en, title_ar=c.label_ar, confidence=c.score)
+            for c in h.top_candidates if c.code != primary_match.code
+        ][:2]
+        hierarchy_path = [primary_match.code[:d] for d in (1, 2, 3, 4)]
         return ISCOClassification(
             query=job_title,
             language=lang,
@@ -1132,7 +1135,7 @@ class ISCOClassifier:
             alternatives=alternatives,
             method=method,
             stage_confidences=h.stage_confidences,
-            hierarchy_path=h.hierarchy_path,
+            hierarchy_path=hierarchy_path,
             hitl_required=hitl,
             reasoning=reasoning,
         )
@@ -1150,13 +1153,13 @@ class ISCOClassifier:
         top_k: int,
         current_gap: Optional[float] = None,
         trace: Optional[dict] = None,
-    ) -> Optional[tuple[ISCOMatch, str]]:
+    ) -> Optional[tuple[ISCOMatch, str, HierarchicalResult]]:
         """
         One-shot corrective retrieval attempt. Asks the LLM to propose a
         reformulated search phrase for a job title whose best match is
         still weak after normal reranking, re-retrieves with that phrase,
         reranks the new candidates, and returns the new (match, reasoning)
-        pair ONLY if it represents a genuine improvement -- see the
+        pair and retrieval evidence ONLY if it represents a genuine improvement -- see the
         acceptance-rule comment inline for exactly what "improvement" means
         (gap-based, not raw-confidence-based, per real evidence this
         codebase's own thesis RAG-comparison work found). Returns None (no
@@ -1173,8 +1176,15 @@ class ISCOClassifier:
         """
         if trace is not None:
             trace["corrective_retry_attempted"] = True
+            trace["retry_count"] = trace.get("retry_count", 0) + 1
+            trace.setdefault("winning_attempt", "initial")
+            attempt_trace: dict = {"attempt": "corrective", "accepted": False}
+            trace.setdefault("corrective_retry_attempts", []).append(attempt_trace)
+        else:
+            attempt_trace = {}
 
-        reformulated = self._llm_reformulate_query(job_title, context, lang, current_match)
+        reformulated = self._llm_reformulate_query(job_title, context, lang, current_match, trace=trace)
+        attempt_trace["query"] = reformulated
         if not reformulated:
             if trace is not None:
                 trace["corrective_retry_query"] = None
@@ -1185,20 +1195,29 @@ class ISCOClassifier:
             trace["corrective_retry_query"] = reformulated
 
         try:
+            retrieval_started = time.perf_counter()
             if self._force_flat_only:
-                h2 = self._hierarchical_store.search_flat_only(reformulated, top_k=top_k)
+                h2 = self._hierarchical_store.search_flat_only(reformulated, top_k=top_k, trace=attempt_trace)
             else:
                 h2 = self._hierarchical_store.search(
                     reformulated, top_k=top_k, major_hint="",
                     beam=self._beam, stage1_mode=self._stage1_mode,
                     reranker_candidates=self._reranker_candidates,
                     branch_collapse=self._branch_collapse,
+                    capture_pool_metadata=self._capture_pool_metadata,
+                    trace=attempt_trace,
                 )
         except Exception as exc:
             _logger.warning("ISCO corrective retry: re-retrieval failed: %s", exc)
             if trace is not None:
                 trace["corrective_retry_used"] = False
+                attempt_trace["retrieval_error"] = f"{type(exc).__name__}: {exc}"
             return None
+        finally:
+            if trace is not None:
+                duration = (time.perf_counter() - retrieval_started) * 1000
+                attempt_trace["retrieval_latency_ms"] = duration
+                trace["additional_retrieval_latency_ms"] = trace.get("additional_retrieval_latency_ms", 0.0) + duration
 
         if h2 is None or not h2.code or not h2.top_candidates:
             if trace is not None:
@@ -1208,7 +1227,12 @@ class ISCOClassifier:
         retry_match, retry_reasoning = self._llm_select_from_candidates(
             job_title=job_title, candidates=h2.top_candidates, context=context,
             lang=lang, stage_confidences=h2.stage_confidences,
+            trace=attempt_trace,
         )
+        attempt_trace["reranker_input_candidates"] = [
+            {"code": c.code, "label_en": c.label_en, "score": c.score} for c in h2.top_candidates
+        ]
+        attempt_trace["reranker_output"] = {"code": retry_match.code, "reasoning": retry_reasoning}
 
         # Acceptance rule (fixed 2026-08-23): raw confidence alone is a
         # known-unreliable signal for correctness -- measured directly on a
@@ -1234,9 +1258,11 @@ class ISCOClassifier:
             trace["corrective_retry_used"] = improved
             trace["corrective_retry_result_confidence"] = retry_match.confidence
             trace["corrective_retry_result_gap"] = retry_gap
+            attempt_trace["accepted"] = improved
+            self._merge_retry_trace(trace, attempt_trace, improved, "corrective")
         if not improved:
             return None
-        return retry_match, retry_reasoning
+        return retry_match, retry_reasoning, h2
 
     def _maybe_query_plan_retry(
         self,
@@ -1248,7 +1274,7 @@ class ISCOClassifier:
         current_gap: Optional[float] = None,
         max_subqueries: int = 2,
         trace: Optional[dict] = None,
-    ) -> Optional[tuple[ISCOMatch, str]]:
+    ) -> Optional[tuple[ISCOMatch, str, HierarchicalResult]]:
         """Multi-step agentic retrieval (Item 2, 2026-09-12) -- see
         enable_query_planning's docstring for the full contract. Generalizes
         _maybe_corrective_retry's single-reformulation pattern to N
@@ -1260,11 +1286,26 @@ class ISCOClassifier:
         """
         if trace is not None:
             trace["query_plan_attempted"] = True
+            trace["retry_count"] = trace.get("retry_count", 0) + 1
+            attempt_trace: dict = {"attempt": "query_plan", "accepted": False, "retrievals": []}
+            trace.setdefault("query_plan_attempts", []).append(attempt_trace)
+        else:
+            attempt_trace = {"retrievals": []}
 
         from backend.agents.query_planner import QueryPlanner
 
         planner = QueryPlanner(reranker_model=self._reranker_model_pin)
-        subqueries = planner.decompose(job_title, dimension="occupation", max_subqueries=max_subqueries)
+        def record_decomposition(crew, response_received, error):
+            if trace is not None:
+                self._record_llm_usage(crew, trace, "query_decomposition", model=getattr(planner._llm, "model", "unknown"))
+                call = trace["llm_calls"][-1]
+                call["response_received"] = response_received
+                if error is not None:
+                    call["error"] = error
+
+        subqueries = planner.decompose(job_title, dimension="occupation", max_subqueries=max_subqueries,
+                                      usage_observer=record_decomposition if trace is not None else None)
+        attempt_trace["subqueries"] = subqueries
 
         if trace is not None:
             trace["query_plan_subqueries"] = subqueries
@@ -1276,19 +1317,29 @@ class ISCOClassifier:
 
         per_subquery = []  # list[tuple[str, float, list, HierarchicalResult]]
         for sq in subqueries:
+            retrieval_trace: dict = {"query": sq}
+            attempt_trace["retrievals"].append(retrieval_trace)
+            retrieval_started = time.perf_counter()
             try:
                 if self._force_flat_only:
-                    h2 = self._hierarchical_store.search_flat_only(sq, top_k=top_k)
+                    h2 = self._hierarchical_store.search_flat_only(sq, top_k=top_k, trace=retrieval_trace)
                 else:
                     h2 = self._hierarchical_store.search(
                         sq, top_k=top_k, major_hint="",
                         beam=self._beam, stage1_mode=self._stage1_mode,
                         reranker_candidates=self._reranker_candidates,
                         branch_collapse=self._branch_collapse,
+                        capture_pool_metadata=self._capture_pool_metadata, trace=retrieval_trace,
                     )
             except Exception as exc:
                 _logger.warning("ISCO query-plan retry: sub-query %r failed: %s", sq, exc)
+                retrieval_trace["retrieval_error"] = f"{type(exc).__name__}: {exc}"
                 continue
+            finally:
+                duration = (time.perf_counter() - retrieval_started) * 1000
+                retrieval_trace["retrieval_latency_ms"] = duration
+                if trace is not None:
+                    trace["additional_retrieval_latency_ms"] = trace.get("additional_retrieval_latency_ms", 0.0) + duration
             if h2 is None or not h2.code or not h2.top_candidates:
                 continue
             per_subquery.append((h2.code, float(h2.top_candidates[0].score), h2.top_candidates, h2))
@@ -1301,14 +1352,19 @@ class ISCOClassifier:
         winning_code, _winning_score = QueryPlanner.reconcile(
             [(code, score) for code, score, _, _ in per_subquery]
         )
-        _, _, winning_candidates, winning_h = next(
-            e for e in per_subquery if e[0] == winning_code
+        _, _, winning_candidates, winning_h = max(
+            (e for e in per_subquery if e[0] == winning_code), key=lambda e: e[1]
         )
 
         retry_match, retry_reasoning = self._llm_select_from_candidates(
             job_title=job_title, candidates=winning_candidates, context=context,
             lang=lang, stage_confidences=winning_h.stage_confidences,
+            trace=attempt_trace,
         )
+        attempt_trace["reranker_input_candidates"] = [
+            {"code": c.code, "label_en": c.label_en, "score": c.score} for c in winning_candidates
+        ]
+        attempt_trace["reranker_output"] = {"code": retry_match.code, "reasoning": retry_reasoning}
 
         retry_gap = _top_candidate_gap(winning_candidates)
         if retry_gap is not None and current_gap is not None:
@@ -1322,9 +1378,11 @@ class ISCOClassifier:
             trace["query_plan_used"] = improved
             trace["query_plan_result_confidence"] = retry_match.confidence
             trace["query_plan_result_gap"] = retry_gap
+            attempt_trace["accepted"] = improved
+            self._merge_retry_trace(trace, attempt_trace, improved, "query_plan")
         if not improved:
             return None
-        return retry_match, f"[Query plan: {subqueries}] {retry_reasoning}"
+        return retry_match, f"[Query plan: {subqueries}] {retry_reasoning}", winning_h
 
     def _llm_reformulate_query(
         self,
@@ -1332,6 +1390,7 @@ class ISCOClassifier:
         context: str,
         lang: str,
         weak_match: ISCOMatch,
+        trace: Optional[dict] = None,
     ) -> Optional[str]:
         """Ask the LLM for an alternative, more descriptive search phrase
         for *job_title*, given that the current best match looks weak.
@@ -1366,6 +1425,10 @@ class ISCOClassifier:
         except Exception as exc:
             _logger.warning("ISCO corrective retry: reformulation LLM call failed: %s", exc)
             return None
+        finally:
+            if trace is not None and "crew" in locals():
+                self._record_llm_usage(crew, trace, "query_reformulation")
+                trace["llm_calls"][-1]["response_received"] = "raw" in locals()
 
         clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
         data: dict = {}
@@ -1380,6 +1443,37 @@ class ISCOClassifier:
                     pass
         phrase = str(data.get("reformulated_query", "")).strip()
         return phrase or None
+
+    @staticmethod
+    def _merge_retry_trace(trace: dict, attempt_trace: dict, accepted: bool, winner: str) -> None:
+        for key in ("reranker_prompt_tokens", "reranker_completion_tokens", "reranker_total_tokens"):
+            trace[key] = trace.get(key, 0) + attempt_trace.get(key, 0)
+        trace.setdefault("llm_calls", []).extend(attempt_trace.get("llm_calls", []))
+        if accepted:
+            trace["winning_attempt"] = winner
+            for key in ("reranker_output", "reranker_input_candidates", "reranker_model"):
+                if key in attempt_trace:
+                    trace[key] = attempt_trace[key]
+            trace.pop("reranker_error", None)
+            if "reranker_error" in attempt_trace:
+                trace["reranker_error"] = attempt_trace["reranker_error"]
+
+    def _record_llm_usage(self, crew, trace: dict, purpose: str, model=None) -> None:
+        """Aggregate usage across calls while preserving unknown/error attempts."""
+        model = model if model is not None else getattr(self._llm, "model", "unknown")
+        call = {"purpose": purpose, "model": model if isinstance(model, str) else "unknown",
+                "usage_status": "unavailable"}
+        try:
+            usage = crew.calculate_usage_metrics()
+            for field in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                value = int(getattr(usage, field))
+                call[field] = value
+                key = f"reranker_{field}"
+                trace[key] = trace.get(key, 0) + value
+            call["usage_status"] = "recorded"
+        except Exception as exc:
+            _logger.debug("Could not read CrewAI usage metrics: %s", exc)
+        trace.setdefault("llm_calls", []).append(call)
 
     # ------------------------------------------------------------------
     # Flat classification (init-level fallback only)
@@ -1570,19 +1664,13 @@ class ISCOClassifier:
         )
 
         if trace is not None:
-            trace["reranker_model"] = getattr(self._llm, "model", "unknown")
+            model = getattr(self._llm, "model", "unknown")
+            trace["reranker_model"] = model if isinstance(model, str) else "unknown"
         try:
             crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
             raw  = str(crew.kickoff()).strip()
-            if trace is not None:
-                try:
-                    usage = crew.calculate_usage_metrics()
-                    trace["reranker_prompt_tokens"] = usage.prompt_tokens
-                    trace["reranker_completion_tokens"] = usage.completion_tokens
-                    trace["reranker_total_tokens"] = usage.total_tokens
-                except Exception as _usage_exc:
-                    _logger.debug("Could not read CrewAI usage metrics: %s", _usage_exc)
-            return self._parse_llm_response(raw, candidates)
+            selection = self._parse_llm_response(raw, candidates)
+            return selection
         except Exception as exc:
             _logger.warning("ISCO LLM re-ranking failed: %s. Using top candidate.", exc)
             if trace is not None:
@@ -1597,6 +1685,15 @@ class ISCOClassifier:
                 ),
                 "Fallback to top semantic match (LLM unavailable).",
             )
+        finally:
+            if trace is not None and "crew" in locals():
+                self._record_llm_usage(crew, trace, "reranking")
+                call = trace["llm_calls"][-1]
+                call["response_received"] = "raw" in locals()
+                if "selection" in locals():
+                    call["output"] = {"code": selection[0].code, "reasoning": selection[1]}
+                elif "reranker_error" in trace:
+                    call["error"] = trace["reranker_error"]
 
     # ------------------------------------------------------------------
     # LLM response parsing

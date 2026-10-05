@@ -217,6 +217,22 @@ def test_official_profile_method_labels_pass_gate(tmp_path):
     assert len(flat_rows) == len(hier_rows) == len(heldout_rows) == len(_CASES)
 
 
+def test_official_gate_rejects_result_label_changes(tmp_path):
+    heldout, flat, hier, catalogue = _write_full_fixture(tmp_path)
+    rows = list(csv.DictReader(flat.open(encoding="utf-8")))
+    rows[0]["gold_isco_4digit"] = rows[1]["gold_isco_4digit"]
+    if rows[0]["gold_isco_4digit"] == _CASES[0][2]:
+        rows[0]["gold_isco_4digit"] = rows[2]["gold_isco_4digit"]
+    _write_csv(flat, RESULT_FIELDS, rows)
+    repo_root, report_path, base_sha = _make_git_fixture(tmp_path)
+    _, _, _, results = aot.run_eligibility_gate(
+        **_gate_kwargs(heldout, flat, hier, catalogue, repo_root, report_path, base_sha)
+    )
+    gold_gate = next(g for g in results if g["check"].startswith("9_"))
+    assert gold_gate["passed"] is False
+    assert gold_gate["detail"]["n_flat_gold_mismatches"] == 1
+
+
 # ---------------------------------------------------------------------------
 # 2. SHA/integrity mismatch fail-closed behavior
 # ---------------------------------------------------------------------------

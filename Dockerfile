@@ -14,10 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt tf-keras
 
 # Copy application source
 COPY backend/ backend/
+COPY alembic.ini .
 
 EXPOSE 8000
 
-# Create tables on first boot, then start the server
+# Apply schema migrations on first boot and upgrades, then start the server
 CMD ["sh", "-c", \
-    "python -c 'from backend.database.connection import Base, engine; Base.metadata.create_all(bind=engine)' && \
+    "alembic upgrade head && \
      uvicorn backend.main:app --host 0.0.0.0 --port 8000"]

@@ -1,0 +1,27 @@
+{
+  "finding": 4,
+  "source_csv": "eval/results/raw_runs/20260805T030122Z_smoke_leafvote_beam3_llama3b_pooled.csv",
+  "source_sha256": "6d087bb748cffe1e6f6c32162c78be5b4bcf854ed248747fde696b3a05b35bca",
+  "metric": "isco_top3_prererank_pool",
+  "supersedes": {
+    "n": 22,
+    "successes": 21,
+    "accuracy": 0.9545,
+    "ci_lo": 0.782,
+    "ci_hi": 0.9919
+  },
+  "corrected": {
+    "metric_name": "isco_top3_prererank_pool",
+    "n": 25,
+    "successes": 21,
+    "accuracy": 0.84,
+    "ci_lo": 0.6535,
+    "ci_hi": 0.936,
+    "status": "measured",
+    "reason": "legacy rows without evaluation_status assumed measured",
+    "n_excluded_unmeasured": 0,
+    "n_legacy_status_rows": 25,
+    "n_missing_telemetry": 0
+  },
+  "note": "Recorded candidate-pool misses count as failures. Top-1 predictions and scores are unchanged."
+}

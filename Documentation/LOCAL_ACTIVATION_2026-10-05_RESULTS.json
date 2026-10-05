@@ -1,0 +1,85 @@
+{
+  "checked_at_utc": "2026-10-05T15:18:24.329505+00:00",
+  "database": {
+    "host": "localhost",
+    "name": "lfs_db",
+    "previous_revision": "c7e2a48f9d31",
+    "revision": "d841b2079c65",
+    "all_model_columns_match": true,
+    "row_counts_preserved": true,
+    "row_counts": {
+      "audit_logs": 10745,
+      "survey_responses": 2424,
+      "otp_codes": 662,
+      "survey_sessions": 587,
+      "users": 216,
+      "data_access_logs": 5202,
+      "agent_decision_logs": 729,
+      "quality_reviews": 71,
+      "survey_report_records": 107,
+      "person_register": 37,
+      "hitl_queue": 849,
+      "alembic_version": 1
+    }
+  },
+  "supervisor": {
+    "configured_user_id": 5,
+    "account_active": true,
+    "verified_http_status": 200
+  },
+  "app_startup": "running",
+  "backend_ready": {
+    "status": "ready",
+    "database": "connected",
+    "redis": "connected"
+  },
+  "backend_health": {
+    "status": "ok",
+    "fast_mode": true,
+    "lfs_fast_mode_env": "true",
+    "services": {
+      "redis": "ok",
+      "qdrant": "ok",
+      "ollama": "ok"
+    }
+  },
+  "live_semantic_probe": {
+    "input": "Nurse",
+    "result": {
+      "code": "3221",
+      "title": "Nursing Associate Professionals",
+      "conf": 0.868,
+      "ms": 2600
+    },
+    "llm_requested": false,
+    "respondent_data_written": false,
+    "accuracy_measurement": false
+  },
+  "frontend": {
+    "url": "http://127.0.0.1:3000",
+    "http_status": 200,
+    "compiled_api_url": "http://localhost:8000",
+    "production_build_passed": true,
+    "routes_built": 7
+  },
+  "backend_url": "http://127.0.0.1:8000",
+  "tests": {
+    "backend_evaluation_passed": 2779,
+    "backend_evaluation_deselected": 1,
+    "backend_evaluation_warnings": 2,
+    "frontend_passed": 13,
+    "browser_workflow_passed": 12,
+    "browser_workflow_failed": 0,
+    "final_report_browser_passed": 2,
+    "final_report_browser_failed": 0,
+    "additional_fixture_isolation_passed": 24,
+    "additional_fixture_isolation_failed": 0,
+    "fixture_isolation_run": "separate focused run after full suite"
+  },
+  "browser_smoke_cleanup": {
+    "fixture_backend_stopped": true,
+    "task_owned_containers_removed": true,
+    "existing_infrastructure_preserved": true
+  },
+  "final_checked_at_utc": "2026-10-05T15:44:40.517570+00:00"
+}

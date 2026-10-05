@@ -155,6 +155,17 @@ def test_run_one_case_stage4_pool_untouched_by_enriched_capture():
     assert r.gold_rank_in_pool == 1  # gold_isco_4digit="2512" is pool[0], from stage4_pool not enriched
 
 
+@pytest.mark.parametrize("trace_updates,status", [
+    ({}, "missing_telemetry"),
+    ({"stage4_pool": []}, "absent"),
+    ({"stage4_pool": [{"code": "2221"}]}, "absent"),
+    ({"stage4_pool": [{"code": "2512"}]}, "present"),
+])
+def test_pool_status_distinguishes_retrieval_miss_from_missing_trace(trace_updates, status):
+    row = run_eval.run_one_case(make_fake_clf(trace_updates=trace_updates), **base_kwargs())
+    assert row.gold_pool_status == status
+
+
 # ---------------------------------------------------------------------------
 # invalid_output_flag / timed_out_flag derivation
 # ---------------------------------------------------------------------------

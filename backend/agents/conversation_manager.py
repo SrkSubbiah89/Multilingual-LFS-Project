@@ -67,6 +67,7 @@ from typing import Optional
 from crewai import Agent, Crew, Task
 
 from backend.llm import TaskType, get_llm
+from backend.agents.survey_option_aliases import OPTION_VALUE_ALIASES
 
 _logger = logging.getLogger(__name__)
 _APP_ENV = os.getenv("APP_ENV", "development").lower()
@@ -88,6 +89,10 @@ class ConversationState(str, Enum):
     COMPLETING = "completing"
 
 
+class StructuredAnswerError(ValueError):
+    """A quick answer does not match the current question or its accepted values."""
+
+
 # ---------------------------------------------------------------------------
 # Conversation context
 # ---------------------------------------------------------------------------
@@ -107,6 +112,7 @@ class ConversationContext:
     corrected_fields: set = field(default_factory=set)   # field keys changed by the correction just applied (one turn)
     correction_rejected_field: Optional[str] = None      # field key whose parsed correction failed the sanity check (one turn)
     correction_no_target: bool = False                    # True for one turn when the respondent said "no"/wants a correction but named no field at all
+    prefilled_fields: list[str] = field(default_factory=list)  # original keys reused from a completed survey
 
 
 # ---------------------------------------------------------------------------
@@ -273,14 +279,14 @@ _CONFIRMATIONS = {
 _CORRECTIONS = {
     "en": frozenset({
         "wrong", "incorrect", "change", "fix", "update", "mistake", "error",
-        "no", "not right", "not correct", "actually", "wait",
+        "no", "not", "isn't", "don't", "can't", "cannot", "not right", "not correct", "actually", "wait",
         # Additional correction signals
         "correct", "should be", "must be", "need to change", "want to change",
         "needs to be", "it should", "that's wrong", "thats wrong",
     }),
     "ar": frozenset({
         "خطأ", "غلط", "تغيير", "تعديل", "تصحيح", "لا", "ليس صحيحًا", "في الواقع", "انتظر",
-        "غير", "غيّر", "عدّل", "عدل", "صحح",
+        "غير", "ليس", "ليست", "غيّر", "عدّل", "عدل", "صحح",
     }),
     # Same gap and fix as _CONFIRMATIONS above.
     "ur": frozenset({
@@ -345,7 +351,7 @@ _CORRECTION_FIELD_SCHEMA: dict[str, dict] = {
     "employment_status":      {"label": "Employment Status",              "values": "employed | unemployed | not_in_labour_force"},
     "education_level":        {"label": "Education Level",                "values": "no_formal | primary | intermediate | secondary | diploma | bachelor | master | phd"},
     "gender":                 {"label": "Gender",                         "values": "male | female | prefer_not_to_say"},
-    "nationality":            {"label": "Nationality",                    "values": "free text — plain country name, e.g. Indian, Pakistani, Emirati, British"},
+    "nationality":            {"label": "Nationality",                    "values": "free text — plain country name, e.g. Indian, Pakistani, Emirati, British", "answer_values": ["uae_national", "indian", "pakistani", "filipino", "bangladeshi", "egyptian", "british", "other"]},
     "marital_status":         {"label": "Marital Status",                 "values": "single | married | divorced | widowed"},
     "emirate":                {"label": "Emirate of Residence",           "values": "abu_dhabi | dubai | sharjah | ajman | umm_al_quwain | ras_al_khaimah | fujairah"},
     "uae_residence_duration": {"label": "Duration of UAE Residence",      "values": "born_in_uae | less_than_1_year | 1_to_5_years | 5_to_10_years | more_than_10_years"},
@@ -365,7 +371,7 @@ _CORRECTION_FIELD_SCHEMA: dict[str, dict] = {
     "employment_type":        {"label": "Employment Type",                "values": "full_time | part_time | seasonal | temporary"},
     "contract_type":          {"label": "Contract Type",                  "values": "permanent | temporary | no_contract"},
     "remote_work":            {"label": "Remote Work Arrangement",        "values": "fully_remote | partially | on_site"},
-    "monthly_wage_range":     {"label": "Monthly Salary Range (AED)",     "values": "under_5000 | 5000_to_10000 | 10000_to_20000 | 20000_to_30000 | above_30000"},
+    "monthly_wage_range":     {"label": "Monthly Salary Range (AED)",     "values": "under_5000 | 5000_10000 | 10001_20000 | 20001_50000 | over_50000 | prefer_not_to_say"},
     "salary_allowances":      {"label": "Salary Allowances",              "values": "housing | transport | education | medical | performance | none (comma-separated if multiple)"},
     "bonuses":                {"label": "Bonuses/Incentives (12 mo.)",    "values": "yes_performance | yes_annual | yes_other | no"},
     "health_insurance":       {"label": "Health Insurance Coverage",      "values": "full | partial | none"},
@@ -376,12 +382,12 @@ _CORRECTION_FIELD_SCHEMA: dict[str, dict] = {
     "available_for_work":     {"label": "Available to Start (2 weeks)",   "values": "yes | no"},
     "unemployment_duration":  {"label": "Duration of Unemployment",       "values": "less_than_1_month | 1_to_6_months | 6_to_12_months | more_than_1_year"},
     "desired_job_type":       {"label": "Type of Work Sought",            "values": "full_time | part_time | any"},
-    "ever_worked":            {"label": "Previous Work Experience",       "values": "yes | no"},
+    "ever_worked":            {"label": "Previous Work Experience",       "values": "yes_in_uae | yes_outside_uae | never_worked"},
     "outside_lf_reason":      {"label": "Reason for Not Seeking Work",    "values": "studying | housework | retired | health_condition | other"},
     "last_job_title":         {"label": "Last Job Title",                 "values": "free text — e.g. Accountant, Sales Manager"},
     "reason_left_job":        {"label": "Reason for Leaving Last Job",    "values": "resigned | dismissed | contract_ended | business_closed | retirement | other"},
     "last_job_sector":        {"label": "Sector of Last Job",             "values": "government | private | semi_government"},
-    "highest_previous_salary":{"label": "Highest Previous Salary (AED)", "values": "under_5000 | 5000_to_10000 | 10000_to_20000 | 20000_to_30000 | above_30000"},
+    "highest_previous_salary":{"label": "Highest Previous Salary (AED)", "values": "under_5000 | 5000_10000 | 10001_20000 | 20001_50000 | over_50000 | prefer_not_to_say"},
     # ── Section H: Skills & Training ────────────────────────────────────────
     "main_skills":            {"label": "Main Work-Related Skills",       "values": "free text — e.g. programming, accounting, teaching, carpentry"},
     "qualification_match":    {"label": "Qualification Match with Job",   "values": "well_matched | over_qualified | under_qualified"},
@@ -389,7 +395,7 @@ _CORRECTION_FIELD_SCHEMA: dict[str, dict] = {
     "labour_market_barriers": {"label": "Labour Market Barriers",         "values": "free text — e.g. salary expectations, language, discrimination"},
     "emiratization_program":  {"label": "Emiratization Program",          "values": "yes | no"},
     # ── Section I: Digital Work ──────────────────────────────────────────────
-    "platform_work":          {"label": "Platform / Gig Work",            "values": "yes | no"},
+    "platform_work":          {"label": "Platform / Gig Work",            "values": "yes_primary | yes_supplementary | no"},
     "platform_names":         {"label": "Platforms Used for Work",        "values": "free text — e.g. Upwork, Fiverr, Careem, Noon"},
     "platform_hours":         {"label": "Platform Hours per Week",        "values": "numeric — e.g. 15"},
     "online_business":        {"label": "Online Business / E-Commerce",   "values": "yes_registered | yes_informal | no"},
@@ -492,12 +498,20 @@ _VALUE_ALIASES: dict[str, dict[str, str]] = {
     "employment_status": {
         "employed": "employed", "working": "employed", "have a job": "employed",
         "i work": "employed", "يعمل": "employed", "موظف": "employed",
+        "أعمل": "employed", "ملازم": "employed", "नियोजित": "employed",
         "unemployed": "unemployed", "not working": "unemployed", "jobless": "unemployed",
         "looking for work": "unemployed", "عاطل": "unemployed", "بدون عمل": "unemployed",
+        "عاطل عن العمل": "unemployed", "أبحث عن عمل": "unemployed",
+        "بے روزگار": "unemployed", "बेरोजगार": "unemployed",
+        "not employed": "unemployed",
         "not in labour force": "not_in_labour_force", "outside labour force": "not_in_labour_force",
+        "not_in_labour_force": "not_in_labour_force",
+        "not in the labour force": "not_in_labour_force", "not in labor force": "not_in_labour_force",
+        "خارج سوق العمل": "not_in_labour_force", "افرادی قوت سے باہر": "not_in_labour_force",
+        "श्रम बल से बाहर": "not_in_labour_force",
         "housewife": "not_in_labour_force", "student": "not_in_labour_force",
         "retired": "not_in_labour_force", "متقاعد": "not_in_labour_force",
-        "ربة منزل": "not_in_labour_force",
+        "ربة منزل": "not_in_labour_force", "طالب": "not_in_labour_force",
     },
     "gender": {
         "male": "male", "man": "male", "m": "male", "ذكر": "male", "رجل": "male",
@@ -742,6 +756,10 @@ def _sanity_check_correction_value(field_key: str, raw_value: str) -> Optional[s
     Returns the cleaned value if acceptable, or None if it should be
     rejected (caller should re-prompt rather than store the raw match).
     """
+    if field_key == "employment_status":
+        # This enum controls every questionnaire branch. Never accept a raw
+        # correction or clarification answer that could collapse field order.
+        return _VALUE_ALIASES[field_key].get(raw_value.strip().lower())
     if field_key not in _CORRECTION_SANITY_CHECK_FIELDS:
         return raw_value.strip() or None
 
@@ -826,11 +844,74 @@ class ConversationManager:
         lang = language if language in ("en", "ar", "ar-gulf", "ur", "hi", "tl") else "en"
         return ConversationContext(session_id=session_id, language=lang)
 
+    @classmethod
+    def sanitize_context(cls, ctx: ConversationContext) -> bool:
+        """Repair routing answers in an active restored context, in place.
+
+        Returns whether data or FSM fields changed. Unknown gate values are
+        removed so the respondent can answer again; free-text fields remain
+        untouched. Initial returning-user contexts retain their greeting.
+        Completed contexts are never rewritten.
+        """
+        if ctx.state == ConversationState.COMPLETING:
+            return False
+        fields_before = set(cls._get_field_order(ctx.collected_data))
+        changed = False
+        removed = set()
+        routing_fields = (
+            "employment_status", "education_level", "employment_nature", "secondary_job",
+            "job_search_active", "available_for_work", "ever_worked", "platform_work",
+        )
+        for field in routing_fields:
+            if field not in ctx.collected_data:
+                continue
+            raw = ctx.collected_data[field]
+            key = unicodedata.normalize("NFKC", str(raw)).strip().lower()
+            canonical = OPTION_VALUE_ALIASES.get(field, {}).get(
+                key, _VALUE_ALIASES.get(field, {}).get(key, key)
+            )
+            # The previous extractor's family_worker code is unambiguous.
+            if field == "employment_nature" and canonical == "family_worker":
+                canonical = "contributing_family_member"
+            if field == "ever_worked" and canonical == "no":
+                canonical = "never_worked"
+            accepted = {value.strip() for value in _CORRECTION_FIELD_SCHEMA[field]["values"].split("|")}
+            if canonical not in accepted:
+                del ctx.collected_data[field]
+                removed.add(field)
+                changed = True
+            elif raw != canonical:
+                ctx.collected_data[field] = canonical
+                changed = True
+
+        fields_after = set(cls._get_field_order(ctx.collected_data))
+        opened = (fields_after - fields_before) | (removed & fields_after)
+        needs_collection = bool(opened - set(ctx.collected_data)) or (
+            changed and ctx.state == ConversationState.VALIDATING
+            and not cls._get_required_fields(ctx.collected_data).issubset(ctx.collected_data)
+        ) or (
+            ctx.state == ConversationState.CLARIFYING
+            and ctx.clarification_target in ctx.collected_data
+        )
+        if needs_collection:
+            if ctx.state != ConversationState.GREETING:
+                ctx.state = ConversationState.COLLECTING_INFO
+            ctx.clarification_target = None
+            ctx.clarification_count = 0
+            ctx.correction_applied = False
+            ctx.corrected_fields.clear()
+            ctx.correction_rejected_field = None
+            ctx.correction_no_target = False
+            changed = True
+        ctx.prefilled_fields = [field for field in ctx.prefilled_fields if field in ctx.collected_data]
+        return changed
+
     def process_message(
         self,
         ctx: ConversationContext,
         user_message: str,
         structured_correction: Optional[tuple[str, str]] = None,
+        structured_answer: Optional[tuple[str, str]] = None,
     ) -> str:
         """
         Process one conversational turn.
@@ -845,6 +926,8 @@ class ConversationManager:
         `structured_correction` -- see `_transition`'s own docstring;
         threaded through unchanged from `survey_routes.py`'s MessageBody.
         """
+        if structured_answer is not None:
+            self.validate_structured_answer(ctx, structured_answer)
         ctx.history.append({"role": "user", "content": user_message})
         prev_state = ctx.state
 
@@ -852,7 +935,8 @@ class ConversationManager:
         # Must happen BEFORE response generation so the response reflects the
         # updated collected_data and state (otherwise the just-answered question
         # gets asked again in the same turn).
-        self._transition(ctx, user_message, agent_response="", structured_correction=structured_correction)
+        self._transition(ctx, user_message, agent_response="", structured_correction=structured_correction,
+                         structured_answer=structured_answer)
 
         # ── Step 2: generate the response based on the UPDATED state ─────────
         # GREETING turn always uses the fixed intro so respondents get a warm,
@@ -3370,12 +3454,43 @@ class ConversationManager:
     # FSM transitions
     # ------------------------------------------------------------------
 
+    @classmethod
+    def validate_structured_answer(cls, ctx: ConversationContext, answer: tuple[str, str]) -> None:
+        """Reject stale or arbitrary canonical answers before mutating context."""
+        if ctx.state not in (ConversationState.COLLECTING_INFO, ConversationState.CLARIFYING):
+            raise StructuredAnswerError("Quick answers are accepted only for the current survey question.")
+        current = ctx.clarification_target if ctx.state == ConversationState.CLARIFYING else next(
+            (field for field in cls._get_field_order(ctx.collected_data) if field not in ctx.collected_data), None,
+        )
+        field, value = answer
+        spec = _CORRECTION_FIELD_SCHEMA.get(field, {})
+        values = spec.get("answer_values", [item.strip() for item in spec.get("values", "").split("|")])
+        if field != current or value not in values:
+            raise StructuredAnswerError("The quick answer does not match the current question or its accepted values.")
+
+    def _apply_survey_answer(self, ctx, text, structured_answer=None):
+        if structured_answer is None:
+            self._extract_fields(ctx, text)
+        else:
+            self.validate_structured_answer(ctx, structured_answer)
+            field, value = structured_answer
+            ctx.collected_data[field] = value
+            self._reroute_unavailable_jobseeker(ctx.collected_data)
+
+    @staticmethod
+    def _reroute_unavailable_jobseeker(data):
+        if (data.get("employment_status") == "unemployed"
+                and data.get("job_search_active") == "no"
+                and data.get("available_for_work") == "no"):
+            data["employment_status"] = "not_in_labour_force"
+
     def _transition(
         self,
         ctx: ConversationContext,
         user_message: str,
         agent_response: str,
         structured_correction: Optional[tuple[str, str]] = None,
+        structured_answer: Optional[tuple[str, str]] = None,
     ) -> None:
         """Evaluate and apply FSM state transition after each turn.
 
@@ -3392,6 +3507,8 @@ class ConversationManager:
         _wants_correction / _extract_correction / _llm_extract_correction
         entirely -- see the VALIDATING branch below.
         """
+        if structured_answer is not None:
+            self.validate_structured_answer(ctx, structured_answer)
         state = ctx.state
 
         if state == ConversationState.GREETING:
@@ -3405,7 +3522,7 @@ class ConversationManager:
                 (f for f in field_order if f not in ctx.collected_data), None
             )
 
-            self._extract_fields(ctx, user_message)
+            self._apply_survey_answer(ctx, user_message, structured_answer)
 
             # Re-compute field order after extraction — status may have just been set,
             # which expands the field order for the correct employment path.
@@ -3422,7 +3539,7 @@ class ConversationManager:
         elif state == ConversationState.CLARIFYING:
             target = ctx.clarification_target
             keys_before = set(ctx.collected_data)
-            self._extract_fields(ctx, user_message)
+            self._apply_survey_answer(ctx, user_message, structured_answer)
             answered = (
                 (target and target in ctx.collected_data)
                 or (not target and set(ctx.collected_data) != keys_before)
@@ -3433,13 +3550,19 @@ class ConversationManager:
                 ctx.state = ConversationState.COLLECTING_INFO
             else:
                 ctx.clarification_count += 1
-                if ctx.clarification_count >= 3 and target and len(user_message.strip()) >= 3:
+                if (
+                    ctx.clarification_count >= 3
+                    and target
+                    and target != "employment_status"
+                    and len(user_message.strip()) >= 3
+                ):
                     ctx.collected_data[target] = user_message.strip()
                     ctx.clarification_count = 0
                     ctx.clarification_target = None
                     ctx.state = ConversationState.COLLECTING_INFO
 
         elif state == ConversationState.VALIDATING:
+            fields_before_correction = set(self._get_field_order(ctx.collected_data))
             if structured_correction is not None:
                 # Deterministic path -- see this method's own docstring.
                 # No ambiguity guard is needed here (_is_ambiguous /
@@ -3463,14 +3586,13 @@ class ConversationManager:
                     else:
                         ctx.correction_rejected_field = f_key
                 required = self._get_required_fields(ctx.collected_data)
+                required = required | (set(self._get_field_order(ctx.collected_data)) - fields_before_correction)
                 if correction_ok and not required.issubset(ctx.collected_data.keys()):
                     ctx.state = ConversationState.COLLECTING_INFO
                 elif correction_ok:
                     ctx.correction_applied = True
                 elif not ctx.correction_rejected_field:
                     ctx.correction_no_target = True
-            elif self._is_confirmed(user_message, ctx.language):
-                ctx.state = ConversationState.COMPLETING
             elif self._wants_correction(user_message, ctx.language):
                 # Apply correction: regex-first (instant), LLM fallback for complex cases.
                 # Track actual success — previously `correction_applied` was set
@@ -3515,6 +3637,7 @@ class ConversationManager:
                 # Drop to COLLECTING_INFO only if a field is now missing (e.g. the
                 # correction changed employment_status and opened a new field path).
                 required = self._get_required_fields(ctx.collected_data)
+                required = required | (set(self._get_field_order(ctx.collected_data)) - fields_before_correction)
                 if correction_ok and not required.issubset(ctx.collected_data.keys()):
                     ctx.state = ConversationState.COLLECTING_INFO
                 elif correction_ok:
@@ -3533,12 +3656,91 @@ class ConversationManager:
                 # else: correction_rejected_field was set by the extractor -- a
                 # field WAS identified but its value failed the sanity check;
                 # that already has its own dedicated reply branch.
+            elif self._is_confirmed(user_message, ctx.language):
+                ctx.state = ConversationState.COMPLETING
 
         # COMPLETING is terminal
 
     # ------------------------------------------------------------------
     # Heuristic field extraction
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_wage_range(text: str, *, require_wage_context: bool = False) -> Optional[str]:
+        """Read wage categories before interpreting a bare numeric amount."""
+        lower = unicodedata.normalize("NFKC", text).lower().strip()
+        lower = "".join(str(unicodedata.decimal(c)) if c.isdecimal() else c for c in lower)
+        lower = lower.replace(",", "").replace("٬", "").replace("٫", ".")
+        lower = re.sub(r"[–—−]", "-", lower)
+        lower = re.sub(r"\s+", " ", lower)
+        values = {
+            "under_5000", "5000_10000", "10001_20000",
+            "20001_50000", "over_50000", "prefer_not_to_say",
+        }
+        if lower in values:
+            return lower
+        if any(_contains_whole_phrase(lower, phrase) for phrase in (
+            "prefer not to say", "rather not say", "don't say", "do not say",
+            "أفضل عدم الإفصاح", "لا أريد", "بتانا نہیں چاہتا", "बताना नहीं चाहते", "ayaw sabihin",
+        )):
+            return "prefer_not_to_say"
+        number = r"(?P<amount>\d+(?:\.\d+)?)\s*(?P<thousands>k)?\b"
+        wage_terms = r"salary|wages?|pay|income|راتبي|راتب|الراتب|أجر|الأجر|تنخواہ|वेतन|तनख्वाह|suweldo|sahod"
+        connectors = (
+            r"is|was|of|about|around|roughly|between|equals|at|less|than|more|over|under|above|below"
+            r"|هو|حوالي|يبلغ|من|أقل|أكثر|ہے|تقریباً|ماہانہ|है|लगभग|ay|mga|buwanang"
+        )
+        currency = r"aed|dirhams?|درهم|دراهم|درہم|दिरहम"
+        # Prefer the amount the wage/currency phrase actually names. A
+        # preceding residence duration or team size is not a salary amount.
+        wage_m = re.search(r"(?:" + wage_terms + r")\s+(?:(?:" + connectors + r")\s+){0,4}" + number, lower)
+        if not wage_m:
+            wage_m = re.search(number + r"\s*(?:" + currency + r")\b", lower)
+        if not wage_m:
+            wage_m = re.search(r"(?:" + currency + r")\s*" + number, lower)
+        if require_wage_context and wage_m is None:
+            return None
+        if wage_m is None:
+            # A direct amount/range can answer the wage question implicitly;
+            # arbitrary numbers embedded in another statement cannot.
+            bare_amount = re.fullmatch(
+                r"(?:(?:about|around|approximately|roughly)\s+)?" + number
+                + r"(?:\s*(?:-|to|and)\s*\d+(?:\.\d+)?\s*k?)?"
+                + r"(?:\s*(?:per month|monthly|a month|شهريًا|ماہانہ|प्रति माह|bawat buwan))?", lower,
+            )
+            if bare_amount:
+                wage_m = bare_amount
+        # An inequality refers to the category boundary, not an amount equal
+        # to that boundary. Both word orders occur in the supported languages.
+        if re.search(
+            r"(?:less than|under|below|أقل من|wala pang)\s*(?:5000|5\s*k)\b"
+            r"|\b5000\s*(?:سے کم|से कम)", lower,
+        ):
+            return "under_5000"
+        if re.search(
+            r"(?:more than|over|above|أكثر من|higit sa)\s*(?:50000|50\s*k)\b"
+            r"|\b50000\s*(?:سے زیادہ|से अधिक)", lower,
+        ):
+            return "over_50000"
+        for label, value in (
+            ("5000-10000", "5000_10000"),
+            ("10001-20000", "10001_20000"),
+            ("20001-50000", "20001_50000"),
+        ):
+            if lower.replace(" ", "") == label:
+                return value
+        if wage_m:
+            val = float(wage_m.group("amount")) * (1000 if wage_m.group("thousands") else 1)
+            if val < 5000:
+                return "under_5000"
+            if val <= 10000:
+                return "5000_10000"
+            if val <= 20000:
+                return "10001_20000"
+            if val <= 50000:
+                return "20001_50000"
+            return "over_50000"
+        return None
 
     def _extract_fields(self, ctx: ConversationContext, text: str) -> None:
         """
@@ -3559,26 +3761,23 @@ class ConversationManager:
             (f for f in field_order if f not in data), None
         )
 
+        answer_field = ctx.clarification_target if ctx.state == ConversationState.CLARIFYING else next_field_before
+        canonical = OPTION_VALUE_ALIASES.get(answer_field, {}).get(
+            unicodedata.normalize("NFKC", text).lower().strip()
+        )
+        if canonical is not None:
+            data[answer_field] = canonical
+            self._reroute_unavailable_jobseeker(data)
+            return
+
         # ── Employment status ─────────────────────────────────────────────────
         # Order matters: most-specific phrases checked first.
         if "employment_status" not in data:
-            if any(w in lower for w in (
-                "not in the labour force", "not in labour force",
-                "not in labor force", "خارج سوق العمل",
-            )):
-                data["employment_status"] = "not_in_labour_force"
-            elif any(w in lower for w in (
-                "unemployed", "looking for work", "عاطل", "أبحث عن عمل",
-            )):
-                data["employment_status"] = "unemployed"
-            elif any(w in lower for w in (
-                "employed", "working", "موظف", "أعمل", "أنا أعمل",
-            )):
-                data["employment_status"] = "employed"
-            elif any(w in lower for w in (
-                "retired", "student", "housewife", "متقاعد", "طالب", "ربة منزل",
-            )):
-                data["employment_status"] = "not_in_labour_force"
+            aliases = _VALUE_ALIASES["employment_status"]
+            for phrase in sorted(aliases, key=len, reverse=True):
+                if _contains_whole_phrase(lower, phrase):
+                    data["employment_status"] = aliases[phrase]
+                    break
 
         # ── Education level (B5) ──────────────────────────────────────────────
         if "education_level" not in data:
@@ -3730,35 +3929,24 @@ class ConversationManager:
                 data["employment_type"] = "contractor"
 
         # ── Monthly wage range (E1) ───────────────────────────────────────────
-        if "monthly_wage_range" not in data and status == "employed":
-            if re.search(r"prefer.?not|don.?t.?say|rather.?not|لا أريد|أفضل.?عدم", lower):
-                data["monthly_wage_range"] = "prefer_not_to_say"
-            else:
-                # Try to extract a number and bucket it
-                wage_m = re.search(r"(\d[\d,]*(?:\.\d+)?)\s*k?\b", lower)
-                if wage_m:
-                    raw_num = wage_m.group(1).replace(",", "")
-                    val = float(raw_num)
-                    if "k" in lower[wage_m.start():wage_m.end() + 1]:
-                        val *= 1000
-                    if val < 5000:
-                        data["monthly_wage_range"] = "under_5000"
-                    elif val <= 10000:
-                        data["monthly_wage_range"] = "5000_10000"
-                    elif val <= 20000:
-                        data["monthly_wage_range"] = "10001_20000"
-                    elif val <= 50000:
-                        data["monthly_wage_range"] = "20001_50000"
-                    else:
-                        data["monthly_wage_range"] = "over_50000"
-                elif re.search(r"less\s*than\s*5|under\s*5|below\s*5|أقل.?من.?5", lower):
-                    data["monthly_wage_range"] = "under_5000"
-                elif re.search(r"more\s*than\s*50|over\s*50|above\s*50|أكثر.?من.?50", lower):
-                    data["monthly_wage_range"] = "over_50000"
-                elif next_field_before == "monthly_wage_range":
-                    raw = text.strip()
-                    if len(raw) >= 2 and raw.lower() not in _UNCERTAINTY_PHRASES:
-                        data["monthly_wage_range"] = raw
+        wage_turn = next_field_before == "monthly_wage_range"
+        explicit_wage = any(_contains_whole_phrase(lower, phrase) for phrase in (
+            "salary", "wage", "wages", "pay", "income", "aed", "dirham", "dirhams",
+            "راتب", "الراتب", "راتبي", "أجر", "الأجر", "درهم", "دراهم",
+            "تنخواہ", "درہم", "वेतन", "तनख्वाह", "दिरहम", "suweldo", "sahod",
+        ))
+        if (
+            "monthly_wage_range" not in data
+            and status == "employed"
+            and (wage_turn or explicit_wage)
+        ):
+            wage = self._parse_wage_range(text, require_wage_context=not wage_turn)
+            if wage is not None:
+                data["monthly_wage_range"] = wage
+            elif wage_turn:
+                raw = text.strip()
+                if len(raw) >= 2 and raw.lower() not in _UNCERTAINTY_PHRASES and not re.search(r"\d", raw):
+                    data["monthly_wage_range"] = raw
 
         # ── Job search active (F1) ────────────────────────────────────────────
         if "job_search_active" not in data and status == "unemployed":
@@ -4427,16 +4615,24 @@ class ConversationManager:
     @staticmethod
     def _is_confirmed(text: str, language: str) -> bool:
         """Return True if the text expresses confirmation of the validation summary."""
-        lower = text.lower().strip()
+        lower = text.lower().strip().replace("’", "'").replace("‘", "'")
+        if ConversationManager._wants_correction(text, language):
+            return False
+        language = "ar" if language == "ar-gulf" else language
         confirmations = _CONFIRMATIONS.get(language, _CONFIRMATIONS["en"])
         return any(_contains_whole_phrase(lower, c) for c in confirmations)
 
     @staticmethod
     def _wants_correction(text: str, language: str) -> bool:
         """Return True if the text indicates the respondent wants to correct something."""
-        lower = text.lower().strip()
-        corrections = _CORRECTIONS.get(language, _CORRECTIONS["en"])
-        return any(_contains_whole_phrase(lower, c) for c in corrections)
+        lower = text.lower().strip().replace("’", "'").replace("‘", "'")
+        language = "ar" if language == "ar-gulf" else language
+        corrections = _CORRECTIONS.get(language, _CORRECTIONS["en"]) | _CORRECTIONS["en"]
+        # "Correct" also appears in affirmative replies such as "that's
+        # correct". Treat it as a command only when used as a verb.
+        return bool(re.search(r"\b\w+n't\b", lower)) or any(_contains_whole_phrase(lower, c) for c in corrections if c != "correct") or bool(
+            re.search(r"(?:^|\bplease\s+|\bto\s+)correct\b|\bcorrect\s+(?:my|the|our|your|this|that)\b", lower)
+        )
 
     @staticmethod
     def correction_schema_for(collected_data: dict) -> tuple[set[str], str, dict]:
@@ -5008,10 +5204,13 @@ class ConversationManager:
         Looks up the raw value (case-insensitive, strip) in _VALUE_ALIASES[field].
         Falls back to the raw value as-is for free-text fields.
         """
+        key = unicodedata.normalize("NFKC", raw).strip().lower()
+        canonical = OPTION_VALUE_ALIASES.get(field, {}).get(key)
+        if canonical is not None:
+            return canonical
         aliases = _VALUE_ALIASES.get(field)
         if not aliases:
             return raw.strip()
-        key = raw.strip().lower()
         return aliases.get(key, raw.strip())
 
     @staticmethod

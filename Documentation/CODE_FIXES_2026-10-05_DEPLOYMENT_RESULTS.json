@@ -1,0 +1,10 @@
+{
+  "database": "disposable PostgreSQL 15",
+  "tables": 11,
+  "revision": "d841b2079c65",
+  "all_model_columns_match": true,
+  "second_upgrade_idempotent": true,
+  "percent_encoded_password_verified": true,
+  "user_database_accessed": false,
+  "container_removed": true
+}

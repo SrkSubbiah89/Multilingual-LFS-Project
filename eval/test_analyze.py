@@ -186,6 +186,39 @@ def test_isco_top3_pool_not_measured_when_column_missing():
     assert "gold_rank_in_pool" in m.reason
 
 
+def test_top3_counts_observed_gold_miss_but_reports_missing_telemetry():
+    rows = [
+        make_row(gold_rank_in_pool="1", stage4_pool='[{"code":"2512"}]'),
+        make_row(gold_rank_in_pool="", stage4_pool='[{"code":"2221"}]'),
+        make_row(gold_rank_in_pool="", stage4_pool="[]", gold_pool_status="absent"),
+        make_row(gold_rank_in_pool="", stage4_pool="[]"),
+    ]
+    m = an.isco_accuracy(rows)[-1]
+    assert (m.successes, m.n, m.accuracy) == (1, 3, 0.3333)
+    assert m.n_missing_telemetry == 1
+    assert (m.ci_lo, m.ci_hi) == tuple(round(v, 4) for v in an.wilson_score_interval(1, 3))
+
+
+@pytest.mark.parametrize("status", ["dry_run", "dry_run_not_measured", "", "unknown"])
+def test_unmeasured_rows_do_not_become_accuracy(status):
+    metrics = an.isco_accuracy([make_row(evaluation_status=status, pred_isco_4digit="")])
+    assert all(m.status == "not_measured" and m.accuracy is None for m in metrics)
+    assert all(m.n_excluded_unmeasured == 1 for m in metrics)
+
+
+def test_mixed_measurement_status_filters_all_classification_dimensions():
+    rows = [make_row(evaluation_status="measured"),
+            make_row(evaluation_status="dry_run_not_measured", pred_isco_4digit="", pred_isic_section="", pred_isced_level="")]
+    for m in [an.isco_accuracy(rows)[3], an.isic_accuracy(rows)[0], an.isced_accuracy(rows)[0]]:
+        assert (m.n, m.accuracy, m.n_excluded_unmeasured) == (1, 1.0, 1)
+
+
+def test_legacy_csv_measurement_assumption_is_explicit():
+    m = an.isco_accuracy([make_row()])[3]
+    assert m.n_legacy_status_rows == 1
+    assert "assumed measured" in m.reason
+
+
 def test_isic_section_measured_but_deeper_levels_not_measured():
     """Real test-set CSVs today only carry gold_isic at the section level --
     division/group/class gold columns don't exist yet, so those three

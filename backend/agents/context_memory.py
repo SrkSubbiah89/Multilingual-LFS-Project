@@ -61,7 +61,9 @@ from __future__ import annotations
 import json
 import os
 import re
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from threading import Event, Thread
 from typing import Optional
 
 import redis as redis_lib
@@ -182,6 +184,14 @@ class SessionMemory(BaseModel):
     turn_count: int                             # number of user turns
     created_at: str                             # ISO 8601 UTC
     last_updated: str                           # ISO 8601 UTC
+    clarification_target: Optional[str] = None
+    clarification_count: int = 0
+    is_returning: bool = False
+    correction_applied: bool = False
+    corrected_fields: set[str] = Field(default_factory=set)
+    correction_rejected_field: Optional[str] = None
+    correction_no_target: bool = False
+    prefilled_fields: list[str] = Field(default_factory=list)
 
 
 class ContextSummary(BaseModel):
@@ -257,12 +267,15 @@ class ContextMemory:
     ) -> None:
         url = redis_url or os.getenv("REDIS_URL")
         if url:
-            self._redis = redis_lib.Redis.from_url(url, decode_responses=True)
+            self._redis = redis_lib.Redis.from_url(
+                url, decode_responses=True, socket_connect_timeout=5, socket_timeout=5,
+            )
         else:
             _host = host or os.getenv("REDIS_HOST", "localhost")
             _port = int(port or os.getenv("REDIS_PORT", 6379))
             self._redis = redis_lib.Redis(
-                host=_host, port=_port, db=db, decode_responses=True
+                host=_host, port=_port, db=db, decode_responses=True,
+                socket_connect_timeout=5, socket_timeout=5,
             )
         self._ttl = ttl
 
@@ -291,6 +304,50 @@ class ContextMemory:
     # Core storage
     # ------------------------------------------------------------------
 
+    @contextmanager
+    def session_lock(self, session_id: int):
+        """Serialize session read-modify-write operations across API workers.
+
+        Redis connection/lock errors propagate to the caller; continuing
+        without ownership would permit one worker to overwrite another turn.
+        """
+        lock = self._redis.lock(
+            f"lfs:session-lock:{session_id}", timeout=600, blocking_timeout=5,
+            thread_local=False,
+        )
+        if not lock.acquire(blocking=True):
+            raise redis_lib.exceptions.LockError("Survey session is busy; retry the turn.")
+        stop = Event()
+        renewal_errors = []
+
+        def renew_lease():
+            # Model calls can exceed the normal turn duration. Keep ownership
+            # alive while this worker is healthy; crashes still expire the lock.
+            while not stop.wait(200):
+                try:
+                    lock.extend(600, replace_ttl=True)
+                except Exception as exc:
+                    renewal_errors.append(exc)
+                    stop.set()
+                    return
+
+        renewal = Thread(target=renew_lease, daemon=True, name=f"lfs-session-lease-{session_id}")
+
+        def assert_owned():
+            if renewal_errors or not lock.owned():
+                raise redis_lib.exceptions.LockError("Survey session lock ownership was lost.")
+
+        try:
+            renewal.start()
+            yield assert_owned
+        finally:
+            stop.set()
+            if renewal.ident is not None:
+                renewal.join(timeout=6)
+            lock.release()
+        if renewal_errors:
+            raise redis_lib.exceptions.LockError("Survey session lock renewal failed.") from renewal_errors[0]
+
     def save_session(
         self,
         session_id: int,
@@ -298,6 +355,15 @@ class ContextMemory:
         language: str,
         collected_fields: dict[str, str],
         history: list[dict | TurnRecord],
+        *,
+        clarification_target: Optional[str] = None,
+        clarification_count: int = 0,
+        is_returning: bool = False,
+        correction_applied: bool = False,
+        corrected_fields: Optional[set[str]] = None,
+        correction_rejected_field: Optional[str] = None,
+        correction_no_target: bool = False,
+        prefilled_fields: Optional[list[str]] = None,
     ) -> SessionMemory:
         """
         Persist (or overwrite) the full session state in Redis.
@@ -313,6 +379,11 @@ class ContextMemory:
             Mapping of LFS field name → raw collected value.
         history : list[dict | TurnRecord]
             Sequence of past turns.  Plain dicts are coerced to TurnRecord.
+        clarification_target, clarification_count, is_returning,
+        correction_applied, corrected_fields, correction_rejected_field,
+        correction_no_target, prefilled_fields
+            ConversationContext fields required to resume the same FSM turn.
+            Defaults preserve compatibility with older callers and documents.
 
         Returns
         -------
@@ -337,6 +408,14 @@ class ContextMemory:
             turn_count=user_turns,
             created_at=created_at,
             last_updated=_now(),
+            clarification_target=clarification_target,
+            clarification_count=clarification_count,
+            is_returning=is_returning,
+            correction_applied=correction_applied,
+            corrected_fields=corrected_fields or set(),
+            correction_rejected_field=correction_rejected_field,
+            correction_no_target=correction_no_target,
+            prefilled_fields=prefilled_fields or [],
         )
         self._set(session_id, mem)
         return mem

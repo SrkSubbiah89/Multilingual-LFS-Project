@@ -74,7 +74,7 @@ def _make_client(db, isco_code, isic_section, isced_level, job_title="Assembler"
         # non-None and Stage 4e's SemanticRelationEngine.analyse() actually
         # receives real isic_section/isced_level values instead of None.
         ctx.collected_data["industry"] = "placeholder industry"
-        ctx.collected_data["education_level"] = "placeholder education"
+        ctx.collected_data["education_level"] = "bachelor"
         # job_title is deliberately NOT pre-set here: survey_routes.py runs
         # in _FAST_MODE in this test env, which skips NER entirely (see
         # `skip_ner` in _send_message_impl), so the NER JOB_TITLE-entity path
@@ -100,6 +100,7 @@ def _make_client(db, isco_code, isic_section, isced_level, job_title="Assembler"
     entity = MagicMock()
     entity.text = job_title
     entity.label = "JOB_TITLE"
+    entity.language = "en"
     mock_lp_result.entities = [entity]
     mock_lp.process.return_value = mock_lp_result
 
@@ -161,7 +162,13 @@ def _make_client(db, isco_code, isic_section, isced_level, job_title="Assembler"
     (_send_otp, _agents, mock_ctx_mem, mock_isco, mock_isic, mock_isced,
      mock_nat, mock_hitl, mock_ei, _val, _audit) = started
 
-    mock_ctx_mem.return_value.load_session.return_value = None
+    from backend.agents.context_memory import SessionMemory
+    def restored_memory(session_id):
+        context = _new_context(session_id)
+        return SessionMemory(session_id=session_id, language="en", state=context.state.value,
+            collected_fields=context.collected_data, history=[], turn_count=0,
+            created_at="2026-10-05T00:00:00", last_updated="2026-10-05T00:00:00")
+    mock_ctx_mem.return_value.load_session.side_effect = restored_memory
     mock_isco.return_value.classify.return_value = isco_result_obj
     mock_isic.return_value.classify.return_value = isic_result_obj
     mock_isced.return_value.classify.return_value = isced_result_obj

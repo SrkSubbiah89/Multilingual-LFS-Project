@@ -20,6 +20,7 @@ Coverage
 - get_hitl_quality_manager() — singleton pattern
 """
 import itertools
+from datetime import datetime
 
 import pytest
 from sqlalchemy import create_engine
@@ -42,7 +43,7 @@ from backend.agents.hitl_quality_manager import (
     get_hitl_quality_manager,
 )
 from backend.database.connection import Base
-from backend.database.models import SurveyResponse, SurveySession, User
+from backend.database.models import QualityReview, SurveyResponse, SurveySession, User
 
 
 # ---------------------------------------------------------------------------
@@ -607,6 +608,47 @@ class TestParseReportResponse:
 # ===========================================================================
 
 class TestReviewSession:
+    @pytest.mark.parametrize("generation_fails", [False, True])
+    def test_lost_ownership_cannot_replace_newer_quality_decision(
+        self, mgr, monkeypatch, engine, generation_fails
+    ):
+        sf = sessionmaker(bind=engine, autoflush=False)
+        monkeypatch.setattr(mgr, "_sf", sf)
+        uid = _make_user(sf)
+        sid = _make_session(sf, uid)
+        response_id = _make_response(sf, sid, confidence_score=0.40, question_id="job_title")
+        owned = True
+
+        def generate_text(*args):
+            nonlocal owned
+            owned = False
+            # A supervisor resolves the occupation while the old assessment
+            # is waiting for narrative generation in a worker with a lost lease.
+            with sf() as db:
+                db.query(SurveyResponse).filter_by(id=response_id).first().confidence_score = 1.0
+                db.add(QualityReview(
+                    session_id=sid, quality_score=1.0, passed=True,
+                    flagged_count=0, escalated=False,
+                    reviewer_notes="newer human decision", created_at=datetime.utcnow(),
+                ))
+                db.commit()
+            if generation_fails:
+                raise TimeoutError("narrative unavailable")
+            return "EN.", "AR."
+
+        def require_ownership():
+            if not owned:
+                raise RuntimeError("session ownership lost")
+
+        monkeypatch.setattr(mgr, "_generate_report_text", generate_text)
+        with pytest.raises(RuntimeError, match="session ownership lost"):
+            mgr.review_session(sid, write_guard=require_ownership)
+
+        with sf() as db:
+            reviews = db.query(QualityReview).filter_by(session_id=sid).all()
+            assert len(reviews) == 1
+            assert reviews[0].passed and reviews[0].reviewer_notes == "newer human decision"
+
     def test_returns_quality_report(self, mgr, monkeypatch, session_factory):
         uid = _make_user(session_factory)
         sid = _make_session(session_factory, uid)

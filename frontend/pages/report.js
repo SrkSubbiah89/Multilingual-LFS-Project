@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { getReport } from "../components/api";
+import { getReviewStatus } from "../components/review-status";
 import LanguageToggle from "../components/LanguageToggle";
 
 // ── WISCO v2 controlled benchmark — real, published, sourced results ──────────
@@ -87,6 +88,8 @@ const T = {
     iscoMethod: "Method",
     hitlRequired: "Human Review Required",
     hitlOk: "AI Verified",
+    hitlReviewed: "Human Reviewed",
+    hitlRejected: "Classification Rejected",
     profileSection: "Employment Profile",
     sectionB: "Section B — Demographics & Education",
     sectionC: "Section C/D/E — Employment Details",
@@ -176,6 +179,8 @@ const T = {
     iscoMethod: "الطريقة",
     hitlRequired: "مراجعة بشرية مطلوبة",
     hitlOk: "تحقق الذكاء الاصطناعي",
+    hitlReviewed: "تمت المراجعة البشرية",
+    hitlRejected: "التصنيف مرفوض",
     profileSection: "الملف الوظيفي",
     sectionB: "القسم ب — الديموغرافيا والتعليم",
     sectionC: "القسم ج/د/ه — تفاصيل التوظيف",
@@ -273,6 +278,8 @@ const T = {
     iscoMethod: "طریقہ",
     hitlRequired: "انسانی جائزہ درکار",
     hitlOk: "AI کی تصدیق شدہ",
+    hitlReviewed: "انسانی جائزہ مکمل",
+    hitlRejected: "درجہ بندی مسترد",
     profileSection: "روزگار پروفائل",
     sectionB: "سیکشن بی — آبادیات اور تعلیم",
     sectionC: "سیکشن سی/ڈی/ای — روزگار کی تفصیلات",
@@ -362,6 +369,8 @@ const T = {
     iscoMethod: "विधि",
     hitlRequired: "मानव समीक्षा आवश्यक",
     hitlOk: "AI सत्यापित",
+    hitlReviewed: "मानव समीक्षा पूर्ण",
+    hitlRejected: "वर्गीकरण अस्वीकृत",
     profileSection: "रोजगार प्रोफ़ाइल",
     sectionB: "खंड बी — जनसांख्यिकी और शिक्षा",
     sectionC: "खंड सी/डी/ई — रोजगार विवरण",
@@ -451,6 +460,8 @@ const T = {
     iscoMethod: "Paraan",
     hitlRequired: "Kailangan ng Human Review",
     hitlOk: "Na-verify ng AI",
+    hitlReviewed: "Nasuri ng Tao",
+    hitlRejected: "Tinanggihan ang Klasipikasyon",
     profileSection: "Profile ng Trabaho",
     sectionB: "Seksyon B — Demograpiko at Edukasyon",
     sectionC: "Seksyon C/D/E — Mga Detalye ng Trabaho",
@@ -604,6 +615,7 @@ export default function ReportPage() {
   const qKey      = report?.quality_status || "unknown";
   const qStyles   = QUALITY_STYLES[qKey] || QUALITY_STYLES.unknown;
   const qPct      = report?.quality_score != null ? Math.round(report.quality_score * 100) : null;
+  const reviewStatus = getReviewStatus(report);
   const majorCode = p.isco_code ? p.isco_code[0] : null;
   const majorInfo = majorCode ? ISCO_MAJOR[majorCode] : null;
   const narrative = reportLang === "ar" ? report?.report_ar    : report?.report_en;
@@ -724,15 +736,27 @@ export default function ReportPage() {
                         )}
                         {/* HITL flag */}
                         <div className="flex-shrink-0 self-center">
-                          {p.isco_confidence != null && p.isco_confidence < 0.70 ? (
+                          {reviewStatus === "pending" ? (
                             <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-50 border border-amber-300 text-amber-700 px-2.5 py-1.5 rounded-lg">
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                               {t.hitlRequired}
                             </span>
-                          ) : (
+                          ) : reviewStatus === "rejected" ? (
+                            <span className="text-xs bg-red-50 border border-red-300 text-red-700 px-2.5 py-1.5 rounded-lg">
+                              {t.hitlRejected}
+                            </span>
+                          ) : reviewStatus === "reviewed" ? (
+                            <span className="text-xs bg-blue-50 border border-blue-300 text-blue-700 px-2.5 py-1.5 rounded-lg">
+                              {t.hitlReviewed}
+                            </span>
+                          ) : reviewStatus === "verified" ? (
                             <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-emerald-50 border border-emerald-300 text-emerald-700 px-2.5 py-1.5 rounded-lg">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                               {t.hitlOk}
+                            </span>
+                          ) : (
+                            <span className="text-xs bg-gray-100 border border-gray-300 text-gray-600 px-2.5 py-1.5 rounded-lg">
+                              {t.qualityStatus.unknown}
                             </span>
                           )}
                         </div>
@@ -961,14 +985,6 @@ export default function ReportPage() {
                             })}
                           </ul>
                         </div>
-                      )}
-                      {sc.confidence_adjustment !== 0 && (
-                        <p className="text-xs text-gray-500">
-                          ISCO confidence adjustment:&nbsp;
-                          <span className={sc.confidence_adjustment > 0 ? "text-emerald-600 font-medium" : "text-red-600 font-medium"}>
-                            {sc.confidence_adjustment > 0 ? "+" : ""}{(sc.confidence_adjustment * 100).toFixed(0)}%
-                          </span>
-                        </p>
                       )}
                     </div>
                   );

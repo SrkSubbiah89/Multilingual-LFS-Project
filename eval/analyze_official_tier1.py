@@ -320,13 +320,22 @@ def run_eligibility_gate(
 
     # --- Condition 9: heldout gold codes valid+in-catalogue, gold_isic/gold_isced blank ---
     bad_gold = _bad_codes(heldout_rows, "gold_isco_4digit") if catalogue_ok else ["<catalogue load failed>"]
+    canonical_gold = {r["case_id"]: (r.get("gold_isco_4digit") or "").strip() for r in heldout_rows}
+    mismatched_flat_gold = [r["case_id"] for r in flat_rows
+                            if (r.get("gold_isco_4digit") or "").strip() != canonical_gold.get(r["case_id"])]
+    mismatched_hier_gold = [r["case_id"] for r in hier_rows
+                            if (r.get("gold_isco_4digit") or "").strip() != canonical_gold.get(r["case_id"])]
     nonblank_gold_isic = [r["case_id"] for r in heldout_rows if (r.get("gold_isic") or "").strip() != ""]
     nonblank_gold_isced = [r["case_id"] for r in heldout_rows if (r.get("gold_isced") or "").strip() != ""]
     _check(
         results, "9_heldout_gold_codes_valid_isic_isced_blank",
-        catalogue_ok and not bad_gold and not nonblank_gold_isic and not nonblank_gold_isced,
+        catalogue_ok and not bad_gold and not nonblank_gold_isic and not nonblank_gold_isced
+        and not mismatched_flat_gold and not mismatched_hier_gold,
         {"n_bad_gold_codes": len(bad_gold), "example_bad_gold": bad_gold[:20],
-         "n_nonblank_gold_isic": len(nonblank_gold_isic), "n_nonblank_gold_isced": len(nonblank_gold_isced)},
+         "n_nonblank_gold_isic": len(nonblank_gold_isic), "n_nonblank_gold_isced": len(nonblank_gold_isced),
+         "n_flat_gold_mismatches": len(mismatched_flat_gold), "example_flat_gold_mismatches": mismatched_flat_gold[:20],
+         "n_hierarchical_gold_mismatches": len(mismatched_hier_gold), "example_hierarchical_gold_mismatches": mismatched_hier_gold[:20],
+         "scoring_gold_source": "canonical_heldout_csv"},
     )
 
     # --- Condition 10: Task 36 report byte-identical to base commit; prior evidence unchanged ---
@@ -653,6 +662,9 @@ def main() -> None:
         sys.exit(1)
 
     lang_map = {r["case_id"]: r["input_language"] for r in heldout_rows}
+    canonical_gold = {r["case_id"]: r["gold_isco_4digit"].strip() for r in heldout_rows}
+    flat_rows = [dict(r, gold_isco_4digit=canonical_gold[r["case_id"]]) for r in flat_rows]
+    hier_rows = [dict(r, gold_isco_4digit=canonical_gold[r["case_id"]]) for r in hier_rows]
     flat_headline = compute_headline(flat_rows, "flat", EXPECTED_FLAT_METHOD, sha256_file(args.flat_csv))
     hier_headline = compute_headline(hier_rows, "hierarchical", EXPECTED_HIERARCHICAL_METHOD, sha256_file(args.hierarchical_csv))
     paired = paired_contingency(flat_rows, hier_rows)

@@ -278,6 +278,11 @@ class TestISICQueryPlanningEnabled:
 
 
 class TestISCEDQueryPlanningEnabled:
+    @pytest.fixture(autouse=True)
+    def mock_query_planner_model(self):
+        with patch("backend.agents.query_planner.get_llm_strict", return_value=MagicMock()):
+            yield
+
     _AMBIGUOUS = TestISCEDCorrectiveRetryEnabled._AMBIGUOUS
     _CLEAR = TestISCEDCorrectiveRetryEnabled._CLEAR
 

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from crewai import Agent, Crew, Task
 
@@ -55,7 +55,8 @@ class QueryPlanner:
         else:
             self._llm = get_llm(TaskType.GENERAL)
 
-    def decompose(self, text: str, dimension: str, max_subqueries: int = 3) -> list[str]:
+    def decompose(self, text: str, dimension: str, max_subqueries: int = 3,
+                  usage_observer: Optional[Callable[[Any, bool, Optional[str]], None]] = None) -> list[str]:
         """Return up to *max_subqueries* distinct sub-descriptions of *text*.
 
         Falls back to ``[text]`` (i.e. behaves like a single, unmodified
@@ -69,11 +70,15 @@ class QueryPlanner:
             A short label for what's being classified (e.g. "occupation",
             "industry", "education field") -- included in the prompt only,
             purely to make the LLM's task concrete; not otherwise used.
+        usage_observer : callable, optional
+            Receives the Crew, response-received flag, and call error after
+            a successful or failed LLM attempt; observer failures are ignored.
         """
         text = (text or "").strip()
         if not text:
             return [text]
 
+        call_error = None
         try:
             # Built lazily here, not in __init__ -- same convention as every
             # other CrewAI construction in this codebase (ISCOClassifier's
@@ -112,8 +117,15 @@ class QueryPlanner:
             crew = Crew(agents=[agent], tasks=[task], verbose=False)
             raw = str(crew.kickoff()).strip()
         except Exception as exc:
+            call_error = f"{type(exc).__name__}: {exc}"
             log.warning("QueryPlanner: decomposition LLM call failed (%s); using original text.", exc)
             return [text]
+        finally:
+            if usage_observer is not None and "crew" in locals():
+                try:
+                    usage_observer(crew, "raw" in locals(), call_error)
+                except Exception as exc:
+                    log.debug("QueryPlanner: could not record decomposition usage: %s", exc)
 
         lines = [re.sub(r"^[\-\*\d\.\)]+\s*", "", ln).strip() for ln in raw.splitlines()]
         lines = [ln for ln in lines if ln][:max_subqueries]

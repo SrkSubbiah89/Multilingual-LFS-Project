@@ -147,6 +147,19 @@ class AccuracyMetric:
     ci_hi: Optional[float]
     status: str  # "measured" | "not_measured"
     reason: Optional[str] = None
+    n_excluded_unmeasured: int = 0
+    n_legacy_status_rows: int = 0
+    n_missing_telemetry: int = 0
+
+
+def _measured_rows(rows: list[dict]) -> tuple[list[dict], dict]:
+    """Legacy CSVs are supported explicitly; present statuses must be measured."""
+    measured = [r for r in rows if "evaluation_status" not in r or
+                (r.get("evaluation_status") or "").strip() == "measured"]
+    return measured, {
+        "n_excluded_unmeasured": len(rows) - len(measured),
+        "n_legacy_status_rows": sum("evaluation_status" not in r for r in measured),
+    }
 
 
 def _exact_match_metric(rows: list[dict], gold_col: str, pred_col: str, metric_name: str) -> AccuracyMetric:
@@ -156,6 +169,10 @@ def _exact_match_metric(rows: list[dict], gold_col: str, pred_col: str, metric_n
             ci_lo=None, ci_hi=None, status="not_measured",
             reason=f"column '{gold_col}' or '{pred_col}' not present in this CSV",
         )
+    rows, eligibility = _measured_rows(rows)
+    if not rows:
+        return AccuracyMetric(metric_name, 0, None, None, None, None, "not_measured",
+                              "no rows marked as measured", **eligibility)
     scored = [
         (r[gold_col].strip(), r[pred_col].strip()) for r in rows
         if r.get(gold_col, "").strip()
@@ -165,6 +182,7 @@ def _exact_match_metric(rows: list[dict], gold_col: str, pred_col: str, metric_n
             metric_name=metric_name, n=0, successes=None, accuracy=None,
             ci_lo=None, ci_hi=None, status="not_measured",
             reason=f"no row has a non-empty '{gold_col}' value",
+            **eligibility,
         )
     successes = sum(1 for gold, pred in scored if gold == pred)
     n = len(scored)
@@ -173,6 +191,9 @@ def _exact_match_metric(rows: list[dict], gold_col: str, pred_col: str, metric_n
         metric_name=metric_name, n=n, successes=successes,
         accuracy=round(successes / n, 4), ci_lo=round(lo, 4), ci_hi=round(hi, 4),
         status="measured",
+        reason=("legacy rows without evaluation_status assumed measured"
+                if eligibility["n_legacy_status_rows"] else None),
+        **eligibility,
     )
 
 
@@ -185,21 +206,52 @@ def isco_accuracy(rows: list[dict]) -> list[AccuracyMetric]:
     # the final prediction (see module docstring); uses the existing
     # gold_rank_in_pool column.
     if rows and "gold_rank_in_pool" in rows[0]:
-        ranked = [r for r in rows if (r.get("gold_rank_in_pool") or "").strip()]
-        if ranked:
-            n = len(ranked)
-            successes = sum(1 for r in ranked if int(r["gold_rank_in_pool"]) <= 3)
+        measured, eligibility = _measured_rows(rows)
+        outcomes = []
+        missing = 0
+        for row in measured:
+            if not (row.get("gold_isco_4digit") or "").strip():
+                continue
+            rank = str(row.get("gold_rank_in_pool") or "").strip()
+            if rank:
+                parsed_rank = int(rank)
+                if parsed_rank <= 0:
+                    raise ValueError("gold_rank_in_pool must be a positive 1-based rank")
+                outcomes.append(parsed_rank <= 3)
+                continue
+            # A blank rank means a miss only when retrieval was recorded.
+            # Historical rows defaulted to [] even if no pool was traced.
+            status = row.get("gold_pool_status", "")
+            try:
+                pool = json.loads(row.get("stage4_pool") or "null")
+            except (ValueError, TypeError):
+                pool = None
+            observed = status in ("present", "absent") or (isinstance(pool, list) and bool(pool))
+            if observed:
+                codes = [c.get("code", "") for c in pool if isinstance(c, dict)] if isinstance(pool, list) else []
+                gold = row["gold_isco_4digit"].strip()
+                outcomes.append(gold in codes[:3])
+            else:
+                missing += 1
+        eligibility["n_missing_telemetry"] = missing
+        if outcomes:
+            n = len(outcomes)
+            successes = sum(outcomes)
             lo, hi = wilson_score_interval(successes, n)
             metrics.append(AccuracyMetric(
                 metric_name="isco_top3_prererank_pool", n=n, successes=successes,
                 accuracy=round(successes / n, 4), ci_lo=round(lo, 4), ci_hi=round(hi, 4),
                 status="measured",
+                reason=("legacy rows without evaluation_status assumed measured"
+                        if eligibility["n_legacy_status_rows"] else None),
+                **eligibility,
             ))
         else:
             metrics.append(AccuracyMetric(
                 metric_name="isco_top3_prererank_pool", n=0, successes=None, accuracy=None,
                 ci_lo=None, ci_hi=None, status="not_measured",
-                reason="no row has a non-empty gold_rank_in_pool value",
+                reason="no measured gold-labelled row has recorded candidate-pool telemetry",
+                **eligibility,
             ))
     else:
         metrics.append(AccuracyMetric(
@@ -247,13 +299,15 @@ def write_json(results: dict[str, list[AccuracyMetric]], path: Path) -> None:
 
 
 def write_markdown(results: dict[str, list[AccuracyMetric]], path: Path) -> None:
-    lines = ["# Accuracy Analysis", "", "| Group | Metric | n | Accuracy | 95% CI | Status |", "|---|---|---|---|---|---|"]
+    lines = ["# Accuracy Analysis", "", "| Group | Metric | n | Accuracy | 95% CI | Unmeasured excluded | Missing pool telemetry | Status |", "|---|---|---|---|---|---|---|---|"]
     for group, metrics in results.items():
         for m in metrics:
             acc = f"{m.accuracy:.4f}" if m.accuracy is not None else "—"
             ci = f"[{m.ci_lo:.4f}, {m.ci_hi:.4f}]" if m.ci_lo is not None else "—"
             status = m.status if m.status == "measured" else f"not measured ({m.reason})"
-            lines.append(f"| {group} | {m.metric_name} | {m.n} | {acc} | {ci} | {status} |")
+            lines.append(f"| {group} | {m.metric_name} | {m.n} | {acc} | {ci} | {m.n_excluded_unmeasured} | {m.n_missing_telemetry} | {status} |")
+    if any(m.n_legacy_status_rows for metrics in results.values() for m in metrics):
+        lines += ["", "Legacy rows without evaluation_status are assumed measured; JSON metrics record their counts."]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

@@ -43,6 +43,7 @@ const T = {
     loading: "Loading queue…",
     errorLoad: "Could not load the HITL queue.",
     errorSubmit: "Could not submit the review. Please try again.",
+    errorAccess: "Supervisor review access is required. Your account is not authorized to view or change this queue.",
     successMsg: "Review submitted.",
     signOut: "Sign out",
     priorityHigh: "HIGH",
@@ -79,6 +80,7 @@ const T = {
     loading: "جارٍ تحميل القائمة…",
     errorLoad: "تعذّر تحميل قائمة HITL.",
     errorSubmit: "تعذّر إرسال المراجعة. يرجى المحاولة مرة أخرى.",
+    errorAccess: "صلاحية مراجعة المشرف مطلوبة. حسابك غير مخوّل بعرض هذه القائمة أو تغييرها.",
     successMsg: "تم إرسال المراجعة.",
     signOut: "تسجيل الخروج",
     priorityHigh: "عالية",
@@ -145,11 +147,12 @@ export default function SupervisorReview() {
       const data = await getHitlQueue(token, statusFilter);
       setItems(data);
     } catch (e) {
-      setError(t.errorLoad);
+      setItems([]);
+      setError(e.status === 403 ? t.errorAccess : t.errorLoad);
     } finally {
       setLoading(false);
     }
-  }, [token, statusFilter, t.errorLoad]);
+  }, [token, statusFilter, t.errorLoad, t.errorAccess]);
 
   useEffect(() => {
     loadQueue();
@@ -199,8 +202,8 @@ export default function SupervisorReview() {
       setTimeout(() => setFlashMsg(null), 3000);
       cancelReview();
       loadQueue();
-    } catch {
-      setError(t.errorSubmit);
+    } catch (e) {
+      setError(e.status === 403 ? t.errorAccess : t.errorSubmit);
     } finally {
       setSubmitting(false);
     }
@@ -310,8 +313,8 @@ export default function SupervisorReview() {
                           {item.ai_code ?? "—"}
                         </td>
                         <td className="px-4 py-3">
-                          {item.confidence != null
-                            ? `${(item.confidence * 100).toFixed(1)}%`
+                          {item.ai_confidence != null
+                            ? `${(item.ai_confidence * 100).toFixed(1)}%`
                             : "—"}
                         </td>
                         <td className="px-4 py-3">

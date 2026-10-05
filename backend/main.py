@@ -274,28 +274,26 @@ def health_check():
 
     # Redis
     try:
-        import redis as _redis_lib
-        _r = _redis_lib.Redis.from_url(
-            os.getenv("REDIS_URL", "redis://localhost:6379"), socket_timeout=2
-        )
-        _r.ping()
+        _check_redis_connection()
         services["redis"] = "ok"
     except Exception as _e:
         services["redis"] = f"error: {_e}"
 
     # Qdrant
     try:
-        _qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
-        req = urllib.request.urlopen(f"{_qdrant_url}/healthz", timeout=2)
-        services["qdrant"] = "ok" if req.status == 200 else f"status {req.status}"
+        _qdrant_url = os.getenv("QDRANT_URL") or (
+            f"http://{os.getenv('QDRANT_HOST', 'localhost')}:{os.getenv('QDRANT_PORT', '6333')}"
+        )
+        with urllib.request.urlopen(f"{_qdrant_url.rstrip('/')}/healthz", timeout=2) as req:
+            services["qdrant"] = "ok" if req.status == 200 else f"status {req.status}"
     except Exception as _e:
         services["qdrant"] = f"error: {_e}"
 
     # Ollama
     try:
         _ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        req = urllib.request.urlopen(f"{_ollama_url}/api/tags", timeout=2)
-        services["ollama"] = "ok" if req.status == 200 else f"status {req.status}"
+        with urllib.request.urlopen(f"{_ollama_url.rstrip('/')}/api/tags", timeout=2) as req:
+            services["ollama"] = "ok" if req.status == 200 else f"status {req.status}"
     except Exception as _e:
         services["ollama"] = f"error: {_e}"
 
@@ -320,25 +318,34 @@ def debug_isco(job_title: str):
         return {"error": str(exc), "traceback": traceback.format_exc()}
 
 
+def _check_redis_connection():
+    """Probe required interview storage without leaving an idle client open."""
+    import redis
+    from redis.backoff import NoBackoff
+    from redis.retry import Retry
+
+    with redis.Redis.from_url(
+        os.getenv("REDIS_URL", "redis://localhost:6379"),
+        socket_connect_timeout=2,
+        socket_timeout=2,
+        retry=Retry(NoBackoff(), 0),
+    ) as client:
+        if not client.ping():
+            raise ConnectionError("Redis did not acknowledge the readiness probe")
+
+
 @app.get("/ready", tags=["health"])
 def readiness_check():
-    """Returns 200 only when the database is reachable. Fails fast on DB error."""
+    """Accept traffic only when both the database and interview storage work."""
     try:
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Database not ready: {e}")
+        raise HTTPException(status_code=503, detail="Database is not ready") from e
 
-    redis_status = "unknown"
     try:
-        import redis as _redis_lib
-        _r = _redis_lib.Redis.from_url(
-            os.getenv("REDIS_URL", "redis://localhost:6379"), socket_timeout=2
-        )
-        _r.ping()
-        redis_status = "connected"
-    except Exception as _re:
-        redis_status = f"unavailable: {_re}"
+        _check_redis_connection()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Redis interview storage is not ready") from e
 
-    return {"status": "ready", "database": "connected", "redis": redis_status}
+    return {"status": "ready", "database": "connected", "redis": "connected"}

@@ -277,6 +277,8 @@ class SurveyReport(BaseModel):
     semantic_coherence:  Optional[dict] = None   # Cross-standard ISCO↔ISIC↔ISCED coherence
     isic_classification: Optional[dict] = None   # Full ISIC Rev.4 4-level hierarchy
     isced_classification: Optional[dict] = None  # Full ISCED 2011 4-digit programme category
+    pending_review: bool = False
+    human_review_status: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +343,8 @@ class ReportGenerator:
         self,
         session_id: int,
         regenerate: bool = False,
+        *,
+        write_guard: Optional[Callable[[], None]] = None,
     ) -> SurveyReport:
         """
         Generate (or return cached) the final report for a completed session.
@@ -352,6 +356,9 @@ class ReportGenerator:
         regenerate : bool
             If True, a new LLM report is always generated and persisted
             even if one already exists.
+        write_guard : callable | None
+            Validate session lock ownership immediately before each write.
+            A failed guard propagates without saving that write.
 
         Returns
         -------
@@ -386,7 +393,8 @@ class ReportGenerator:
             # Load all session data
             responses = (
                 db.query(SurveyResponse)
-                .filter(SurveyResponse.session_id == session_id)
+                .filter(SurveyResponse.session_id == session_id, SurveyResponse.deleted_at.is_(None))
+                .order_by(SurveyResponse.id.asc())
                 .all()
             )
             quality = self._load_quality_review(db, session_id)
@@ -494,12 +502,16 @@ class ReportGenerator:
                 v.get("severity") == "HIGH"
                 for v in semantic_coherence.get("violations", [])
             ):
+                escalation_pending = False
                 try:
+                    _occupation_response = next((r for r in reversed(responses) if r.question_id in ("job_title", "last_job_title") and r.isco_code == profile.isco_code), None)
                     _already_escalated = (
                         db.query(HITLQueue)
                         .filter(
                             HITLQueue.session_id == session_id,
                             HITLQueue.priority == "HIGH",
+                            HITLQueue.response_id == _occupation_response.id if _occupation_response else HITLQueue.response_id.is_(None),
+                            HITLQueue.ai_code == profile.isco_code,
                         )
                         .first()
                     )
@@ -513,7 +525,7 @@ class ReportGenerator:
                         )
                         db.add(HITLQueue(
                             session_id=session_id,
-                            response_id=None,
+                            response_id=_occupation_response.id if _occupation_response else None,
                             raw_text=str(profile.job_title or profile.last_job_title or ""),
                             ai_code=semantic_coherence.get("isco_code") or profile.isco_code or "",
                             ai_confidence=semantic_coherence.get("score", 0.0),
@@ -533,9 +545,17 @@ class ReportGenerator:
                             status="pending",
                             created_at=datetime.now(timezone.utc).replace(tzinfo=None),
                         ))
-                        db.commit()
+                        escalation_pending = True
                 except Exception:
                     pass
+                if escalation_pending:
+                    # Guard failures must escape the optional SRE backstop.
+                    if write_guard is not None:
+                        write_guard()
+                    try:
+                        db.commit()
+                    except Exception:
+                        db.rollback()
 
             # Generate bilingual narrative via LLM (or template fallback)
             if not self._agent_available:
@@ -550,6 +570,7 @@ class ReportGenerator:
                 semantic_coherence=semantic_coherence,
                 isic_classification=isic_classification,
                 isced_classification=isced_classification,
+                write_guard=write_guard,
             )
             return self._record_to_report(record, session)
         finally:
@@ -587,7 +608,7 @@ class ReportGenerator:
         """Return the most recent SurveyReportRecord for this session, or None."""
         return (
             db.query(SurveyReportRecord)
-            .filter(SurveyReportRecord.session_id == session_id)
+            .filter(SurveyReportRecord.session_id == session_id, SurveyReportRecord.invalidated_at.is_(None))
             .order_by(SurveyReportRecord.generated_at.desc())
             .first()
         )
@@ -607,21 +628,22 @@ class ReportGenerator:
         """Aggregate survey responses into a structured EmploymentProfile."""
         by_field: dict[str, list[SurveyResponse]] = {}
         for r in responses:
+            if r.deleted_at is not None:
+                continue
             by_field.setdefault(r.question_id, []).append(r)
 
         def _pick(field: str) -> Optional[str]:
             """Return the most recent answer for a field, or None."""
             items = by_field.get(field, [])
-            return items[-1].answer if items else None
+            return max(items, key=lambda row: row.id or 0).answer if items else None
 
-        # Best ISCO: highest confidence_score; covers both employed (job_title)
-        # and unemployed (last_job_title) classification rows.
+        # Use the latest active occupation revision, including human corrections.
         isco_responses = [
-            r for r in responses
-            if r.isco_code and r.confidence_score is not None
+            max(items, key=lambda row: row.id or 0) for key, items in by_field.items()
+            if key in ("job_title", "last_job_title")
         ]
         best = (
-            max(isco_responses, key=lambda r: r.confidence_score)
+            max((r for r in isco_responses if r.isco_code), key=lambda r: r.id or 0, default=None)
             if isco_responses
             else None
         )
@@ -949,6 +971,7 @@ class ReportGenerator:
         semantic_coherence: Optional[dict] = None,
         isic_classification: Optional[dict] = None,
         isced_classification: Optional[dict] = None,
+        write_guard: Optional[Callable[[], None]] = None,
     ) -> SurveyReportRecord:
         """Write the report to the database and return the new row."""
         # Real gap found via QA (2026-09-19), fixed here: quality_status/
@@ -1002,6 +1025,8 @@ class ReportGenerator:
             ),
         )
         db.add(record)
+        if write_guard is not None:
+            write_guard()
         db.commit()
         db.refresh(record)
         return record
@@ -1023,6 +1048,18 @@ class ReportGenerator:
             except Exception:
                 return None
 
+        from sqlalchemy.orm import object_session
+        db = object_session(record)
+        pending_review = False
+        human_review_status = None
+        if db is not None:
+            from backend.database.response_revisions import active_responses
+            active_ids = {row.id for row in active_responses(db, session.id)}
+            items = db.query(HITLQueue).filter(HITLQueue.session_id == session.id).order_by(HITLQueue.id.desc()).all()
+            relevant = [item for item in items if item.response_id is None or item.response_id in active_ids]
+            pending_review = any(item.status == "pending" for item in relevant)
+            decision = next((item for item in relevant if item.reviewed_by is not None and item.status in ("reviewed", "rejected")), None)
+            human_review_status = decision.status if decision else None
         return SurveyReport(
             report_id=record.id,
             session_id=record.session_id,
@@ -1030,6 +1067,8 @@ class ReportGenerator:
             profile=profile,
             quality_score=record.quality_score,
             quality_status=record.quality_status,
+            pending_review=pending_review,
+            human_review_status=human_review_status,
             flagged_count=record.flagged_count,
             report_en=record.report_en,
             report_ar=record.report_ar,

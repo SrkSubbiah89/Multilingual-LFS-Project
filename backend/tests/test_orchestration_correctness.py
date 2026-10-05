@@ -49,6 +49,12 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 
+@pytest.fixture(autouse=True)
+def deterministic_route_mode(monkeypatch):
+    from backend.api import survey_routes
+    monkeypatch.setattr(survey_routes, "_FAST_MODE", True)
+
+
 @pytest.fixture(scope="module")
 def engine():
     eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -176,7 +182,13 @@ def _make_client(
     (_send_otp, _agents, mock_ctx_mem, mock_isco, mock_isic, mock_isced,
      mock_nat, mock_hitl, mock_ei, mock_val, mock_audit) = started
 
-    mock_ctx_mem.return_value.load_session.return_value = None
+    from backend.agents.context_memory import SessionMemory
+    def restored_memory(session_id):
+        context = _new_context(session_id)
+        return SessionMemory(session_id=session_id, language="en", state=context.state.value,
+            collected_fields=context.collected_data, history=[], turn_count=0,
+            created_at="2026-10-05T00:00:00", last_updated="2026-10-05T00:00:00")
+    mock_ctx_mem.return_value.load_session.side_effect = restored_memory
     mock_ctx_mem.return_value.save_session.side_effect = _recording(call_order, "ContextMemory", None)
     mock_isco.return_value.classify.side_effect = _recording(call_order, "ISCOClassifier", isco_result_obj)
     mock_isic.return_value.classify.side_effect = _recording(call_order, "ISICClassifier", isic_result_obj)

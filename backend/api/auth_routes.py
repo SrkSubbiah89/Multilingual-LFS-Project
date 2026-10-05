@@ -186,8 +186,15 @@ def verify_otp_and_login(body: OTPVerifyBody, request: Request, db: Session = De
         "send a 6-digit OTP via Twilio SMS valid for 10 minutes."
     ),
 )
-def request_sms_otp(body: SMSOTPRequestBody, db: Session = Depends(get_db)):
+def request_sms_otp(body: SMSOTPRequestBody, request: Request, db: Session = Depends(get_db)):
     phone = _normalise_phone(body.phone)
+    # Limit before account creation, OTP invalidation, or paid delivery.
+    if not re.fullmatch(r"\+[1-9]\d{7,14}", phone):
+        raise HTTPException(status_code=422, detail="Enter a valid international phone number.")
+    if not check_rate_limit(f"sms_otp_req_ip:{request.client.host if request.client else 'unknown'}", max_requests=5, window_seconds=600):
+        raise HTTPException(status_code=429, detail="Too many SMS requests. Please wait before trying again.")
+    if not check_rate_limit(f"sms_otp_req_phone:{phone}", max_requests=5, window_seconds=600):
+        raise HTTPException(status_code=429, detail="Too many SMS requests for this number. Please wait before trying again.")
 
     user = db.query(User).filter(User.phone == phone).first()
     if not user:

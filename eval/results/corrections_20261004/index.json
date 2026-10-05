@@ -1,0 +1,17 @@
+{
+  "correction_date": "2026-10-04",
+  "raw_artifacts_modified": false,
+  "top3_corrections": [
+    "raw_runs/20260805T030122Z_smoke_leafvote_beam3_llama3b_pooled.top3_corrected.json",
+    "raw_runs/20260805T055741Z_full130_leafvote_beam3_llama3b_pooled.top3_corrected.json"
+  ],
+  "provenance_corrections": [
+    "dev_selection/corrective_retry_check/20260824T142616Z_flat.provenance_correction.json",
+    "dev_selection/corrective_retry_check_ollama/20260824T142821Z_flat.provenance_correction.json",
+    "dev_selection/corrective_retry_check_ollama_off/20260824T172619Z_flat.provenance_correction.json",
+    "dev_selection/enriched_e5large_validation_check/20260824T122729Z_flat.provenance_correction.json",
+    "raw_runs/enriched_e5large_heldout_20260824/20260824T123941Z_flat.provenance_correction.json",
+    "wisco_groq_zeroshot/translation_baseline/20260909T202439Z_flat.provenance_correction.json",
+    "wisco_groq_zeroshot/translation_translated/20260909T202802Z_flat.provenance_correction.json"
+  ]
+}

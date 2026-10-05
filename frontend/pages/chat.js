@@ -6,7 +6,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { createSession, sendMessage } from "../components/api";
+import { ACTIVE_SESSION_KEY, openSurveySession, sendMessage, updateSessionLanguage } from "../components/api";
+import { QUICK_OPTIONS, getQuickOptions } from "../components/survey-options";
+import LanguageToggle from "../components/LanguageToggle";
 
 // ── i18n strings ──────────────────────────────────────────────────────────────
 
@@ -138,263 +140,7 @@ const getLangKey = (l) => LANG_KEY_MAP[l] || (T[l] ? l : "en");
 const RTL_LANGS = new Set(["ar", "ar-gulf", "ur"]);
 
 // ── Quick-reply options for structured fields ─────────────────────────────────
-const QUICK_OPTIONS = {
-  employment_status: {
-    en: ["Employed", "Unemployed", "Not in the labour force"],
-    ar: ["موظف", "عاطل عن العمل", "خارج سوق العمل"],
-    ur: ["ملازم", "بے روزگار", "افرادی قوت سے باہر"],
-    hi: ["नियोजित", "बेरोजगार", "श्रम बल से बाहर"],
-    tl: ["Employed", "Unemployed", "Not in the labour force"],
-  },
-  education_level: {
-    en: ["No formal education", "Primary", "Secondary", "Diploma", "Bachelor's degree", "Master's degree", "PhD or higher"],
-    ar: ["بدون تعليم رسمي", "ابتدائي", "ثانوي", "دبلوم", "بكالوريوس", "ماجستير", "دكتوراه"],
-    ur: ["کوئی رسمی تعلیم نہیں", "ابتدائی", "ثانوی", "ڈپلومہ", "بیچلر ڈگری", "ماسٹر ڈگری", "پی ایچ ڈی یا اس سے زیادہ"],
-    hi: ["कोई औपचारिक शिक्षा नहीं", "प्राथमिक", "माध्यमिक", "डिप्लोमा", "स्नातक", "स्नातकोत्तर", "पीएचडी या उच्चतर"],
-    tl: ["Walang pormal na edukasyon", "Primarya", "Sekundarya", "Diploma", "Batsilyer", "Master's degree", "Doktorado o mas mataas"],
-  },
-  employment_nature: {
-    en: ["Paid employee", "Employer", "Self-employed", "Contributing family worker"],
-    ar: ["موظف براتب", "صاحب عمل", "عمل حر", "عامل عائلي مساهم"],
-    ur: ["تنخواہ دار ملازم", "آجر", "خود ملازم", "خاندانی کارکن"],
-    hi: ["वेतनभोगी कर्मचारी", "नियोक्ता", "स्व-रोज़गार", "परिवार का सहायक कार्यकर्ता"],
-    tl: ["Bayad na empleyado", "Employer", "Self-employed", "Contributing family worker"],
-  },
-  employment_sector: {
-    en: ["Government", "Private", "Semi-government", "Non-profit / NGO"],
-    ar: ["حكومي", "خاص", "شبه حكومي", "غير ربحي / منظمة غير حكومية"],
-    ur: ["حکومتی", "نجی", "نیم حکومتی", "غیر منافع بخش / این جی او"],
-    hi: ["सरकारी", "निजी", "अर्ध-सरकारी", "गैर-लाभकारी / एनजीओ"],
-    tl: ["Pamahalaan", "Pribado", "Semi-gobyerno", "Non-profit / NGO"],
-  },
-  employment_type: {
-    en: ["Full-time", "Part-time", "Seasonal", "Casual"],
-    ar: ["دوام كامل", "دوام جزئي", "موسمي", "عَرَضي"],
-    ur: ["کل وقتی", "جزوی وقتی", "موسمی", "عارضی"],
-    hi: ["पूर्णकालिक", "अंशकालिक", "मौसमी", "आकस्मिक"],
-    tl: ["Full-time", "Part-time", "Seasonal", "Casual"],
-  },
-  monthly_wage_range: {
-    en: ["Less than 5,000", "5,000–10,000", "10,001–20,000", "20,001–50,000", "More than 50,000", "Prefer not to say"],
-    ar: ["أقل من 5,000", "5,000–10,000", "10,001–20,000", "20,001–50,000", "أكثر من 50,000", "أفضل عدم الإفصاح"],
-    ur: ["5,000 سے کم", "5,000–10,000", "10,001–20,000", "20,001–50,000", "50,000 سے زیادہ", "بتانا نہیں چاہتا"],
-    hi: ["5,000 से कम", "5,000–10,000", "10,001–20,000", "20,001–50,000", "50,000 से अधिक", "बताना नहीं चाहते"],
-    tl: ["Wala pang 5,000", "5,000–10,000", "10,001–20,000", "20,001–50,000", "Higit sa 50,000", "Ayaw sabihin"],
-  },
-  job_search_active: {
-    en: ["Yes", "No"], ar: ["نعم", "لا"], ur: ["ہاں", "نہیں"], hi: ["हाँ", "नहीं"], tl: ["Oo", "Hindi"],
-  },
-  available_for_work: {
-    en: ["Yes", "No"], ar: ["نعم", "لا"], ur: ["ہاں", "نہیں"], hi: ["हाँ", "नहीں"], tl: ["Oo", "Hindi"],
-  },
-  reason_left_job: {
-    en: ["Made redundant", "Resigned", "Business closed", "Contract ended", "Other"],
-    ar: ["فائض عن الحاجة", "استقالة", "إغلاق المنشأة", "انتهاء العقد", "أخرى"],
-    ur: ["فاضل", "استعفیٰ", "کاروبار بند", "معاہدہ ختم", "دیگر"],
-    hi: ["छंटनी", "इस्तीफा", "व्यापार बंद", "अनुबंध समाप्त", "अन्य"],
-    tl: ["Tinanggal", "Nagbitiw", "Nagsara ang negosyo", "Natapos ang kontrata", "Iba pa"],
-  },
-  outside_lf_reason: {
-    en: ["Retired", "Student", "Homemaker", "Discouraged worker", "Illness or disability", "Other"],
-    ar: ["متقاعد", "طالب", "ربة منزل", "يأس من إيجاد عمل", "مرض أو إعاقة", "أخرى"],
-    ur: ["ریٹائرڈ", "طالب علم", "گھریلو", "مایوس کارکن", "بیماری یا معذوری", "دیگر"],
-    hi: ["सेवानिवृत्त", "छात्र", "गृहणी", "निराश श्रमिक", "बीमारी या विकलांगता", "अन्य"],
-    tl: ["Retirado", "Mag-aaral", "Nag-aalaga ng tahanan", "Discouraged worker", "Sakit o kapansanan", "Iba pa"],
-  },
-  ai_preference: {
-    en: ["Prefer AI", "Prefer human", "No preference"],
-    ar: ["أفضل الذكاء الاصطناعي", "أفضل المحاور البشري", "لا فرق"],
-    ur: ["AI کو ترجیح", "انسان کو ترجیح", "کوئی ترجیح نہیں"],
-    hi: ["AI को प्राथमिकता", "मानव को प्राथमिकता", "कोई प्राथमिकता नहीं"],
-    tl: ["Mas gusto ang AI", "Mas gusto ang tao", "Walang kagustuhan"],
-  },
-  data_confidence: {
-    en: ["Very confident", "Somewhat confident", "Not confident"],
-    ar: ["واثق جدًا", "واثق نسبيًا", "غير واثق"],
-    ur: ["بہت پراعتماد", "کچھ حد تک پراعتماد", "پراعتماد نہیں"],
-    hi: ["बहुत आत्मविश्वास", "थोड़ा आत्मविश्वास", "आत्मविश्वास नहीं"],
-    tl: ["Lubos na tiwala", "Medyo tiwala", "Hindi tiwala"],
-  },
-  gender: {
-    en: ["Male", "Female", "Prefer not to say"],
-    ar: ["ذكر", "أنثى", "أفضل عدم الإفصاح"],
-    ur: ["مرد", "عورت", "بتانا نہیں چاہتا"],
-    hi: ["पुरुष", "महिला", "बताना नहीं चाहते"],
-    tl: ["Lalaki", "Babae", "Ayaw sabihin"],
-  },
-  nationality: {
-    en: ["Emirati", "Indian", "Pakistani", "Filipino", "Bangladeshi", "Egyptian", "British", "Other"],
-    ar: ["إماراتي", "هندي", "باكستاني", "فلبيني", "بنغلاديشي", "مصري", "بريطاني", "أخرى"],
-    ur: ["اماراتی", "ہندوستانی", "پاکستانی", "فلپینو", "بنگلادیشی", "مصری", "برطانوی", "دیگر"],
-    hi: ["इमिराती", "भारतीय", "पाकिस्तानी", "फिलिपीनो", "बांग्लादेशी", "मिस्री", "ब्रिटिश", "अन्य"],
-    tl: ["Emirati", "Indian", "Pakistani", "Filipino", "Bangladeshi", "Egyptian", "British", "Iba pa"],
-  },
-  marital_status: {
-    en: ["Single", "Married", "Divorced", "Widowed"],
-    ar: ["أعزب", "متزوج", "مطلق", "أرمل"],
-    ur: ["غیر شادی شدہ", "شادی شدہ", "طلاق یافتہ", "بیوہ"],
-    hi: ["अविवाहित", "विवाहित", "तलाकशुदा", "विधवा/विधुर"],
-    tl: ["Walang asawa", "May asawa", "Hiwalay", "Biyudo/Biyuda"],
-  },
-  emirate: {
-    en: ["Abu Dhabi", "Dubai", "Sharjah", "Ajman", "Umm Al Quwain", "Ras Al Khaimah", "Fujairah"],
-    ar: ["أبوظبي", "دبي", "الشارقة", "عجمان", "أم القيوين", "رأس الخيمة", "الفجيرة"],
-    ur: ["ابوظبی", "دبئی", "شارجہ", "عجمان", "ام القیوین", "رأس الخیمہ", "فجیرہ"],
-    hi: ["अबू धाबी", "दुबई", "शारजाह", "अजमान", "उम्म अल क्वैन", "रास अल खैमाह", "फुजैरा"],
-    tl: ["Abu Dhabi", "Dubai", "Sharjah", "Ajman", "Umm Al Quwain", "Ras Al Khaimah", "Fujairah"],
-  },
-  uae_residence_duration: {
-    en: ["Born in UAE", "Less than 1 year", "1\u20134 years", "5\u20139 years", "10\u201319 years", "20+ years"],
-    ar: ["مولود في الإمارات", "أقل من سنة", "1-4 سنوات", "5-9 سنوات", "10-19 سنة", "20 سنة فأكثر"],
-    ur: ["یو اے ای میں پیدا ہوا", "1 سال سے کم", "1-4 سال", "5-9 سال", "10-19 سال", "20+ سال"],
-    hi: ["UAE में जन्मे", "1 साल से कम", "1-4 साल", "5-9 साल", "10-19 साल", "20+ साल"],
-    tl: ["Ipinanganak sa UAE", "Wala pang 1 taon", "1-4 taon", "5-9 taon", "10-19 taon", "20+ taon"],
-  },
-  vocational_training: {
-    en: ["Yes", "No"], ar: ["نعم", "لا"], ur: ["ہاں", "نہیں"], hi: ["हाँ", "नहीं"], tl: ["Oo", "Hindi"],
-  },
-  secondary_job: {
-    en: ["Yes", "No"], ar: ["نعم", "لا"], ur: ["ہاں", "نہیں"], hi: ["हاँ", "नहीं"], tl: ["Oo", "Hindi"],
-  },
-  underemployment: {
-    en: ["Yes \u2014 I want more hours", "No", "Already overemployed"],
-    ar: ["نعم — أريد ساعات أكثر", "لا", "أعمل أكثر من اللازم"],
-    ur: ["ہاں — زیادہ گھنٹے چاہیے", "نہیں", "پہلے سے زیادہ کام"],
-    hi: ["हाँ — अधिक घंटे चाहिए", "नहीं", "पहले से अधिक काम"],
-    tl: ["Oo \u2014 gusto ng mas maraming oras", "Hindi", "Sobra na ang oras ng trabaho"],
-  },
-  contract_type: {
-    en: ["Permanent", "Fixed-term (< 1 year)", "Fixed-term (1\u20133 years)", "Probation period", "No written contract"],
-    ar: ["دائم", "عقد محدد المدة (أقل من سنة)", "عقد محدد المدة (1-3 سنوات)", "فترة تجريبية", "بدون عقد مكتوب"],
-    ur: ["مستقل", "مقررہ مدت (1 سال سے کم)", "مقررہ مدت (1-3 سال)", "آزمائشی مدت", "کوئی تحریری معاہدہ نہیں"],
-    hi: ["स्थायी", "निश्चित अवधि (1 साल से कम)", "निश्चित अवधि (1-3 साल)", "परीविक्षा अवधि", "कोई लिखित अनुबंध नहीं"],
-    tl: ["Permanente", "Nakatakdang termino (< 1 taon)", "Nakatakdang termino (1-3 taon)", "Probationary", "Walang kontrata"],
-  },
-  remote_work: {
-    en: ["Always", "Mostly", "Partially", "Never"],
-    ar: ["دائمًا", "في الغالب", "جزئيًا", "أبدًا"],
-    ur: ["ہمیشہ", "زیادہ تر", "جزوی طور پر", "کبھی نہیں"],
-    hi: ["हमेशा", "ज़्यादातर", "आंशिक रूप से", "कभी नहीं"],
-    tl: ["Palagi", "Kadalasan", "Bahagi", "Hindi kailanman"],
-  },
-  health_insurance: {
-    en: ["Full coverage", "Partial coverage", "No", "I pay for my own"],
-    ar: ["تغطية كاملة", "تغطية جزئية", "لا", "أدفع من راتبي"],
-    ur: ["مکمل کوریج", "جزوی کوریج", "نہیں", "اپنا ادا کرتا ہوں"],
-    hi: ["पूर्ण कवरेज", "आंशिक कवरेज", "नहीं", "स्वयं भुगतान करते हैं"],
-    tl: ["Buong saklaw", "Bahagyang saklaw", "Wala", "Sarili kong binabayaran"],
-  },
-  desired_job_type: {
-    en: ["Same as previous occupation", "Different occupation", "First job"],
-    ar: ["نفس مهنتي السابقة", "مهنة مختلفة", "أبحث عن أول وظيفة"],
-    ur: ["پہلے جیسا کام", "مختلف کام", "پہلی نوکری"],
-    hi: ["पिछले जैसा काम", "अलग काम", "पहली नौकरी"],
-    tl: ["Katulad ng dati", "Ibang trabaho", "Unang trabaho"],
-  },
-  ever_worked: {
-    en: ["Yes \u2014 last job was in UAE", "Yes \u2014 last job was outside UAE", "No \u2014 never worked"],
-    ar: ["نعم — آخر عمل في الإمارات", "نعم — آخر عمل خارج الإمارات", "لا — لم أعمل أبداً"],
-    ur: ["ہاں — آخری کام UAE میں تھا", "ہاں — آخری کام UAE سے باہر تھا", "نہیں — کبھی نہیں کیا"],
-    hi: ["हाँ — पिछला काम UAE में था", "हाँ — पिछला काम UAE से बाहर था", "नहीं — कभी नहीं किया"],
-    tl: ["Oo \u2014 sa UAE ang huling trabaho", "Oo \u2014 sa labas ng UAE", "Hindi \u2014 hindi pa nagtrabaho"],
-  },
-  qualification_match: {
-    en: ["Overqualified", "Well matched", "Underqualified"],
-    ar: ["مؤهل أكثر من اللازم", "مطابق تماماً", "مؤهل أقل من اللازم"],
-    ur: ["بہت زیادہ قابل", "مناسب", "کم قابل"],
-    hi: ["अति-योग्य", "उचित रूप से मेल", "कम योग्य"],
-    tl: ["Sobrang-kwalipikado", "Angkop", "Hindi sapat ang kwalipikasyon"],
-  },
-  training_participation: {
-    en: ["Yes \u2014 employer-funded", "Yes \u2014 self-funded", "Yes \u2014 government program", "No"],
-    ar: ["نعم — ممول من صاحب العمل", "نعم — ممول ذاتيًا", "نعم — برنامج حكومي", "لا"],
-    ur: ["ہاں — آجر کی طرف سے", "ہاں — اپنے خرچے پر", "ہاں — سرکاری پروگرام", "نہیں"],
-    hi: ["हाँ — नियोक्ता द्वारा", "हाँ — स्वयं-वित्त पोषित", "हाँ — सरकारी कार्यक्रम", "नहीं"],
-    tl: ["Oo \u2014 pinondohan ng employer", "Oo \u2014 sariling gastos", "Oo \u2014 programa ng gobyerno", "Hindi"],
-  },
-  platform_work: {
-    en: ["Yes \u2014 primary income", "Yes \u2014 supplementary income", "No"],
-    ar: ["نعم — دخل رئيسي", "نعم — دخل إضافي", "لا"],
-    ur: ["ہاں — بنیادی آمدنی", "ہاں — اضافی آمدنی", "نہیں"],
-    hi: ["हाँ — मुख्य आय", "हाँ — अतिरिक्त आय", "नहीं"],
-    tl: ["Oo \u2014 pangunahing kita", "Oo \u2014 karagdagang kita", "Hindi"],
-  },
-  online_business: {
-    en: ["Yes \u2014 registered business", "Yes \u2014 informal", "No"],
-    ar: ["نعم — نشاط مسجل", "نعم — غير رسمي", "لا"],
-    ur: ["ہاں — رجسٹرڈ", "ہاں — غیر رسمی", "نہیں"],
-    hi: ["हाँ — पंजीकृत व्यापार", "हाँ — अनौपचारिक", "नहीं"],
-    tl: ["Oo \u2014 rehistradong negosyo", "Oo \u2014 impormal", "Hindi"],
-  },
-  work_life_balance: {
-    en: ["Yes", "Somewhat", "No"], ar: ["نعم", "نوعًا ما", "لا"],
-    ur: ["ہاں", "کچھ حد تک", "نہیں"], hi: ["हाँ", "कुछ हद तक", "नहीं"],
-    tl: ["Oo", "Medyo", "Hindi"],
-  },
-  question_clarity: {
-    en: ["1 \u2014 Very unclear", "2", "3 \u2014 Neutral", "4", "5 \u2014 Very clear"],
-    ar: ["1 — غير واضح جداً", "2", "3 — محايد", "4", "5 — واضح جداً"],
-    ur: ["1 — بالکل واضح نہیں", "2", "3 — غیر جانبدار", "4", "5 — بہت واضح"],
-    hi: ["1 — बिल्कुल स्पष्ट नहीं", "2", "3 — तटस्थ", "4", "5 — बहुत स्पष्ट"],
-    tl: ["1 \u2014 Hindi malinaw", "2", "3 \u2014 Neutral", "4", "5 \u2014 Malinaw"],
-  },
-  job_satisfaction: {
-    en: ["1 — Very dissatisfied", "2", "3 — Neutral", "4", "5 — Very satisfied"],
-    ar: ["1 — غير راضٍ جداً", "2", "3 — محايد", "4", "5 — راضٍ جداً"],
-    ur: ["1 — بہت غیر مطمئن", "2", "3 — غیر جانبدار", "4", "5 — بہت مطمئن"],
-    hi: ["1 — बहुत असंतुष्ट", "2", "3 — तटस्थ", "4", "5 — बहुत संतुष्ट"],
-    tl: ["1 — Napaka-hindi nasiyahan", "2", "3 — Neutral", "4", "5 — Nasiyahan"],
-  },
-  work_safety: {
-    en: ["Always", "Mostly", "Sometimes", "Rarely", "Never"],
-    ar: ["دائمًا", "في الغالب", "أحيانًا", "نادرًا", "أبدًا"],
-    ur: ["ہمیشہ", "زیادہ تر", "کبھی کبھی", "شاذ و نادر", "کبھی نہیں"],
-    hi: ["हमेशा", "ज़्यादातर", "कभी-कभी", "कभी-कभार", "कभी नहीं"],
-    tl: ["Palagi", "Kadalasan", "Minsan", "Bihira", "Hindi kailanman"],
-  },
-  bonuses: {
-    en: ["Yes — annual bonus", "Yes — performance bonus", "Yes — other", "No"],
-    ar: ["نعم — مكافأة سنوية", "نعم — حافز أداء", "نعم — أخرى", "لا"],
-    ur: ["ہاں — سالانہ بونس", "ہاں — کارکردگی بونس", "ہاں — دیگر", "نہیں"],
-    hi: ["हाँ — वार्षिक बोनस", "हाँ — प्रदर्शन बोनस", "हाँ — अन्य", "नहीं"],
-    tl: ["Oo — taunang bonus", "Oo — performance bonus", "Oo — iba", "Hindi"],
-  },
-  pension_scheme: {
-    en: ["Yes — GPSSA (UAE National)", "Yes — DIFC/ADGM scheme", "Yes — employer private scheme", "No", "Not sure"],
-    ar: ["نعم — هيئة المعاشات", "نعم — نظام DIFC/ADGM", "نعم — خطة صاحب العمل", "لا", "غير متأكد"],
-    ur: ["ہاں — GPSSA", "ہاں — DIFC/ADGM", "ہاں — آجر کا نجی منصوبہ", "نہیں", "یقین نہیں"],
-    hi: ["हाँ — GPSSA", "हाँ — DIFC/ADGM", "हाँ — नियोक्ता की निजी योजना", "नहीं", "पता नहीं"],
-    tl: ["Oo — GPSSA", "Oo — DIFC/ADGM", "Oo — pribadong plano ng employer", "Hindi", "Hindi sigurado"],
-  },
-  emiratization_program: {
-    en: ["Yes — NAFIS", "Yes — other government program", "No"],
-    ar: ["نعم — نافس", "نعم — برنامج حكومي آخر", "لا"],
-    ur: ["ہاں — NAFIS", "ہاں — دوسرا سرکاری پروگرام", "نہیں"],
-    hi: ["हाँ — NAFIS", "हाँ — अन्य सरकारी कार्यक्रम", "नहीं"],
-    tl: ["Oo — NAFIS", "Oo — ibang programa ng gobyerno", "Hindi"],
-  },
-  last_job_sector: {
-    en: ["Government", "Private", "Semi-government", "Non-profit / NGO", "Self-employed"],
-    ar: ["حكومي", "خاص", "شبه حكومي", "غير ربحي / منظمة غير حكومية", "عمل حر"],
-    ur: ["حکومتی", "نجی", "نیم حکومتی", "غیر منافع بخش / این جی او", "خود ملازم"],
-    hi: ["सरकारी", "निजी", "अर्ध-सरकारी", "गैर-लाभकारी / एनजीओ", "स्व-रोज़गार"],
-    tl: ["Pamahalaan", "Pribado", "Semi-gobyerno", "Non-profit / NGO", "Self-employed"],
-  },
-  highest_previous_salary: {
-    en: ["Less than 5,000", "5,000–10,000", "10,001–20,000", "20,001–50,000", "More than 50,000", "Prefer not to say"],
-    ar: ["أقل من 5,000", "5,000–10,000", "10,001–20,000", "20,001–50,000", "أكثر من 50,000", "أفضل عدم الإفصاح"],
-    ur: ["5,000 سے کم", "5,000–10,000", "10,001–20,000", "20,001–50,000", "50,000 سے زیادہ", "بتانا نہیں چاہتا"],
-    hi: ["5,000 से कम", "5,000–10,000", "10,001–20,000", "20,001–50,000", "50,000 से अधिक", "बताना नहीं चाहते"],
-    tl: ["Wala pang 5,000", "5,000–10,000", "10,001–20,000", "20,001–50,000", "Higit sa 50,000", "Ayaw sabihin"],
-  },
-  difficulty_answering: {
-    en: ["No — all questions were clear", "Yes — some questions were unclear"],
-    ar: ["لا — جميع الأسئلة كانت واضحة", "نعم — بعض الأسئلة غير واضحة"],
-    ur: ["نہیں — سب سوال واضح تھے", "ہاں — کچھ سوال واضح نہیں تھے"],
-    hi: ["नहीं — सभी प्रश्न स्पष्ट थे", "हाँ — कुछ प्रश्न अस्पष्ट थे"],
-    tl: ["Hindi — malinaw ang lahat ng tanong", "Oo — may hindi malinaw na tanong"],
-  },
-};
+
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -417,9 +163,6 @@ const C = {
 
 const MONO = "'DM Mono', monospace";
 const SANS = "'Inter', sans-serif";
-
-// ── Prototype constants ───────────────────────────────────────────────────────
-const TOTAL_QUESTIONS = 155;
 
 const FIELD_TO_SECTION = {
   employment_status:"B", education_level:"B", field_of_study:"B", gender:"B",
@@ -540,12 +283,10 @@ export default function ChatPage() {
 
   // Right-panel state
   const [fsmState, setFsmState]       = useState("greeting");
-  const [skipLog, setSkipLog]         = useState([]);
   const [lastMeta, setLastMeta]       = useState(null);
   const [elapsed, setElapsed]         = useState(0);
   const [prefilledFields, setPrefilledFields] = useState([]);
   const sessionStartRef               = useRef(Date.now());
-  const prevTotalRef                  = useRef(null);
 
   // Structured correction picker (VALIDATING state) — see handleStructuredCorrection.
   // collectedData holds the real field_key -> value pairs from the backend
@@ -574,10 +315,8 @@ export default function ChatPage() {
 
   // Derived stats
   const asked       = surveyProgress?.answered ?? 0;
-  const pathTotal   = surveyProgress?.total    ?? TOTAL_QUESTIONS;
-  const skipped     = Math.max(0, TOTAL_QUESTIONS - pathTotal);
-  const remaining   = Math.max(0, pathTotal - asked);
-  const reductionPct= Math.round((skipped / TOTAL_QUESTIONS) * 100);
+  const pathTotal   = surveyProgress?.total ?? null;
+  const remaining   = pathTotal == null ? null : Math.max(0, pathTotal - asked);
   const curSection  = nextField ? FIELD_TO_SECTION[nextField] : null;
 
   // Active agents derived from lastMeta + sending
@@ -612,7 +351,7 @@ export default function ChatPage() {
   }, [completed]);
 
   // Process API response → update all right-panel state
-  const processResponse = useCallback((res, prevTotal) => {
+  const processResponse = useCallback((res) => {
     if (res.state) setFsmState(res.state);
     setNextField(res.next_field || null);
     setCollectedData(res.collected_data || {});
@@ -621,16 +360,6 @@ export default function ChatPage() {
     setCorrectionInput("");
     if (res.survey_progress) {
       setSurveyProgress(res.survey_progress);
-      const newTotal = res.survey_progress.total;
-      if (prevTotal !== null && newTotal < prevTotal) {
-        const diff = prevTotal - newTotal;
-        const now  = Math.floor((Date.now() - sessionStartRef.current) / 1000);
-        setSkipLog(prev => [...prev, {
-          time: fmtTime(now),
-          msg:  `${diff} question${diff !== 1 ? "s" : ""} skipped — path optimised`,
-        }]);
-      }
-      prevTotalRef.current = newTotal;
     }
   }, []);
 
@@ -646,38 +375,44 @@ export default function ChatPage() {
     setToken(storedToken);
     setLang(storedLang);
 
-    createSession(storedToken, storedLang)
-      .then((session) => {
-        setSessionId(session.id);
-        if (session.prefilled_fields?.length > 0) {
-          setPrefilledFields(session.prefilled_fields);
+    openSurveySession(storedToken, storedLang, localStorage)
+      .then(({ id, conversation: res }) => {
+        setSessionId(id);
+        if (res.language) {
+          setLang(res.language);
+          localStorage.setItem("lfs_lang", res.language);
         }
-        setInitialising(false);
-        setSending(true);
-
-        sendMessage(storedToken, session.id, "hello", storedLang)
-          .then((res) => {
-            const meta = buildMeta(res);
-            setMessages([{ role: "assistant", text: res.reply, meta }]);
-            setLastMeta(meta);
-            processResponse(res, null);
-            if (res.session_completed) setCompleted(true);
-            setTimeout(() => inputRef.current?.focus(), 100);
-          })
-          .catch(() => setMessages([{ role: "error", text: T[getLangKey(storedLang)].sendError }]))
-          .finally(() => setSending(false));
+        setPrefilledFields(res.prefilled_fields || []);
+        const meta = buildMeta(res);
+        const restored = (res.history || [])
+          .filter(turn => turn.role === "user" || turn.role === "assistant")
+          .map(turn => ({ role: turn.role, text: turn.content }));
+        if (restored.at(-1)?.role === "assistant" && restored.at(-1)?.text === res.reply) {
+          restored[restored.length - 1].meta = meta;
+        } else if (res.reply) {
+          restored.push({ role: "assistant", text: res.reply, meta });
+        }
+        setMessages(restored);
+        setLastMeta(meta);
+        processResponse(res);
+        if (res.session_completed) {
+          setCompleted(true);
+          localStorage.removeItem(ACTIVE_SESSION_KEY);
+          router.replace(`/report?session=${id}`);
+        }
+        setTimeout(() => inputRef.current?.focus(), 100);
       })
       .catch((err) => {
         const msg = err?.message || "";
-        if (msg.includes("expired") || msg.includes("Invalid") || msg.includes("401") || msg.includes("authenticated")) {
+        if (err.status === 401 || msg.includes("expired") || msg.includes("Invalid") || msg.includes("authenticated")) {
           localStorage.removeItem("lfs_token");
           localStorage.removeItem("lfs_lang");
           router.replace("/");
           return;
         }
         setPageError(T[getLangKey(storedLang)].sessionError);
-        setInitialising(false);
-      });
+      })
+      .finally(() => setInitialising(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -690,15 +425,15 @@ export default function ChatPage() {
     setMessages(prev => [...prev, { role: "user", text }]);
     setInput("");
     setSending(true);
-    const prevTotal = prevTotalRef.current;
     try {
       const res  = await sendMessage(token, sessionId, text, lang);
       const meta = buildMeta(res);
       setMessages(prev => [...prev, { role: "assistant", text: res.reply, meta }]);
       setLastMeta(meta);
-      processResponse(res, prevTotal);
+      processResponse(res);
       if (res.session_completed) {
         setCompleted(true);
+        localStorage.removeItem(ACTIVE_SESSION_KEY);
         setTimeout(() => router.push(`/report?session=${sessionId}`), 2500);
       }
     } catch {
@@ -717,22 +452,21 @@ export default function ChatPage() {
   };
 
   // ── Quick reply ───────────────────────────────────────────────────────────
-  const handleQuickReply = useCallback((optText) => {
+  const handleQuickReply = useCallback((optText, answer = null) => {
     if (sending || completed || !sessionId) return;
     const text = optText.trim();
     if (!text) return;
     setMessages(prev => [...prev, { role: "user", text }]);
-    setNextField(null);
     setSending(true);
-    const prevTotal = prevTotalRef.current;
-    sendMessage(token, sessionId, text, lang)
+    sendMessage(token, sessionId, text, lang, null, answer)
       .then((res) => {
         const meta = buildMeta(res);
         setMessages(prev => [...prev, { role: "assistant", text: res.reply, meta }]);
         setLastMeta(meta);
-        processResponse(res, prevTotal);
+        processResponse(res);
         if (res.session_completed) {
           setCompleted(true);
+          localStorage.removeItem(ACTIVE_SESSION_KEY);
           setTimeout(() => router.push(`/report?session=${sessionId}`), 2500);
         }
       })
@@ -751,24 +485,24 @@ export default function ChatPage() {
   // Built specifically to remove the ambiguity that caused a real, live-reported
   // bug: a free-text correction naming a field in its natural singular form
   // ("skill" vs. the alias list's "skills") went unrecognised entirely.
-  const handleStructuredCorrection = useCallback((fieldKey, value) => {
+  const handleStructuredCorrection = useCallback((fieldKey, value, displayValue = value) => {
     if (sending || completed || !sessionId || !value?.trim()) return;
     const label = PREFILL_LABELS[fieldKey] || fieldKey;
-    const displayText = `${label} → ${value.trim()}`;
+    const displayText = `${label} → ${displayValue.trim()}`;
     setMessages(prev => [...prev, { role: "user", text: displayText }]);
     setCorrectionMode(null);
     setCorrectingField(null);
     setCorrectionInput("");
     setSending(true);
-    const prevTotal = prevTotalRef.current;
     sendMessage(token, sessionId, displayText, lang, { field: fieldKey, value: value.trim() })
       .then((res) => {
         const meta = buildMeta(res);
         setMessages(prev => [...prev, { role: "assistant", text: res.reply, meta }]);
         setLastMeta(meta);
-        processResponse(res, prevTotal);
+        processResponse(res);
         if (res.session_completed) {
           setCompleted(true);
+          localStorage.removeItem(ACTIVE_SESSION_KEY);
           setTimeout(() => router.push(`/report?session=${sessionId}`), 2500);
         }
       })
@@ -780,24 +514,32 @@ export default function ChatPage() {
   }, [sending, completed, sessionId, token, lang, processResponse, router]);
 
   // ── Language change ───────────────────────────────────────────────────────
-  const handleLangChange = useCallback((newLang) => {
-    setLang(newLang);
-    localStorage.setItem("lfs_lang", newLang);
-    const hasUserTurn = messages.some(m => m.role === "user");
-    if (!hasUserTurn && sessionId && !sending) {
-      setMessages([]);
-      setSending(true);
-      sendMessage(token, sessionId, "hello", newLang)
-        .then((res) => {
-          const meta = buildMeta(res);
-          setMessages([{ role: "assistant", text: res.reply, meta }]);
-          setLastMeta(meta);
-          processResponse(res, null);
-        })
-        .catch(() => setMessages([{ role: "error", text: T[getLangKey(newLang)].sendError }]))
-        .finally(() => { setSending(false); inputRef.current?.focus(); });
+  const handleLangChange = useCallback(async (newLang) => {
+    if (sending || initialising || completed || !sessionId || newLang === lang) return;
+    setSending(true);
+    try {
+      const res = await updateSessionLanguage(token, sessionId, newLang);
+      setLang(newLang);
+      localStorage.setItem("lfs_lang", newLang);
+      const meta = buildMeta(res);
+      setMessages(prev => {
+        const updated = [...prev];
+        if (updated.at(-1)?.role === "assistant") {
+          updated[updated.length - 1] = { role: "assistant", text: res.reply, meta };
+        } else if (res.reply) {
+          updated.push({ role: "assistant", text: res.reply, meta });
+        }
+        return updated;
+      });
+      setLastMeta(meta);
+      processResponse(res);
+    } catch {
+      setMessages(prev => [...prev, { role: "error", text: T[getLangKey(lang)].sendError }]);
+    } finally {
+      setSending(false);
+      inputRef.current?.focus();
     }
-  }, [messages, sessionId, sending, token, processResponse]);
+  }, [sending, initialising, completed, sessionId, token, lang, processResponse]);
 
   function handleSignOut() {
     localStorage.removeItem("lfs_token");
@@ -825,16 +567,20 @@ export default function ChatPage() {
             </div>
             <div>
               <span style={{ fontFamily: MONO, color: C.text, fontSize: 13, fontWeight: 600 }}>LFS · AI</span>
-              <span style={{ color: C.faint, fontSize: 11, marginLeft: 8 }}>{fsmState.replace(/_/g, " ")}</span>
+              <span className="hidden sm:inline" style={{ color: C.faint, fontSize: 11, marginLeft: 8 }}>{fsmState.replace(/_/g, " ")}</span>
             </div>
             {/* FSM badge */}
-            <FsmPill state={fsmState} />
+            <span className="hidden sm:inline-flex"><FsmPill state={fsmState} /></span>
           </div>
           {/* Right: lang pills + timer + sign out */}
           <div className="flex items-center gap-3">
+            <fieldset className="sm:hidden" disabled={sending || initialising || completed || !!pageError}>
+              <LanguageToggle lang={lang} onToggle={handleLangChange} />
+            </fieldset>
             <div className="hidden sm:flex items-center gap-1">
               {LANG_PILLS.map(lp => (
                 <button key={lp.code} onClick={() => handleLangChange(lp.code)}
+                  disabled={sending || initialising || completed || !!pageError}
                   style={{
                     fontFamily: MONO, fontSize: 10, fontWeight: 600,
                     padding: "2px 8px", borderRadius: 99,
@@ -972,12 +718,12 @@ export default function ChatPage() {
               <div style={{ background: C.white, borderTop: `1px solid ${C.border}`, padding: "10px 16px 8px", flexShrink: 0 }}>
                 <div className="max-w-3xl mx-auto">
                   <div className={`flex flex-wrap gap-2 ${isAr ? "justify-end" : "justify-start"}`}>
-                    {(QUICK_OPTIONS[nextField][getLangKey(lang)] || QUICK_OPTIONS[nextField].en).map(opt => (
-                      <button key={opt} onClick={() => handleQuickReply(opt)}
+                    {getQuickOptions(nextField, getLangKey(lang)).map(opt => (
+                      <button key={opt.label} onClick={() => handleQuickReply(opt.label, opt.value == null ? null : { field: nextField, value: opt.value })}
                         style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 99, padding: "5px 12px", fontSize: 12, fontWeight: 500, background: C.white, cursor: "pointer", transition: "all 0.15s" }}
                         onMouseEnter={e => { e.target.style.background = C.green; e.target.style.color = "#fff"; }}
                         onMouseLeave={e => { e.target.style.background = C.white; e.target.style.color = C.green; }}>
-                        {opt}
+                        {opt.label}
                       </button>
                     ))}
                   </div>
@@ -1057,12 +803,12 @@ export default function ChatPage() {
 
                       {QUICK_OPTIONS[correctingField] ? (
                         <div className={`flex flex-wrap gap-2 ${isAr ? "justify-end" : "justify-start"}`}>
-                          {(QUICK_OPTIONS[correctingField][getLangKey(lang)] || QUICK_OPTIONS[correctingField].en).map(opt => (
-                            <button key={opt} onClick={() => handleStructuredCorrection(correctingField, opt)}
+                          {getQuickOptions(correctingField, getLangKey(lang)).map(opt => (
+                            <button key={opt.label} onClick={() => handleStructuredCorrection(correctingField, opt.value ?? opt.label, opt.label)}
                               style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 99, padding: "5px 12px", fontSize: 12, fontWeight: 500, background: C.white, cursor: "pointer" }}
                               onMouseEnter={e => { e.target.style.background = C.green; e.target.style.color = "#fff"; }}
                               onMouseLeave={e => { e.target.style.background = C.white; e.target.style.color = C.green; }}>
-                              {opt}
+                              {opt.label}
                             </button>
                           ))}
                         </div>
@@ -1134,27 +880,22 @@ export default function ChatPage() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
                 <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
                   <p style={{ fontFamily: MONO, color: C.green, fontSize: 28, fontWeight: 700, lineHeight: 1 }}>{asked}</p>
-                  <p style={{ color: C.faint, fontSize: 9, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Asked</p>
+                  <p style={{ color: C.faint, fontSize: 9, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Answered</p>
                 </div>
                 <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
-                  <p style={{ fontFamily: MONO, color: C.amber, fontSize: 28, fontWeight: 700, lineHeight: 1 }}>{skipped}</p>
-                  <p style={{ color: C.faint, fontSize: 9, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Skipped</p>
+                  <p style={{ fontFamily: MONO, color: C.amber, fontSize: 28, fontWeight: 700, lineHeight: 1 }}>{remaining ?? "—"}</p>
+                  <p style={{ color: C.faint, fontSize: 9, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Remaining</p>
                 </div>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ textAlign: "center" }}>
-                  <p style={{ fontFamily: MONO, color: "#6366f1", fontSize: 18, fontWeight: 700, lineHeight: 1 }}>{remaining}</p>
-                  <p style={{ color: C.faint, fontSize: 9, marginTop: 2 }}>Remaining</p>
+                  <p style={{ fontFamily: MONO, color: "#6366f1", fontSize: 18, fontWeight: 700, lineHeight: 1 }}>{pathTotal ?? "—"}</p>
+                  <p style={{ color: C.faint, fontSize: 9, marginTop: 2 }}>Fields in current path</p>
                 </div>
                 <div style={{ width: 1, height: 32, background: C.border }} />
                 <div style={{ textAlign: "center" }}>
-                  <p style={{ fontFamily: MONO, color: "#ec4899", fontSize: 18, fontWeight: 700, lineHeight: 1 }}>{reductionPct}%</p>
-                  <p style={{ color: C.faint, fontSize: 9, marginTop: 2 }}>Reduction</p>
-                </div>
-                <div style={{ width: 1, height: 32, background: C.border }} />
-                <div style={{ textAlign: "center" }}>
-                  <p style={{ fontFamily: MONO, color: C.green, fontSize: 18, fontWeight: 700, lineHeight: 1 }}>{skipped}</p>
-                  <p style={{ color: C.faint, fontSize: 9, marginTop: 2 }}>Saved</p>
+                  <p style={{ fontFamily: MONO, color: C.green, fontSize: 18, fontWeight: 700, lineHeight: 1 }}>{prefilledFields.length}</p>
+                  <p style={{ color: C.faint, fontSize: 9, marginTop: 2 }}>Prefilled fields</p>
                 </div>
               </div>
             </div>
@@ -1220,13 +961,6 @@ export default function ChatPage() {
                   );
                 })}
               </div>
-              )}
-              {sectionStatusOpen && skipped > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  <span style={{ background: C.greenLt, border: `1px solid ${C.green}40`, color: C.green, borderRadius: 99, padding: "3px 10px", fontSize: 10, fontWeight: 600 }}>
-                    {skipped} questions saved
-                  </span>
-                </div>
               )}
             </div>
 

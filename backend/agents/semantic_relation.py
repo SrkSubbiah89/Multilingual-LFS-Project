@@ -287,7 +287,7 @@ class SemanticCoherence:
     inferred_isco:         Optional[str]
     explanation_en:        str
     explanation_ar:        str
-    confidence_adjustment: float   # delta to apply to ISCO confidence: +0.10 to -0.20
+    confidence_adjustment: float   # legacy heuristic proposal; survey/report confidence is not adjusted
     major_group:           str     # "0"–"9"
     major_label:           str
     isic_label:            Optional[str]
@@ -662,22 +662,22 @@ class SemanticRelationEngine:
             en = (
                 f"Strong semantic alignment: occupation ({major_label}), "
                 f"industry ({isic_label or 'N/A'}), and education ({isced_label or 'N/A'}) "
-                f"are fully consistent according to ILO ISCO-ISIC-ISCED crosswalk tables. "
-                f"Classification confidence boosted by +{int(score*10)-8}0%."
+                f"agree with the project's hand-built cross-standard rules. "
+                f"The coherence score is a heuristic consistency check."
             )
             ar = (
-                f"تطابق دلالي قوي: المهنة والصناعة والتعليم متسقة تماماً وفق جداول "
-                f"التقاطع الدولية ILO. تم تعزيز ثقة التصنيف."
+                f"تطابق دلالي قوي: المهنة والصناعة والتعليم متوافقة وفق قواعد "
+                f"التقاطع التي أعدها المشروع يدوياً. درجة التماسك فحص اتساق استدلالي."
             )
         elif score >= 0.70:
             en = (
                 f"Good alignment: occupation ({major_label}) is generally consistent "
                 f"with industry ({isic_label or 'N/A'}) and education ({isced_label or 'N/A'}). "
-                f"Minor discrepancies noted but within acceptable ILO tolerance."
+                f"Minor discrepancies fall within the project's heuristic thresholds."
             )
             ar = (
                 f"توافق جيد: المهنة متسقة عموماً مع الصناعة والتعليم مع وجود "
-                f"تباينات طفيفة ضمن الحدود المقبولة."
+                f"تباينات طفيفة ضمن الحدود الاستدلالية التي حددها المشروع."
             )
         elif score >= 0.40:
             n = len(violations)

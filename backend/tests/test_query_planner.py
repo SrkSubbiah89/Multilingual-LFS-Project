@@ -32,6 +32,22 @@ def _set_kickoff_response(monkeypatch, response):
 
 
 class TestDecompose:
+    @pytest.mark.parametrize("response,received", [("one phrase", True), (RuntimeError("timeout"), False)])
+    def test_usage_observer_receives_success_and_failed_calls(self, planner, monkeypatch, response, received):
+        _set_kickoff_response(monkeypatch, response)
+        observer = MagicMock()
+        planner.decompose("original", "occupation", usage_observer=observer)
+        observer.assert_called_once()
+        crew, response_received, error = observer.call_args.args
+        assert crew is not None
+        assert response_received is received
+        assert error == (None if received else "RuntimeError: timeout")
+
+    def test_usage_observer_failure_does_not_change_decomposition(self, planner, monkeypatch):
+        _set_kickoff_response(monkeypatch, "phrase one\nphrase two")
+        result = planner.decompose("original", "occupation", usage_observer=MagicMock(side_effect=RuntimeError("bad telemetry")))
+        assert result == ["phrase one", "phrase two"]
+
     def test_parses_multiple_lines(self, planner, monkeypatch):
         _set_kickoff_response(monkeypatch, "subsistence farmer\ntaxi driver")
         result = planner.decompose("farmer who also drives a taxi part-time", "occupation")

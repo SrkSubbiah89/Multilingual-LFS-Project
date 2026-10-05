@@ -153,7 +153,8 @@ class TestContextMemoryInit:
         monkeypatch.setattr("backend.agents.context_memory.Agent", MagicMock())
         ContextMemory(redis_url="redis://testhost:6379")
         fake_cls.from_url.assert_called_once_with(
-            "redis://testhost:6379", decode_responses=True
+            "redis://testhost:6379", decode_responses=True,
+            socket_connect_timeout=5, socket_timeout=5,
         )
 
     def test_host_port_mode(self, monkeypatch):
@@ -166,7 +167,8 @@ class TestContextMemoryInit:
         monkeypatch.delenv("REDIS_URL", raising=False)
         ContextMemory(host="myhost", port=6380)
         fake_cls.assert_called_once_with(
-            host="myhost", port=6380, db=0, decode_responses=True
+            host="myhost", port=6380, db=0, decode_responses=True,
+            socket_connect_timeout=5, socket_timeout=5,
         )
 
     def test_env_redis_url_used(self, monkeypatch):
@@ -179,7 +181,8 @@ class TestContextMemoryInit:
         monkeypatch.setenv("REDIS_URL", "redis://envhost:6379")
         ContextMemory()
         fake_cls.from_url.assert_called_once_with(
-            "redis://envhost:6379", decode_responses=True
+            "redis://envhost:6379", decode_responses=True,
+            socket_connect_timeout=5, socket_timeout=5,
         )
 
     def test_default_ttl(self, monkeypatch):

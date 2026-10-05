@@ -262,6 +262,7 @@ class SurveyReportRecord(Base):
     recommendations_en = Column(Text,    nullable=False)
     recommendations_ar = Column(Text,    nullable=False)
     generated_at       = Column(DateTime, nullable=False, index=True)
+    invalidated_at     = Column(DateTime, nullable=True, index=True)
     semantic_coherence_json  = Column(Text, nullable=True)  # JSON of ISCO<->ISIC<->ISCED coherence
     isic_classification_json = Column(Text, nullable=True)  # JSON of full ISIC Rev.4 result
     isced_classification_json = Column(Text, nullable=True) # JSON of full ISCED 2011 result

@@ -127,8 +127,8 @@ def _small_known_risk_list(monkeypatch):
 def test_overall_accuracy_hand_checkable(tmp_path):
     ref, flat, hier = _write_valid_fixture(tmp_path)
     ref_rows, _ = awt.validate_reference(ref, awt.sha256_file(ref), 4)
-    flat_rows, _ = awt.validate_result_csv(flat, [r["case_id"] for r in ref_rows], 4, "flat", "hierarchical_", 30000)
-    hier_rows, _ = awt.validate_result_csv(hier, [r["case_id"] for r in ref_rows], 4, "hierarchical", "hierarchical_", 30000)
+    flat_rows, _ = awt.validate_result_csv(flat, ref_rows, 4, "flat", "hierarchical_", 30000)
+    hier_rows, _ = awt.validate_result_csv(hier, ref_rows, 4, "hierarchical", "hierarchical_", 30000)
 
     flat_acc = {m.metric_name: m for m in awt.compute_overall_accuracy(flat_rows)}
     hier_acc = {m.metric_name: m for m in awt.compute_overall_accuracy(hier_rows)}
@@ -144,6 +144,24 @@ def test_overall_accuracy_hand_checkable(tmp_path):
     assert hier_acc["isco_top1_1digit"].correct == 2
 
 
+@pytest.mark.parametrize("system", ["flat", "hierarchical"])
+def test_result_labels_must_match_canonical_reference(tmp_path, system):
+    ref, flat, hier = _write_valid_fixture(tmp_path)
+    rows = _flat_rows() if system == "flat" else _hier_rows()
+    rows[0]["gold_isco_4digit"] = rows[0]["pred_isco_4digit"] = "5678"
+    path = flat if system == "flat" else hier
+    _write_csv(path, RESULT_FIELDS, rows)
+    reference_rows, _ = awt.validate_reference(ref, awt.sha256_file(ref), 4)
+    with pytest.raises(awt.GateFailure, match="canonical reference"):
+        awt.validate_result_csv(path, reference_rows, 4, system, "hierarchical_", 30000)
+
+
+def test_ids_alone_cannot_bypass_reference_label_gate(tmp_path):
+    _, flat, _ = _write_valid_fixture(tmp_path)
+    with pytest.raises(awt.GateFailure, match="canonical reference rows"):
+        awt.validate_result_csv(flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+
+
 # ---------------------------------------------------------------------------
 # 2. Wilson interval + exact McNemar wiring
 # ---------------------------------------------------------------------------
@@ -151,8 +169,8 @@ def test_overall_accuracy_hand_checkable(tmp_path):
 def test_wilson_and_mcnemar_wiring(tmp_path):
     ref, flat, hier = _write_valid_fixture(tmp_path)
     ref_rows, _ = awt.validate_reference(ref, awt.sha256_file(ref), 4)
-    flat_rows, _ = awt.validate_result_csv(flat, [r["case_id"] for r in ref_rows], 4, "flat", "hierarchical_", 30000)
-    hier_rows, _ = awt.validate_result_csv(hier, [r["case_id"] for r in ref_rows], 4, "hierarchical", "hierarchical_", 30000)
+    flat_rows, _ = awt.validate_result_csv(flat, ref_rows, 4, "flat", "hierarchical_", 30000)
+    hier_rows, _ = awt.validate_result_csv(hier, ref_rows, 4, "hierarchical", "hierarchical_", 30000)
 
     m = awt.compute_digit_accuracy(hier_rows, 4, "x")
     expected_lo, expected_hi = awt.wilson_score_interval(2, 4)
@@ -179,7 +197,7 @@ def test_wilson_and_mcnemar_wiring(tmp_path):
 def test_language_grouping_and_macro_average(tmp_path):
     ref, flat, hier = _write_valid_fixture(tmp_path)
     ref_rows, _ = awt.validate_reference(ref, awt.sha256_file(ref), 4)
-    hier_rows, _ = awt.validate_result_csv(hier, [r["case_id"] for r in ref_rows], 4, "hierarchical", "hierarchical_", 30000)
+    hier_rows, _ = awt.validate_result_csv(hier, ref_rows, 4, "hierarchical", "hierarchical_", 30000)
     lang_map = {r["case_id"]: r["input_language"] for r in ref_rows}
 
     by_lang, macro = awt.compute_language_accuracy(hier_rows, lang_map)
@@ -202,7 +220,7 @@ def test_order_mismatch_rejected(tmp_path):
     bad_flat = tmp_path / "flat_reordered.csv"
     _write_csv(bad_flat, RESULT_FIELDS, reordered)
     with pytest.raises(awt.GateFailure, match="order"):
-        awt.validate_result_csv(bad_flat, [r["case_id"] for r in ref_rows], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, ref_rows, 4, "flat", "hierarchical_", 30000)
 
 
 def test_id_set_mismatch_rejected(tmp_path):
@@ -213,7 +231,7 @@ def test_id_set_mismatch_rejected(tmp_path):
     bad_flat = tmp_path / "flat_badid.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="missing case_id"):
-        awt.validate_result_csv(bad_flat, [r["case_id"] for r in ref_rows], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, ref_rows, 4, "flat", "hierarchical_", 30000)
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +244,7 @@ def test_duplicate_case_id_rejected(tmp_path):
     bad_flat = tmp_path / "flat_dupe.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="duplicate case_id"):
-        awt.validate_result_csv(bad_flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, _reference_rows(), 4, "flat", "hierarchical_", 30000)
 
 
 def test_reference_duplicate_case_id_rejected(tmp_path):
@@ -249,7 +267,7 @@ def test_invalid_gold_code_rejected(tmp_path, bad_value):
     bad_flat = tmp_path / "flat_badgold.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="gold_isco_4digit"):
-        awt.validate_result_csv(bad_flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, _reference_rows(), 4, "flat", "hierarchical_", 30000)
 
 
 def test_invalid_pred_code_rejected(tmp_path):
@@ -258,7 +276,7 @@ def test_invalid_pred_code_rejected(tmp_path):
     bad_flat = tmp_path / "flat_badpred.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="pred_isco_4digit"):
-        awt.validate_result_csv(bad_flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, _reference_rows(), 4, "flat", "hierarchical_", 30000)
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +289,7 @@ def test_nonblank_error_rejected(tmp_path):
     bad_flat = tmp_path / "flat_err.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="error field"):
-        awt.validate_result_csv(bad_flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, _reference_rows(), 4, "flat", "hierarchical_", 30000)
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +302,7 @@ def test_flat_wrong_method_rejected(tmp_path):
     bad_flat = tmp_path / "flat_wrongmethod.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="flat_semantic"):
-        awt.validate_result_csv(bad_flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, _reference_rows(), 4, "flat", "hierarchical_", 30000)
 
 
 def test_flat_reranker_fired_rejected(tmp_path):
@@ -293,7 +311,7 @@ def test_flat_reranker_fired_rejected(tmp_path):
     bad_flat = tmp_path / "flat_rerank.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="reranker_fired"):
-        awt.validate_result_csv(bad_flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, _reference_rows(), 4, "flat", "hierarchical_", 30000)
 
 
 def test_flat_nonzero_cost_rejected(tmp_path):
@@ -302,7 +320,7 @@ def test_flat_nonzero_cost_rejected(tmp_path):
     bad_flat = tmp_path / "flat_cost.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="estimated_cost_usd"):
-        awt.validate_result_csv(bad_flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, _reference_rows(), 4, "flat", "hierarchical_", 30000)
 
 
 def test_flat_nonzero_tokens_rejected(tmp_path):
@@ -311,7 +329,7 @@ def test_flat_nonzero_tokens_rejected(tmp_path):
     bad_flat = tmp_path / "flat_tokens.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="tokens"):
-        awt.validate_result_csv(bad_flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, _reference_rows(), 4, "flat", "hierarchical_", 30000)
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +342,7 @@ def test_hierarchical_fallback_method_rejected(tmp_path):
     bad_hier = tmp_path / "hier_fallback.csv"
     _write_csv(bad_hier, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="hierarchical_"):
-        awt.validate_result_csv(bad_hier, ["c1", "c2", "c3", "c4"], 4, "hierarchical", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_hier, _reference_rows(), 4, "hierarchical", "hierarchical_", 30000)
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +355,7 @@ def test_hierarchical_empty_stage_evidence_rejected(tmp_path):
     bad_hier = tmp_path / "hier_emptystage.csv"
     _write_csv(bad_hier, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="stage2_candidates"):
-        awt.validate_result_csv(bad_hier, ["c1", "c2", "c3", "c4"], 4, "hierarchical", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_hier, _reference_rows(), 4, "hierarchical", "hierarchical_", 30000)
 
 
 def test_hierarchical_malformed_json_stage_evidence_rejected(tmp_path):
@@ -346,7 +364,7 @@ def test_hierarchical_malformed_json_stage_evidence_rejected(tmp_path):
     bad_hier = tmp_path / "hier_badjson.csv"
     _write_csv(bad_hier, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="stage3_candidates"):
-        awt.validate_result_csv(bad_hier, ["c1", "c2", "c3", "c4"], 4, "hierarchical", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_hier, _reference_rows(), 4, "hierarchical", "hierarchical_", 30000)
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +377,7 @@ def test_hierarchical_latency_over_cap_rejected(tmp_path):
     bad_hier = tmp_path / "hier_overcap.csv"
     _write_csv(bad_hier, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="stage1_latency_ms"):
-        awt.validate_result_csv(bad_hier, ["c1", "c2", "c3", "c4"], 4, "hierarchical", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_hier, _reference_rows(), 4, "hierarchical", "hierarchical_", 30000)
 
 
 def test_hierarchical_latency_non_numeric_rejected(tmp_path):
@@ -368,7 +386,7 @@ def test_hierarchical_latency_non_numeric_rejected(tmp_path):
     bad_hier = tmp_path / "hier_nan.csv"
     _write_csv(bad_hier, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="stage4_latency_ms"):
-        awt.validate_result_csv(bad_hier, ["c1", "c2", "c3", "c4"], 4, "hierarchical", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_hier, _reference_rows(), 4, "hierarchical", "hierarchical_", 30000)
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +399,7 @@ def test_known_risk_missing_rejected(tmp_path, monkeypatch):
     bad_hier = tmp_path / "hier_missingrisk.csv"
     _write_csv(bad_hier, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="missing known-risk"):
-        awt.validate_result_csv(bad_hier, ["c1", "c2", "c3", "c4"], 4, "hierarchical", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_hier, _reference_rows(), 4, "hierarchical", "hierarchical_", 30000)
 
 
 def test_known_risk_failing_row_rejected(tmp_path, monkeypatch):
@@ -391,7 +409,7 @@ def test_known_risk_failing_row_rejected(tmp_path, monkeypatch):
     bad_hier = tmp_path / "hier_failingrisk.csv"
     _write_csv(bad_hier, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="stage1_candidates"):
-        awt.validate_result_csv(bad_hier, ["c1", "c2", "c3", "c4"], 4, "hierarchical", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_hier, _reference_rows(), 4, "hierarchical", "hierarchical_", 30000)
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +422,7 @@ def test_dry_run_evaluation_status_rejected(tmp_path):
     bad_flat = tmp_path / "flat_dryrun.csv"
     _write_csv(bad_flat, RESULT_FIELDS, rows)
     with pytest.raises(awt.GateFailure, match="evaluation_status"):
-        awt.validate_result_csv(bad_flat, ["c1", "c2", "c3", "c4"], 4, "flat", "hierarchical_", 30000)
+        awt.validate_result_csv(bad_flat, _reference_rows(), 4, "flat", "hierarchical_", 30000)
 
 
 # ---------------------------------------------------------------------------

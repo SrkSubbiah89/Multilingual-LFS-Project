@@ -1,6 +1,11 @@
 import logging
 import os
 import time
+import copy
+import json
+import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Optional
 
@@ -23,14 +28,16 @@ _COORDINATED_CLASSIFICATION = os.getenv(
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session, joinedload
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from redis.exceptions import RedisError
 
 _logger = logging.getLogger("lfs.survey")
 
 _perf_log = logging.getLogger("lfs.perf")
 
 from backend.database.connection import get_db
-from backend.database.models import HITLQueue, SurveyResponse, SurveySession, User
+from backend.database.models import HITLQueue, SurveyResponse, SurveySession, User, QualityReview
+from backend.database.response_revisions import active_responses, save_response_revision, invalidate_reports, retire_response
 from backend.auth.jwt_handler import verify_access_token
 from backend.auth.email_otp import check_rate_limit
 from backend.agents.conversation_manager import ConversationContext, ConversationManager, ConversationState
@@ -92,9 +99,8 @@ async def _check_rate_limit(request: Request) -> None:
 # Agents are expensive to construct (model loading, API client setup).
 # We keep one instance per server process rather than rebuilding per request.
 #
-# NOTE: ConversationContext lives in _contexts (in-memory), so conversation
-# state is lost on server restart.  Replace with Redis-backed storage for
-# multi-process or persistent deployments.
+# Redis holds conversation state; _contexts is a per-process working cache.
+# Active database answers provide recovery when the Redis entry expires.
 
 _conversation_manager: Optional[ConversationManager] = None
 _language_processor:   Optional[LanguageProcessor]   = None
@@ -113,6 +119,41 @@ _validation_agent:        Optional[object] = None   # ValidationAgent (lazy)
 
 # { session_id: ConversationContext }
 _contexts: dict[int, ConversationContext] = {}
+_session_locks: dict[int, threading.RLock] = {}
+_session_locks_guard = threading.Lock()
+_session_guard = ContextVar("lfs_session_guard", default=None)
+
+
+def _check_session_ownership():
+    guard = _session_guard.get()
+    if guard is not None:
+        guard()
+
+
+def _commit_session(db):
+    _check_session_ownership()
+    db.commit()
+
+
+@contextmanager
+def _session_turn(session_id):
+    """Serialize a complete load/process/save operation across workers."""
+    with _session_locks_guard:
+        local_lock = _session_locks.setdefault(session_id, threading.RLock())
+    with local_lock:
+        try:
+            with _get_context_memory().session_lock(session_id) as guard:
+                token = _session_guard.set(guard)
+                try:
+                    yield
+                finally:
+                    _session_guard.reset(token)
+        except HTTPException:
+            raise
+        except RedisError as exc:
+            _contexts.pop(session_id, None)
+            _logger.warning("Session update unavailable for %s: %s", session_id, exc)
+            raise HTTPException(status_code=503, detail="The interview could not be saved. Please retry shortly.") from exc
 
 
 def _get_agents() -> tuple[ConversationManager, LanguageProcessor]:
@@ -268,6 +309,18 @@ def get_current_user(
     return user
 
 
+def _require_reviewer(user: User) -> User:
+    """Configured reviewers have global scope over active survey sessions."""
+    reviewer_ids = {value.strip() for value in os.getenv("HITL_REVIEWER_USER_IDS", "").split(",") if value.strip()}
+    if not user.is_active or user.deleted_at is not None or str(user.id) not in reviewer_ids:
+        raise HTTPException(status_code=403, detail="Supervisor review access is required.")
+    return user
+
+
+def get_current_reviewer(current_user: User = Depends(get_current_user)) -> User:
+    return _require_reviewer(current_user)
+
+
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
@@ -325,6 +378,14 @@ class MessageBody(BaseModel):
     # byte-for-byte the existing free-text path.
     correction_field: Optional[str] = None
     correction_value: Optional[str] = None
+    answer_field: Optional[str] = None
+    answer_value: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_answer_pair(self):
+        if (self.answer_field is None) != (self.answer_value is None):
+            raise ValueError("answer_field and answer_value must be supplied together.")
+        return self
 
 
 class EntityOut(BaseModel):
@@ -593,7 +654,7 @@ def create_session(
         language=body.language,
     )
     db.add(session)
-    db.commit()
+    db.flush()
     db.refresh(session)
 
     # ── Returning-user pre-fill ──────────────────────────────────────────────
@@ -608,12 +669,13 @@ def create_session(
             .filter(
                 SurveySession.user_id == current_user.id,
                 SurveySession.status == "completed",
+                SurveySession.deleted_at.is_(None),
             )
             .order_by(SurveySession.completed_at.desc())
             .first()
         )
         if prev_session and prev_session.responses:
-            prev_responses = prev_session.responses
+            prev_responses = active_responses(db, prev_session.id)
             if prev_responses:
                 prefill_data = {r.question_id: r.answer for r in prev_responses}
                 prefilled_fields = list(prefill_data.keys())
@@ -622,6 +684,7 @@ def create_session(
                     language=body.language,
                     collected_data=prefill_data,
                     is_returning=True,
+                    prefilled_fields=prefilled_fields,
                 )
                 _contexts[session.id] = ctx
                 _logger.info(
@@ -630,6 +693,19 @@ def create_session(
                 )
     except Exception as _pf_err:
         _logger.warning("Pre-fill failed (non-fatal): %s", _pf_err)
+
+    # Publish the initial snapshot before another worker can resume this ID.
+    manager, _ = _get_agents()
+    context = _contexts.setdefault(session.id, manager.new_context(session.id, body.language))
+    ConversationManager.sanitize_context(context)
+    prefilled_fields = list(context.prefilled_fields)
+    try:
+        _save_context(context)
+        _commit_session(db)
+    except RedisError as exc:
+        db.rollback()
+        _contexts.pop(session.id, None)
+        raise HTTPException(status_code=503, detail="Interview storage is unavailable. Please retry shortly.") from exc
 
     # Audit: log session creation
     try:
@@ -713,6 +789,11 @@ def complete_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    with _session_turn(session_id):
+        return _complete_session_impl(session_id, db, current_user)
+
+
+def _complete_session_impl(session_id, db, current_user):
     session = _get_owned_session(db, session_id, current_user.id)
 
     if session.status == "completed":
@@ -723,7 +804,7 @@ def complete_session(
 
     session.status = "completed"
     session.completed_at = datetime.utcnow()
-    db.commit()
+    _commit_session(db)
     db.refresh(session)
     return session
 
@@ -738,12 +819,19 @@ def delete_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    with _session_turn(session_id):
+        return _delete_session_impl(session_id, db, current_user)
+
+
+def _delete_session_impl(session_id, db, current_user):
     session = _get_owned_session(db, session_id, current_user.id)
     # Soft-delete: stamp deleted_at instead of hard-deleting the row.
     # The row is retained for GDPR audit trail purposes.
     session.deleted_at = datetime.utcnow()
     _contexts.pop(session_id, None)
-    db.commit()
+    _get_context_memory().delete_session(session_id)
+    invalidate_reports(db, session_id)
+    _commit_session(db)
     return {"message": f"Session {session_id} deleted."}
 
 
@@ -776,7 +864,8 @@ def send_message(
     _: None = Depends(_check_rate_limit),
 ):
     try:
-        return _send_message_impl(session_id, body, db, current_user)
+        with _session_turn(session_id):
+            return _send_message_impl(session_id, body, db, current_user)
     except HTTPException:
         raise
     except Exception as _exc:
@@ -804,7 +893,7 @@ def _send_message_impl(
         )
 
     conv_mgr, lang_proc = _get_agents()
-    ctx = _get_or_create_context(conv_mgr, session_id, session.language)
+    ctx = _get_or_create_context(conv_mgr, session_id, session.language, db=db)
     msg = body.message.strip()
 
     # If the user explicitly selected a display language, honour it before NER
@@ -821,7 +910,8 @@ def _send_message_impl(
     skip_ner = _FAST_MODE or msg.lower() in _NER_SKIP_TOKENS or len(msg) <= 3
 
     # Snapshot fields before processing so we can detect which field was just set
-    _fields_before = set(ctx.collected_data.keys())
+    _values_before = dict(ctx.collected_data)
+    _fields_before = set(_values_before)
 
     # Tracks every HITLQueue row created during this single turn (regardless
     # of reason) so a later escalation reason (e.g. SRE incoherence) can
@@ -840,11 +930,18 @@ def _send_message_impl(
         if body.correction_field and body.correction_value
         else None
     )
-    reply = conv_mgr.process_message(ctx, msg, structured_correction=_structured_correction)
+    _answer_options = {"structured_answer": (body.answer_field, body.answer_value)} if body.answer_field is not None else {}
+    try:
+        reply = conv_mgr.process_message(ctx, msg, structured_correction=_structured_correction, **_answer_options)
+    except ValueError as exc:
+        from backend.agents.conversation_manager import StructuredAnswerError
+        if isinstance(exc, StructuredAnswerError):
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise
     t_parallel_ms = int((time.perf_counter() - t_parallel) * 1000)
 
     # Fields set for the first time in this turn
-    _fields_new = set(ctx.collected_data.keys()) - _fields_before
+    _fields_new = {key for key, value in ctx.collected_data.items() if key not in _values_before or _values_before[key] != value}
 
     # ── Stage 2: update context language (only when no explicit preference set)
     if not body.preferred_language and lp_result.detected_language in (
@@ -854,7 +951,9 @@ def _send_message_impl(
         session.language = lp_result.detected_language
 
     # ── Stage 4: ISCO classification for every JOB_TITLE entity ─────────────
-    job_title_entities = [e for e in lp_result.entities if e.label == "JOB_TITLE"]
+    # Occupation persistence follows the questionnaire answer, not unrelated
+    # job-title mentions extracted from later conversational turns.
+    job_title_entities = [e for e in lp_result.entities if e.label == "JOB_TITLE" and "job_title" in _fields_new and e.text == ctx.collected_data.get("job_title")]
     isco_results: list[ISCOResult] = []
     t_isco = time.perf_counter()
 
@@ -874,14 +973,8 @@ def _send_message_impl(
                 entity.text,
                 context=_isco_context,
             )
-            isco_resp = SurveyResponse(
-                session_id=session_id,
-                question_id="job_title",
-                answer=entity.text,
-                isco_code=clf.primary.code or None,
-                confidence_score=clf.primary.confidence,
-            )
-            db.add(isco_resp)
+            isco_resp = save_response_revision(db, session_id, "job_title", entity.text,
+                isco_code=clf.primary.code or None, confidence_score=clf.primary.confidence)
             if clf.hitl_required:
                 db.flush()  # get isco_resp.id before creating HITL entry
                 _hq = HITLQueue(
@@ -950,14 +1043,8 @@ def _send_message_impl(
                         _ctx_parts.append(_val)
                 _isco_context = " | ".join(_ctx_parts)
                 clf = _get_isco_classifier().classify(_stored_title, context=_isco_context, use_llm=not _FAST_MODE)
-                _fb_resp = SurveyResponse(
-                    session_id=session_id,
-                    question_id="job_title",
-                    answer=_stored_title,
-                    isco_code=clf.primary.code or None,
-                    confidence_score=clf.primary.confidence,
-                )
-                db.add(_fb_resp)
+                _fb_resp = save_response_revision(db, session_id, "job_title", _stored_title,
+                    isco_code=clf.primary.code or None, confidence_score=clf.primary.confidence)
                 if clf.hitl_required:
                     db.flush()
                     _hq = HITLQueue(
@@ -1007,6 +1094,7 @@ def _send_message_impl(
             .filter(
                 SurveyResponse.session_id == session_id,
                 SurveyResponse.question_id == "job_title",
+                SurveyResponse.deleted_at.is_(None),
                 SurveyResponse.isco_code.isnot(None),
             )
             .order_by(SurveyResponse.id.desc())
@@ -1032,7 +1120,7 @@ def _send_message_impl(
     # ── Stage 4 re-classify: re-run ISCO with job_duties context once available ─
     # job_duties was just stored this turn and we already have job_title → re-run
     # so the classification benefits from the full duties description.
-    if "job_duties" in _fields_new and ctx.collected_data.get("job_title"):
+    if "job_title" not in _fields_new and _fields_new.intersection({"job_duties", "industry", "employment_sector", "employment_nature"}) and ctx.collected_data.get("job_title"):
         _stored_title = ctx.collected_data["job_title"].strip()
         try:
             _ctx_parts = [f"language={lp_result.detected_language}"]
@@ -1042,6 +1130,17 @@ def _send_message_impl(
                     _ctx_parts.append(_val)
             _isco_context = " | ".join(_ctx_parts)
             clf = _get_isco_classifier().classify(_stored_title, context=_isco_context, use_llm=not _FAST_MODE)
+            refined_response = save_response_revision(db, session_id, "job_title", _stored_title,
+                isco_code=clf.primary.code or None, confidence_score=clf.primary.confidence)
+            if clf.hitl_required:
+                entry = HITLQueue(session_id=session_id, response_id=refined_response.id,
+                    raw_text=_stored_title, ai_code=clf.primary.code, ai_confidence=clf.primary.confidence,
+                    ai_reasoning=getattr(clf, "reasoning", None),
+                    hierarchy_path=str(clf.hierarchy_path) if clf.hierarchy_path else None,
+                    priority="HIGH" if clf.primary.confidence < 0.50 else "MEDIUM",
+                    status="pending", created_at=datetime.utcnow())
+                db.add(entry)
+                _hitl_entries_this_turn.append(entry)
             # Replace previous classification with the enriched one
             isco_results = [ISCOResult(
                 job_title=_stored_title,
@@ -1211,6 +1310,15 @@ def _send_message_impl(
                                 confidence=_old_primary.confidence,
                             )],
                         )
+                        promoted_response = save_response_revision(db, session_id, "job_title", _old_primary.job_title,
+                            isco_code=_promoted.code, confidence_score=_promoted.confidence)
+                        _hitl_entries_this_turn = [entry for entry in _hitl_entries_this_turn if entry.status == "pending"]
+                        promoted_review = HITLQueue(session_id=session_id, response_id=promoted_response.id,
+                            raw_text=_old_primary.job_title, ai_code=_promoted.code, ai_confidence=_promoted.confidence,
+                            ai_reasoning=_coord_reason, priority="HIGH" if _promoted.confidence < 0.50 else "MEDIUM",
+                            status="pending", created_at=datetime.utcnow())
+                        db.add(promoted_review)
+                        _hitl_entries_this_turn.append(promoted_review)
                         _logger.info(
                             "cross_standard_coordinator revised ISCO for session=%s: %s",
                             session_id, _coord_reason,
@@ -1263,9 +1371,23 @@ def _send_message_impl(
                         _existing.ai_reasoning = f"{_existing.ai_reasoning or ''}\n{_sre_context}".strip()
                         _existing.priority = "HIGH"
                     else:
-                        _hq = HITLQueue(
+                        occupation = _active_occupation_response(db, session_id)
+                        previous = db.query(HITLQueue).filter(
+                            HITLQueue.session_id == session_id,
+                            HITLQueue.response_id == occupation.id if occupation else HITLQueue.response_id.is_(None),
+                            HITLQueue.ai_code == sc.isco_code,
+                            HITLQueue.status.in_(("pending", "reviewed")),
+                        ).order_by(HITLQueue.id.desc()).first()
+                        if previous and previous.status == "pending":
+                            previous.priority = "HIGH"
+                            if _sre_context not in (previous.ai_reasoning or ""):
+                                previous.ai_reasoning = f"{previous.ai_reasoning or ''}\n{_sre_context}".strip()
+                        elif previous and previous.status == "reviewed" and f"[ISCO={sc.isco_code} ISIC={sc.isic_section} ISCED={sc.isced_level}]" in (previous.ai_reasoning or ""):
+                            pass
+                        else:
+                            _hq = HITLQueue(
                             session_id=session_id,
-                            response_id=None,
+                            response_id=occupation.id if occupation else None,
                             raw_text=str(ctx.collected_data.get("job_title", "")),
                             ai_code=sc.isco_code,
                             ai_confidence=sc.score,
@@ -1275,8 +1397,8 @@ def _send_message_impl(
                             status="pending",
                             created_at=datetime.utcnow(),
                         )
-                        db.add(_hq)
-                        _hitl_entries_this_turn.append(_hq)
+                            db.add(_hq)
+                            _hitl_entries_this_turn.append(_hq)
                 except Exception as _sre_hitl_exc:
                     _logger.error(
                         "SRE HIGH-severity escalation failed to queue for session=%d: %s",
@@ -1340,13 +1462,13 @@ def _send_message_impl(
 
     # ── Stage 5: session completion ──────────────────────────────────────────
     session_completed = ctx.state == ConversationState.COMPLETING
+    _persist_collected_data(db, session_id, ctx.collected_data)
     if session_completed:
-        _persist_collected_data(db, session_id, ctx.collected_data)
         session.status = "completed"
         session.completed_at = datetime.utcnow()
         _contexts.pop(session_id, None)
 
-    db.commit()
+    _commit_session(db)
 
     # ── Save to PersonRegister for future pre-fill ───────────────────────────
     if session_completed:
@@ -1381,30 +1503,9 @@ def _send_message_impl(
 
     # ── ContextMemory: persist full session state to Redis after every turn ─────
     # Survives server restarts and allows context sharing across multiple workers.
-    # Real, live-caught bug (2026-09-16): this was a bare `except: pass` with
-    # zero logging, which let a genuine, 100%-reproducible failure (TurnRecord's
-    # then-mandatory `timestamp` field never being present in ctx.history's real
-    # {"role","content"} shape -- see context_memory.py's TurnRecord docstring
-    # for the full story) run silently, undetected, on every single turn. The
-    # underlying bug is fixed; this now logs (not raises) so a *future*
-    # persistence failure is never silent again -- still non-fatal to the
-    # respondent's turn, since losing durability is real but recoverable
-    # (in-process _contexts still serves the live session), unlike a hard 500.
-    try:
-        _get_context_memory().save_session(
-            session_id=session_id,
-            state=ctx.state.value,
-            language=ctx.language,
-            collected_fields=ctx.collected_data,
-            history=ctx.history,
-        )
-        if session_completed:
-            _get_context_memory().delete_session(session_id)
-    except Exception as _cm_err:
-        _logger.warning(
-            "ContextMemory.save_session failed (non-fatal, session=%s): %s",
-            session_id, _cm_err,
-        )
+    # Persistence and lock-ownership errors propagate; a worker must not report
+    # a successful turn when its shared state could not be saved.
+    _save_context(ctx)
 
     # ── AuditLogger: log message event ──────────────────────────────────────
     try:
@@ -1474,6 +1575,69 @@ def _send_message_impl(
 # Report endpoint
 # ---------------------------------------------------------------------------
 
+class LanguageUpdateBody(BaseModel):
+    language: str = Field(..., pattern=r"^(en|ar|ar-gulf|ur|hi|tl)$")
+
+
+def _conversation_snapshot(db, session, *, language=None):
+    db.refresh(session)
+    manager, _ = _get_agents()
+    ctx = _get_or_create_context(manager, session.id, session.language, db=db, sanitize=False)
+    if language:
+        ctx.language = language
+        session.language = language
+    if session.status == "completed":
+        ctx.state = ConversationState.COMPLETING
+    repaired = ConversationManager.sanitize_context(ctx)
+    initial = ctx.state == ConversationState.GREETING
+    if initial:
+        ctx.state = ConversationState.COLLECTING_INFO if any(
+            field not in ctx.collected_data for field in manager._get_field_order(ctx.collected_data)
+        ) else ConversationState.VALIDATING
+    # The renderer may reset one-turn flags/purge stray fields; render a copy.
+    rendered = copy.deepcopy(ctx)
+    reply = manager._greeting_with_first_question(rendered) if initial and not ctx.collected_data else manager._dev_stub_response(rendered)
+    if (language or repaired) and ctx.history and ctx.history[-1]["role"] == "assistant":
+        ctx.history[-1] = {"role": "assistant", "content": reply}
+    elif not ctx.history or language:
+        ctx.history.append({"role": "assistant", "content": reply})
+    else:
+        reply = next((turn["content"] for turn in reversed(ctx.history) if turn["role"] == "assistant"), reply)
+    fields = manager._get_field_order(ctx.collected_data)
+    next_field = ctx.clarification_target if ctx.state == ConversationState.CLARIFYING else (
+        next((field for field in fields if field not in ctx.collected_data), None)
+        if ctx.state == ConversationState.COLLECTING_INFO else None
+    )
+    answered = sum(field in ctx.collected_data for field in fields)
+    payload = MessageOut(
+        reply=reply, state=ctx.state.value, next_field=next_field,
+        detected_language=ctx.language, is_code_switched=False, entities=[],
+        isco_classifications=[], session_completed=session.status == "completed",
+        collected_data={key: str(value) for key, value in ctx.collected_data.items()},
+        survey_progress=SurveyProgress(answered=answered, total=max(len(fields), 1),
+            pct=round(answered / max(len(fields), 1) * 100), current_field=next_field),
+    ).model_dump()
+    payload.update(history=list(ctx.history), language=ctx.language,
+        prefilled_fields=list(ctx.prefilled_fields))
+    _save_context(ctx)
+    _commit_session(db)
+    return payload
+
+
+@router.get("/sessions/{session_id}/conversation", summary="Restore the current interview without submitting an answer")
+def get_conversation(session_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    with _session_turn(session_id):
+        session = _get_owned_session(db, session_id, current_user.id)
+        return _conversation_snapshot(db, session)
+
+
+@router.patch("/sessions/{session_id}/language", summary="Change interview language without advancing the question")
+def update_conversation_language(session_id: int, body: LanguageUpdateBody, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    with _session_turn(session_id):
+        session = _get_owned_session(db, session_id, current_user.id)
+        return _conversation_snapshot(db, session, language=body.language)
+
+
 @router.get(
     "/sessions/{session_id}/report",
     response_model=SurveyReport,
@@ -1491,19 +1655,19 @@ def get_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    session = _get_owned_session(db, session_id, current_user.id)
-
-    if session.status != "completed":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Report is only available for completed sessions.",
-        )
-
     try:
-        report = get_report_generator().generate(
-            session_id=session_id,
-            regenerate=regenerate,
-        )
+        with _session_turn(session_id):
+            session = _get_owned_session(db, session_id, current_user.id)
+            if session.status != "completed":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Report is only available for completed sessions.",
+                )
+            report = get_report_generator().generate(
+                session_id=session_id, regenerate=regenerate, write_guard=_check_session_ownership,
+            )
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1534,6 +1698,11 @@ def submit_response(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    with _session_turn(session_id):
+        return _submit_response_impl(session_id, body, db, current_user)
+
+
+def _submit_response_impl(session_id, body, db, current_user):
     session = _get_owned_session(db, session_id, current_user.id)
 
     if session.status == "completed":
@@ -1542,15 +1711,10 @@ def submit_response(
             detail="Cannot add responses to a completed session.",
         )
 
-    response = SurveyResponse(
-        session_id=session.id,
-        question_id=body.question_id,
-        answer=body.answer,
-        isco_code=body.isco_code,
-        confidence_score=body.confidence_score,
-    )
-    db.add(response)
-    db.commit()
+    response = save_response_revision(db, session.id, body.question_id, body.answer,
+        isco_code=body.isco_code, confidence_score=body.confidence_score)
+    _sync_raw_response(db, session, response)
+    _commit_session(db)
     db.refresh(response)
     return response
 
@@ -1592,7 +1756,12 @@ def update_response(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _get_owned_session(db, session_id, current_user.id)
+    with _session_turn(session_id):
+        return _update_response_impl(session_id, response_id, body, db, current_user)
+
+
+def _update_response_impl(session_id, response_id, body, db, current_user):
+    session = _get_owned_session(db, session_id, current_user.id)
     response = db.query(SurveyResponse).filter(
         SurveyResponse.id == response_id,
         SurveyResponse.session_id == session_id,
@@ -1605,11 +1774,16 @@ def update_response(
             detail="Response not found.",
         )
 
-    response.question_id = body.question_id
-    response.answer = body.answer
-    response.isco_code = body.isco_code
-    response.confidence_score = body.confidence_score
-    db.commit()
+    if response.question_id != body.question_id:
+        raise HTTPException(status_code=422, detail="A response update must keep its original question_id.")
+    original_id = response.id
+    response = save_response_revision(db, session_id, body.question_id, body.answer,
+        isco_code=body.isco_code, confidence_score=body.confidence_score)
+    if response.id != original_id and response.supersedes_id is None:
+        response.supersedes_id = original_id
+    _sync_raw_response(db, session, response)
+    _reassess_quality(db, session_id)
+    _commit_session(db)
     db.refresh(response)
     return response
 
@@ -1624,7 +1798,7 @@ def _get_owned_session(db: Session, session_id: int, user_id: int) -> SurveySess
         SurveySession.id == session_id,
         SurveySession.user_id == user_id,
         SurveySession.deleted_at.is_(None),
-    ).first()
+    ).populate_existing().first()
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1637,29 +1811,96 @@ def _get_or_create_context(
     mgr: ConversationManager,
     session_id: int,
     language: str,
+    *,
+    db: Optional[Session] = None,
+    sanitize: bool = True,
 ) -> ConversationContext:
-    """Return the cached ConversationContext for this session.
-
-    Priority: in-process dict → Redis (ContextMemory) → fresh context.
-    Redis restore allows conversation state to survive server restarts
-    and works across multiple worker processes.
-    """
-    if session_id not in _contexts:
-        try:
-            mem = _get_context_memory().load_session(session_id)
-            if mem:
-                _contexts[session_id] = ConversationContext(
-                    session_id=session_id,
-                    language=mem.language,
-                    state=ConversationState(mem.state),
-                    collected_data=dict(mem.collected_fields),
-                    history=[{"role": t.role, "content": t.content} for t in mem.history],
-                )
-            else:
-                _contexts[session_id] = mgr.new_context(session_id, language)
-        except Exception:
-            _contexts[session_id] = mgr.new_context(session_id, language)
+    """Refresh shared state on every turn, while holding the session lock."""
+    restored = False
+    try:
+        mem = _get_context_memory().load_session(session_id)
+        if mem:
+            _contexts[session_id] = ConversationContext(
+                session_id=session_id, language=mem.language,
+                state=ConversationState(mem.state), collected_data=dict(mem.collected_fields),
+                history=[{"role": t.role, "content": t.content} for t in mem.history],
+                clarification_target=mem.clarification_target,
+                clarification_count=mem.clarification_count,
+                is_returning=mem.is_returning,
+                prefilled_fields=mem.prefilled_fields,
+                correction_applied=mem.correction_applied,
+                corrected_fields=set(mem.corrected_fields),
+                correction_rejected_field=mem.correction_rejected_field,
+                correction_no_target=mem.correction_no_target,
+            )
+            restored = True
+    except RedisError:
+        raise
+    except (TypeError, ValueError, AttributeError):
+        # Recover malformed or expired cache entries from persisted answers.
+        pass
+    if not restored and db is not None:
+        context = mgr.new_context(session_id, language)
+        context.collected_data = {row.question_id: row.answer for row in active_responses(db, session_id)}
+        if context.collected_data:
+            context.state = ConversationState.COLLECTING_INFO if any(
+                field not in context.collected_data for field in mgr._get_field_order(context.collected_data)
+            ) else ConversationState.VALIDATING
+        _contexts[session_id] = context
+    elif session_id not in _contexts:
+        _contexts[session_id] = mgr.new_context(session_id, language)
+    if sanitize:
+        ConversationManager.sanitize_context(_contexts[session_id])
     return _contexts[session_id]
+
+
+def _save_context(ctx):
+    _check_session_ownership()
+    return _get_context_memory().save_session(
+        session_id=ctx.session_id, state=ctx.state.value, language=ctx.language,
+        collected_fields=ctx.collected_data, history=ctx.history,
+        clarification_target=ctx.clarification_target, clarification_count=ctx.clarification_count,
+        is_returning=ctx.is_returning, correction_applied=ctx.correction_applied,
+        corrected_fields=ctx.corrected_fields, correction_rejected_field=ctx.correction_rejected_field,
+        correction_no_target=ctx.correction_no_target,
+        prefilled_fields=ctx.prefilled_fields,
+    )
+
+
+def _active_occupation_response(db, session_id):
+    return db.query(SurveyResponse).filter(
+        SurveyResponse.session_id == session_id,
+        SurveyResponse.question_id.in_(("job_title", "last_job_title")),
+        SurveyResponse.deleted_at.is_(None),
+    ).order_by(SurveyResponse.id.desc()).first()
+
+
+def _sync_raw_response(db, session, response):
+    if response.question_id in ConversationManager._EXACT_QUESTIONS_EN:
+        manager, _ = _get_agents()
+        ctx = _get_or_create_context(manager, session.id, session.language, db=db)
+        ctx.collected_data[response.question_id] = response.answer
+        ConversationManager.sanitize_context(ctx)
+        _save_context(ctx)
+    if response.question_id in ("job_title", "last_job_title") and response.isco_code and (response.confidence_score or 0) < 0.70:
+        pending = db.query(HITLQueue).filter(HITLQueue.response_id == response.id, HITLQueue.status == "pending").first()
+        if pending is None:
+            db.add(HITLQueue(session_id=session.id, response_id=response.id, raw_text=response.answer,
+                ai_code=response.isco_code, ai_confidence=response.confidence_score or 0,
+                ai_reasoning="Low-confidence saved occupation classification.",
+                priority="HIGH" if (response.confidence_score or 0) < 0.5 else "MEDIUM",
+                status="pending", created_at=datetime.utcnow()))
+
+
+def _reassess_quality(db, session_id, reviewer=None, notes=None):
+    flagged, metrics, score, review_status = HITLQualityManager.assess_responses(session_id, active_responses(db, session_id))
+    db.add(QualityReview(session_id=session_id, quality_score=score,
+        passed=review_status.value == "pass", flagged_count=len(flagged),
+        flagged_items_json=json.dumps([flag.model_dump() for flag in flagged]),
+        escalated=review_status.value == "escalated",
+        escalation_reason=HITLQualityManager._escalation_reason(score, flagged) if review_status.value == "escalated" else None,
+        reviewed_by=reviewer, reviewer_notes=notes, created_at=datetime.utcnow(),
+        reviewed_at=datetime.utcnow() if reviewer is not None else None))
 
 
 def _ensure_isco_classification(
@@ -1708,8 +1949,9 @@ def _ensure_isco_classification(
         .filter(
             SurveyResponse.session_id == session_id,
             SurveyResponse.question_id == occ_field,
+            SurveyResponse.deleted_at.is_(None),
         )
-        .first()
+        .order_by(SurveyResponse.id.desc()).first()
     )
     if occ_row is None or occ_row.isco_code:
         return  # already classified — nothing to do
@@ -1721,7 +1963,9 @@ def _ensure_isco_classification(
         )
         occ_row.isco_code        = clf.primary.code or None
         occ_row.confidence_score = clf.primary.confidence
-        db.commit()
+        _commit_session(db)
+    except RedisError:
+        raise
     except Exception:
         pass  # classification failure must never break session completion
 
@@ -1735,11 +1979,12 @@ def _trigger_quality_review(session_id: int) -> None:
     flagged_count fields).  Called after _ensure_isco_classification()
     so the quality metrics see the most up-to-date ISCO codes.
 
-    Silently swallows all errors — a failed quality review must never
-    prevent the survey completion response from reaching the frontend.
+    Model failures leave completion intact; storage/ownership failures propagate.
     """
     try:
-        _get_hitl_quality_manager().review_session(session_id)
+        _get_hitl_quality_manager().review_session(session_id, write_guard=_check_session_ownership)
+    except RedisError:
+        raise
     except Exception:
         pass
 
@@ -1755,31 +2000,22 @@ def _persist_collected_data(
     Fields: employment_status, job_title, industry, hours_per_week,
             employment_type (and any others the FSM extracted).
 
-    job_title is skipped if the ISCO classification loop already wrote a row
-    for it (those rows carry the ISCO code and are more complete).  If no
-    ISCO row exists yet — because NER missed the entity — we fall back to
-    writing the raw FSM-extracted value.
+    Unchanged active answers retain their classification. Changed answers
+    create revisions; fields removed by questionnaire routing are retired.
     """
-    existing_job_title = (
-        db.query(SurveyResponse)
-        .filter(
-            SurveyResponse.session_id == session_id,
-            SurveyResponse.question_id == "job_title",
-        )
-        .first()
-    ) is not None
-
+    existing = {row.question_id: row for row in active_responses(db, session_id)}
     for field, value in collected_data.items():
         if not value:
             continue
-        # Avoid duplicate: ISCO loop already wrote job_title with code + confidence
-        if field == "job_title" and existing_job_title:
+        row = existing.get(field)
+        if row and row.answer == str(value):
             continue
-        db.add(SurveyResponse(
-            session_id=session_id,
-            question_id=field,
-            answer=str(value),
-        ))
+        save_response_revision(db, session_id, field, value)
+    # A changed routing answer can remove fields from the active path.
+    for field, row in existing.items():
+        if field not in collected_data:
+            retire_response(db, row)
+            invalidate_reports(db, session_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1829,9 +2065,12 @@ class HITLReviewResponse(BaseModel):
 def get_hitl_queue(
     status_filter: str = "pending",
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_reviewer),
 ):
-    q = db.query(HITLQueue)
+    _require_reviewer(current_user)
+    q = db.query(HITLQueue).join(SurveySession, HITLQueue.session_id == SurveySession.id).join(User, SurveySession.user_id == User.id).filter(
+        SurveySession.deleted_at.is_(None), User.deleted_at.is_(None), User.is_active.is_(True),
+    )
     if status_filter != "all":
         q = q.filter(HITLQueue.status == status_filter)
     return (
@@ -1860,9 +2099,23 @@ def get_hitl_queue(
 def submit_hitl_review(
     body: HITLReviewBody,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_reviewer),
 ):
+    _require_reviewer(current_user)
     item = db.query(HITLQueue).filter(HITLQueue.id == body.escalation_id).first()
+    if not item or not item.session_id:
+        raise HTTPException(status_code=404, detail="Review item not found.")
+    with _session_turn(item.session_id):
+        db.expire_all()
+        return _submit_hitl_review_impl(body, db, current_user)
+
+
+def _submit_hitl_review_impl(body, db, current_user):
+    _require_reviewer(current_user)
+    item = db.query(HITLQueue).join(SurveySession, HITLQueue.session_id == SurveySession.id).join(User, SurveySession.user_id == User.id).filter(
+        HITLQueue.id == body.escalation_id, SurveySession.deleted_at.is_(None),
+        User.deleted_at.is_(None), User.is_active.is_(True),
+    ).first()
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1883,6 +2136,13 @@ def submit_hitl_review(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="code is required when action is 'correct'.",
         )
+    if body.action == "correct" and (len(body.code) != 4 or not body.code.isascii() or not body.code.isdigit()):
+        raise HTTPException(status_code=422, detail="code must contain four ISCO-08 digits.")
+
+    resp = db.query(SurveyResponse).filter(SurveyResponse.id == item.response_id,
+        SurveyResponse.session_id == item.session_id, SurveyResponse.deleted_at.is_(None)).first() if item.response_id else _active_occupation_response(db, item.session_id)
+    if body.action != "reject" and resp is None:
+        raise HTTPException(status_code=409, detail="No active occupation answer is linked to this review.")
 
     final_code: Optional[str] = None
     if body.action == "approve":
@@ -1897,18 +2157,18 @@ def submit_hitl_review(
     item.reviewer_notes = body.notes
     item.reviewed_by = current_user.id
     item.reviewed_at = datetime.utcnow()
+    db.flush()
 
-    # Propagate the final code to the corresponding SurveyResponse row
-    if final_code and item.response_id:
-        resp = db.query(SurveyResponse).filter(
-            SurveyResponse.id == item.response_id,
-            SurveyResponse.deleted_at.is_(None),
-        ).first()
-        if resp:
-            resp.isco_code = final_code
-            resp.confidence_score = 1.0  # human-reviewed = 100% confidence
+    if resp:
+        revised = save_response_revision(db, item.session_id, resp.question_id, resp.answer,
+            isco_code=final_code, confidence_score=1.0 if final_code else None)
+        item.response_id = revised.id
+    invalidate_reports(db, item.session_id)
+    # Recompute deterministic quality from current active revisions in this
+    # transaction; no model call is needed for a human review decision.
+    _reassess_quality(db, item.session_id, reviewer=current_user.id, notes=body.notes)
 
-    db.commit()
+    _commit_session(db)
 
     return HITLReviewResponse(
         escalation_id=body.escalation_id,

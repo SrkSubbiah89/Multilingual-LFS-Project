@@ -1,0 +1,22 @@
+{
+  "finding": 9,
+  "source_csv": "eval/results/wisco_groq_zeroshot/translation_baseline/20260909T202439Z_flat.csv",
+  "source_sha256": "ed7677cbc63ef300e0ad869fcad9ea1920bc75e8861cf4cf76757673640a952d",
+  "recorded_embedding_model_versions": [
+    "intfloat/multilingual-e5-small"
+  ],
+  "claimed_method_labels": [
+    "flat_isco08_official_ilo2021_v1_enriched_e5large"
+  ],
+  "profile_expected_embedding_model": "intfloat/multilingual-e5-large",
+  "executed_embedding_model": null,
+  "provenance_status": "historical_execution_identity_unresolved",
+  "config_hash_status": "does_not_reliably_identify_encoder_before_harness_fix",
+  "affected_downstream_manifests": [],
+  "downstream_manifest_correction": {
+    "model_versions.embedding": null,
+    "reason": "Original manifests do not resolve the executed encoder; retain this explicit uncertainty when consuming them."
+  },
+  "accuracy_changed": false,
+  "note": "The harness recorded a constant e5-small encoder. The intended profile label is insufficient to prove executed identity; independent startup/model or collection evidence is required."
+}

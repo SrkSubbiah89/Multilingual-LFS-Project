@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-10-05T15:29:11.844Z",
+  "frontend_url": "http://127.0.0.1:3000",
+  "smoke_api_url": "http://127.0.0.1:8001",
+  "scope": "Real Chromium against the existing frontend; original API requests proxied exclusively to isolated fixtures. Proxy supplies CORS headers. OTP request delivery is intercepted; OTP verification uses the seeded smoke account.",
+  "proxied_api_origins": [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "https://easy-ronald-subscriber-binary.trycloudflare.com"
+  ],
+  "checks": [
+    {
+      "name": "mobile chat input and language control remain usable",
+      "status": "failed",
+      "error": "No language selector is visible at a 390 px phone width",
+      "duration_ms": 93
+    },
+    {
+      "name": "no JavaScript runtime errors",
+      "status": "passed",
+      "duration_ms": 2
+    }
+  ],
+  "runtime_errors": [],
+  "unexpected_requests": [],
+  "screenshots": [],
+  "screenshot_note": "The initial screenshot was overwritten by the separate mobile-after run. The recorded failed browser check is the retained before evidence.",
+  "browser": "154.0.8037.93",
+  "passed": 1,
+  "failed": 1
+}

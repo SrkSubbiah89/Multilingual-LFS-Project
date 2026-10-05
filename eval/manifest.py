@@ -404,6 +404,19 @@ def build_manifest(
 
     split_manifest_hash = sha256_of_file(split_manifest_path) or None if split_manifest_path else None
 
+    resolved_model_versions = dict(model_versions or {})
+    embedding_identities = {
+        r["embedding_model_version"].strip() for r in case_rows
+        if isinstance(r.get("embedding_model_version"), str) and r["embedding_model_version"].strip()
+    }
+    if len(embedding_identities) > 1:
+        raise ValueError("case rows contain different embedding_model_version values; split the runs")
+    if embedding_identities:
+        row_identity = next(iter(embedding_identities))
+        if resolved_model_versions.get("embedding") not in (None, row_identity):
+            raise ValueError("manifest embedding identity conflicts with the measured case rows")
+        resolved_model_versions["embedding"] = row_identity
+
     manifest = ExperimentRunManifest(
         run_id=run_id,
         utc_timestamp=utc_timestamp or datetime.now(timezone.utc).isoformat(),
@@ -421,7 +434,7 @@ def build_manifest(
         os_name=f"{platform.system()} {platform.release()}",
         python_version=sys.version.split()[0],
         dependency_versions=dependency_versions if dependency_versions is not None else probe_dependency_versions(),
-        model_versions=model_versions or {},
+        model_versions=resolved_model_versions,
         retrieval_params=retrieval_params or {},
         llm_params=llm_params or {},
     )

@@ -313,7 +313,12 @@ class HITLQualityManager:
     # Public API
     # ------------------------------------------------------------------
 
-    def review_session(self, session_id: int) -> QualityReport:
+    def review_session(
+        self,
+        session_id: int,
+        *,
+        write_guard: Optional[Callable[[], None]] = None,
+    ) -> QualityReport:
         """
         Run a full quality review for one survey session.
 
@@ -326,6 +331,9 @@ class HITLQualityManager:
         ----------
         session_id : int
             Primary key of the ``SurveySession`` to review.
+        write_guard : callable | None
+            Validate session lock ownership before persisting the assessment.
+            A failed guard propagates without saving the review.
 
         Returns
         -------
@@ -360,6 +368,7 @@ class HITLQualityManager:
             flagged=flagged,
             escalated=(status == ReviewStatus.ESCALATED),
             escalation_reason=reason,
+            write_guard=write_guard,
         )
 
         return QualityReport(
@@ -463,7 +472,7 @@ class HITLQualityManager:
         try:
             return (
                 db.query(SurveyResponse)
-                .filter(SurveyResponse.session_id == session_id)
+                .filter(SurveyResponse.session_id == session_id, SurveyResponse.deleted_at.is_(None))
                 .order_by(SurveyResponse.id.asc())
                 .all()
             )
@@ -480,6 +489,32 @@ class HITLQualityManager:
     # be flagged as MISSING_ISCO.
     _ISCO_QUESTION_IDS: frozenset[str] = frozenset({"job_title", "last_job_title"})
 
+    @classmethod
+    def _expects_isco(cls, response):
+        return response.question_id in cls._ISCO_QUESTION_IDS and not (
+            response.question_id == "last_job_title" and str(getattr(response, "answer", "")).strip().lower() in {"never_worked", "n/a", "not_applicable"}
+        )
+
+    @classmethod
+    def _missing_occupation_fields(cls, responses):
+        answers = {row.question_id: str(getattr(row, "answer", "")).strip().lower() for row in responses}
+        expected = set()
+        if answers.get("employment_status") == "employed":
+            expected.add("job_title")
+        elif answers.get("ever_worked") and answers["ever_worked"] not in {"never_worked", "n/a", "not_applicable"}:
+            expected.add("last_job_title")
+        return expected - set(answers)
+
+    @classmethod
+    def assess_responses(cls, session_id, responses):
+        """Assess active responses without constructing an LLM-backed agent."""
+        manager = object.__new__(cls)
+        manager._low_conf_thresh = _LOW_CONFIDENCE_THRESHOLD
+        flagged = manager._flag_items(responses)
+        metrics = manager._compute_metrics(session_id, responses, flagged)
+        score = manager._compute_quality_score(metrics)
+        return flagged, metrics, score, manager._determine_status(score, flagged)
+
     def _flag_items(self, responses: list) -> list[FlaggedItem]:
         """
         Inspect each response and return items that need human attention.
@@ -493,7 +528,7 @@ class HITLQualityManager:
         flagged: list[FlaggedItem] = []
         for r in responses:
             has_isco = bool(r.isco_code and str(r.isco_code).strip())
-            is_isco_field = r.question_id in self._ISCO_QUESTION_IDS
+            is_isco_field = self._expects_isco(r)
 
             if is_isco_field and not has_isco:
                 flagged.append(FlaggedItem(
@@ -519,6 +554,10 @@ class HITLQualityManager:
                     ),
                     confidence=r.confidence_score,
                 ))
+        for field in self._missing_occupation_fields(responses):
+            reference = next(row for row in responses if row.question_id in ("employment_status", "ever_worked"))
+            flagged.append(FlaggedItem(response_id=reference.id, question_id=field,
+                reason=FlagReason.MISSING_ISCO, detail=f"Required occupation answer '{field}' is missing.", confidence=None))
         return flagged
 
     def _compute_metrics(
@@ -542,8 +581,9 @@ class HITLQualityManager:
         # Only job_title / last_job_title are expected to carry ISCO codes.
         isco_expected = sum(
             1 for r in responses
-            if r.question_id in self._ISCO_QUESTION_IDS
+            if self._expects_isco(r)
         )
+        isco_expected += len(self._missing_occupation_fields(responses))
         isco_cov  = with_isco / isco_expected if isco_expected > 0 else 0.0
         low_conf  = sum(1 for s in scores if s < self._low_conf_thresh)
         missing   = max(0, isco_expected - with_isco)
@@ -577,6 +617,10 @@ class HITLQualityManager:
         """
         if metrics.total_responses == 0:
             return 0.0
+        if metrics.responses_with_isco == 0 and metrics.missing_isco_count == 0:
+            # No occupational assessment applies (e.g. never worked). This
+            # passes the occupation checks without claiming model confidence.
+            return 1.0
         low_ratio = metrics.low_confidence_count / max(metrics.responses_with_score, 1)
         score = (
             _WEIGHT_CONFIDENCE       * metrics.avg_confidence
@@ -634,6 +678,7 @@ class HITLQualityManager:
         flagged:           list[FlaggedItem],
         escalated:         bool,
         escalation_reason: Optional[str],
+        write_guard: Optional[Callable[[], None]] = None,
     ) -> QualityReview:
         """Persist a ``QualityReview`` row and return it with a populated ``id``."""
         items_json = json.dumps([item.model_dump() for item in flagged])
@@ -650,6 +695,8 @@ class HITLQualityManager:
         db = self._sf()
         try:
             db.add(row)
+            if write_guard is not None:
+                write_guard()
             db.commit()
             db.refresh(row)
             return row

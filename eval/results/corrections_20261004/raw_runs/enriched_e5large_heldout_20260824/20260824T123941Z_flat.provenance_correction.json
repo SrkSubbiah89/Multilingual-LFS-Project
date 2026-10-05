@@ -1,0 +1,31 @@
+{
+  "finding": 9,
+  "source_csv": "eval/results/raw_runs/enriched_e5large_heldout_20260824/20260824T123941Z_flat.csv",
+  "source_sha256": "2ec7befd1ee7a1135e0bc31db2dae2c09920c81f9f73c915a1748efc72be95b9",
+  "recorded_embedding_model_versions": [
+    "intfloat/multilingual-e5-small"
+  ],
+  "claimed_method_labels": [
+    "flat_isco08_official_ilo2021_v1_enriched_e5large"
+  ],
+  "profile_expected_embedding_model": "intfloat/multilingual-e5-large",
+  "executed_embedding_model": null,
+  "provenance_status": "historical_execution_identity_unresolved",
+  "config_hash_status": "does_not_reliably_identify_encoder_before_harness_fix",
+  "affected_downstream_manifests": [
+    {
+      "path": "eval/results/raw_runs/enriched_e5large_heldout_20260824/manifests/manifest_enriched_e5large_heldout_20260824.csv",
+      "sha256": "b33bc2c4104eab31f119707c92a15528b5d89aef14cd6b256db9dbdc02451967"
+    },
+    {
+      "path": "eval/results/raw_runs/enriched_e5large_heldout_20260824/manifests/manifest_enriched_e5large_heldout_20260824.jsonl",
+      "sha256": "c72270bfe565c0366e3191741718ade18179f3b47b4cf344f356298946f28d55"
+    }
+  ],
+  "downstream_manifest_correction": {
+    "model_versions.embedding": null,
+    "reason": "Original manifests do not resolve the executed encoder; retain this explicit uncertainty when consuming them."
+  },
+  "accuracy_changed": false,
+  "note": "The harness recorded a constant e5-small encoder. The intended profile label is insufficient to prove executed identity; independent startup/model or collection evidence is required."
+}

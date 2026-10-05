@@ -107,6 +107,87 @@ class TestCorrectiveRetryDisabledByDefault:
 
 
 class TestCorrectiveRetryEnabled:
+    @pytest.mark.parametrize("initial_error,retry_error", [(True, False), (False, True), (True, True)])
+    def test_retry_exports_failed_calls_and_final_recovery(self, initial_error, retry_error, clf_factory,
+                                                         mock_hier_store, mock_crew_sequence):
+        import json
+        from types import SimpleNamespace
+        from backend.agents.isco_classifier import Crew
+        from eval.run_eval import run_one_case
+
+        mock_hier_store.search.side_effect = [make_result("2512", 0.40), make_result("2221", 0.85)]
+        mock_crew_sequence.extend([
+            TimeoutError("initial timeout") if initial_error else '{"selected_code":"2512"}',
+            '{"reformulated_query":"nursing duties"}',
+            TimeoutError("retry timeout") if retry_error else '{"selected_code":"2221"}',
+        ])
+        Crew.return_value.calculate_usage_metrics.return_value = SimpleNamespace(
+            prompt_tokens=100, completion_tokens=20, total_tokens=120)
+        clf = clf_factory(enable_corrective_retry=True)
+        clf._llm.model = "anthropic/claude-3-5-sonnet-20241022"
+        result = run_one_case(clf, None, None, None, 0, "c1", "unclear duties", "en", "2221", "", "", "test")
+
+        assert (result.prompt_tokens, result.completion_tokens, result.retry_count) == (300, 60, 1)
+        assert result.pred_isco_4digit == json.loads(result.reranker_output)["code"] == "2221"
+        assert result.winning_attempt == "corrective"
+        assert result.degraded is retry_error
+        assert result.timed_out_flag is retry_error
+        calls = json.loads(result.llm_calls)
+        assert calls[0]["response_received"] is not initial_error
+        assert calls[2]["response_received"] is not retry_error
+        assert ("error" in calls[0]) is initial_error
+        assert ("error" in calls[2]) is retry_error
+
+    @pytest.mark.parametrize("traced", [True, False])
+    @pytest.mark.parametrize("accepted", [True, False])
+    def test_retry_result_evidence_matches_selected_attempt(self, traced, accepted, clf_factory, mock_hier_store, mock_crew_sequence):
+        original = make_result_with_candidates([("2512", 0.40), ("2511", 0.395)])
+        retry = make_result_with_candidates([("2221", 0.85), ("2222", 0.60 if accepted else 0.849)])
+        mock_hier_store.search.side_effect = [original, retry]
+        mock_crew_sequence.extend([
+            '{"selected_code": "2512", "reasoning": "initial"}',
+            '{"reformulated_query": "nursing duties"}',
+            '{"selected_code": "2221", "reasoning": "retry"}',
+        ])
+        result = clf_factory(enable_corrective_retry=True).classify("unclear duties", trace={} if traced else None)
+        expected = retry if accepted else original
+        assert result.primary.code == expected.code
+        assert result.hierarchy_path == expected.hierarchy_path
+        assert result.stage_confidences == expected.stage_confidences
+        assert [a.code for a in result.alternatives] == [expected.top_candidates[1].code]
+
+    @pytest.mark.parametrize("accepted", [True, False])
+    def test_retry_exports_total_usage_and_winning_decision(self, accepted, clf_factory, mock_hier_store, mock_crew_sequence):
+        from types import SimpleNamespace
+        from backend.agents.isco_classifier import Crew
+        from eval.run_eval import run_one_case
+
+        weak = make_result("2512", 0.40)
+        retry = make_result("2221", 0.85 if accepted else 0.35)
+        mock_hier_store.search.side_effect = [weak, retry]
+        mock_crew_sequence.extend([
+            '{"selected_code": "2512", "reasoning": "initial"}',
+            '{"reformulated_query": "nursing duties"}',
+            '{"selected_code": "2221", "reasoning": "retry"}',
+        ])
+        Crew.return_value.calculate_usage_metrics.return_value = SimpleNamespace(
+            prompt_tokens=100, completion_tokens=20, total_tokens=120,
+        )
+        clf = clf_factory(enable_corrective_retry=True)
+        clf._llm.model = "anthropic/claude-3-5-sonnet-20241022"
+        result = run_one_case(clf, None, None, None, 0, "c1", "unclear duties", "en", "2221", "", "", "test")
+
+        import json
+        assert (result.prompt_tokens, result.completion_tokens) == (300, 60)
+        assert result.estimated_cost_usd == pytest.approx(0.0018)
+        assert result.retry_count == 1
+        assert result.pred_isco_4digit == ("2221" if accepted else "2512")
+        assert json.loads(result.reranker_output)["code"] == result.pred_isco_4digit
+        assert result.winning_attempt == ("corrective" if accepted else "initial")
+        assert [c["purpose"] for c in json.loads(result.llm_calls)] == ["reranking", "query_reformulation", "reranking"]
+        assert json.loads(result.corrective_retry_attempts)[0]["accepted"] is accepted
+        assert mock_hier_store.search.call_count == 2
+
     def test_high_confidence_never_triggers_retry(self, clf_factory, mock_hier_store, mock_crew_sequence):
         strong = make_result("2512", 0.95)  # >= _HIGH_CONFIDENCE_THRESHOLD, skips rerank entirely
         mock_hier_store.search.return_value = strong
@@ -203,6 +284,19 @@ class TestGapAwareConfidenceDisabledByDefault:
 
 
 class TestGapAwareConfidenceEnabled:
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_confidence_shortcut_still_applies_enabled_gap_rule(self, enabled, clf_factory, mock_hier_store):
+        mock_hier_store.search.return_value = make_result_with_candidates([("2512", 0.950), ("2511", 0.949)])
+        clf = clf_factory(use_gap_aware_confidence=enabled)
+        trace = {}
+        result = clf.classify("nearly tied occupations", trace=trace)
+        assert result.hitl_required is enabled
+        assert result.primary.code == "2512"
+        assert trace["gap_ambiguous"] is True
+        assert trace["reranker_fired"] is False
+        assert "Unambiguous" not in result.reasoning
+        assert ("human review is required" in result.reasoning) is enabled
+
     def test_thin_gap_high_confidence_becomes_hitl_when_enabled(self, clf_factory, mock_hier_store, mock_crew_sequence):
         thin_gap = make_result_with_candidates([("2512", 0.85), ("2511", 0.847)])
         mock_hier_store.search.return_value = thin_gap
@@ -334,7 +428,7 @@ class TestGapBasedAcceptanceRule:
         )
 
         assert result is not None
-        retry_match, _ = result
+        retry_match, _, _ = result
         assert retry_match.code == "9999"  # accepted despite lower raw confidence
 
     def test_no_gap_available_falls_back_to_confidence_rule(self, clf_factory, mock_hier_store, mock_crew_sequence):
@@ -356,7 +450,7 @@ class TestGapBasedAcceptanceRule:
         )
 
         assert result is not None
-        retry_match, _ = result
+        retry_match, _, _ = result
         assert retry_match.confidence > current_match.confidence  # fallback rule applied correctly
 
 
@@ -401,6 +495,43 @@ class TestQueryPlanningDisabledByDefault:
 
 
 class TestQueryPlanningEnabled:
+    @pytest.mark.parametrize("accepted", [True, False])
+    def test_query_plan_exports_all_usage_and_selected_attempt(self, accepted, monkeypatch, clf_factory, mock_hier_store,
+                                                               mock_crew_sequence, mock_query_planner_crew):
+        import json
+        from types import SimpleNamespace
+        from backend.agents.isco_classifier import Crew as RerankerCrew
+        from backend.agents.query_planner import Crew as PlannerCrew
+        from eval.run_eval import run_one_case
+
+        original = make_result_with_candidates([("2512", 0.40), ("2511", 0.395)])
+        retry1 = make_result_with_candidates([("2221", 0.55), ("2222", 0.30 if accepted else 0.549)])
+        retry2 = make_result_with_candidates([("2221", 0.85), ("2222", 0.60 if accepted else 0.849)])
+        mock_hier_store.search.side_effect = [original, retry1, retry2]
+        mock_crew_sequence.extend(['{"selected_code":"2512"}', '{"selected_code":"2221"}'])
+        mock_query_planner_crew.append("nurse duties\nclinical work")
+        RerankerCrew.return_value.calculate_usage_metrics.return_value = SimpleNamespace(
+            prompt_tokens=100, completion_tokens=20, total_tokens=120)
+        PlannerCrew.return_value.calculate_usage_metrics.return_value = SimpleNamespace(
+            prompt_tokens=50, completion_tokens=10, total_tokens=60)
+        monkeypatch.setattr("backend.agents.query_planner.get_llm",
+                            lambda *a, **kw: SimpleNamespace(model="anthropic/claude-3-5-haiku-20241022"))
+        clf = clf_factory(enable_query_planning=True)
+        clf._llm.model = "anthropic/claude-3-5-sonnet-20241022"
+        result = run_one_case(clf, None, None, None, 0, "c1", "unclear duties", "en", "2221", "", "", "test")
+
+        assert (result.prompt_tokens, result.completion_tokens, result.retry_count) == (250, 50, 1)
+        assert result.estimated_cost_usd == pytest.approx(0.00128)
+        assert result.pred_isco_4digit == ("2221" if accepted else "2512")
+        assert result.pred_confidence == (0.85 if accepted else 0.40)
+        assert json.loads(result.reranker_output)["code"] == result.pred_isco_4digit
+        assert result.winning_attempt == ("query_plan" if accepted else "initial")
+        assert [c["purpose"] for c in json.loads(result.llm_calls)] == ["reranking", "query_decomposition", "reranking"]
+        attempt = json.loads(result.query_plan_attempts)[0]
+        assert attempt["accepted"] is accepted
+        assert [r["query"] for r in attempt["retrievals"]] == ["nurse duties", "clinical work"]
+        assert all(r["retrieval_latency_ms"] >= 0 for r in attempt["retrievals"])
+
     def test_high_confidence_never_triggers_query_planning(
         self, clf_factory, mock_hier_store, mock_crew_sequence, mock_query_planner_crew
     ):
@@ -440,6 +571,9 @@ class TestQueryPlanningEnabled:
         assert trace["query_plan_attempted"] is True
         assert trace["query_plan_subqueries"] == ["subsistence farmer", "taxi driver"]
         assert trace["query_plan_used"] is True
+        assert result.hierarchy_path == subquery1.hierarchy_path
+        assert result.stage_confidences == subquery1.stage_confidences
+        assert [a.code for a in result.alternatives] == ["9999"]
 
     def test_query_planning_takes_precedence_over_corrective_retry_when_both_enabled(
         self, clf_factory, mock_hier_store, mock_crew_sequence, mock_query_planner_crew

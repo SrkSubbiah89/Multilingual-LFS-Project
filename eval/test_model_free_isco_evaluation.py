@@ -33,6 +33,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import run_eval  # noqa: E402
 
 
+def test_encoder_provenance_uses_actual_profile_and_store():
+    clf = _fake_isco_instance()
+    clf._isco_catalogue_profile = run_eval.ENRICHED_E5LARGE_PROFILE
+    clf._hierarchical_store.embedding_model_identity = "intfloat/multilingual-e5-large"
+    row = run_eval.run_one_case(clf, None, None, None, 0, "c1", "developer", "en", "2512", "", "", "test")
+    assert row.embedding_model_version == "intfloat/multilingual-e5-large"
+
+
+def test_encoder_identity_changes_config_hash_even_with_same_profile():
+    args = SimpleNamespace(system="flat", use_llm_reranker="off", beam=2, stage1_mode="description",
+                           reranker_candidates=5, branch_collapse=False, config="test", sre="off",
+                           isco_catalogue_profile=run_eval.ENRICHED_E5LARGE_PROFILE)
+    large = run_eval._config_hash(args, "none", True)
+    small = run_eval._config_hash(args, "none", True, "intfloat/multilingual-e5-small")
+    assert large != small
+
+
 def _fake_isco_instance(reranker_model_resolved="none (reranking disabled)"):
     m = MagicMock()
     m.reranker_model_resolved = reranker_model_resolved

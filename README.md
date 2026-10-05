@@ -725,11 +725,8 @@ docker compose -f docker/docker-compose.yml up -d postgres qdrant redis
 pip install -r requirements.txt tf-keras
 cp .env.example .env        # fill in secrets
 
-# Create DB tables
-python -c "from backend.database.connection import Base, engine; Base.metadata.create_all(bind=engine)"
-
-# Apply Alembic migrations (HITL + evaluation tables)
-alembic upgrade head
+# Create or upgrade the database schema using Alembic
+python -m alembic upgrade head
 
 # Load full ISCO-08 hierarchy into Qdrant (run once)
 python -m backend.rag.load_full_isco
@@ -759,7 +756,7 @@ ollama serve
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/health` | Probes Redis, Qdrant, Ollama (2 s timeout each); returns `{"status": "ok", "services": {...}}` |
-| GET | `/ready` | Lightweight readiness check — returns 200 when DB engine is contactable |
+| GET | `/ready` | Returns 200 when PostgreSQL and Redis are available; otherwise 503 |
 
 ```jsonc
 // GET /health — example response

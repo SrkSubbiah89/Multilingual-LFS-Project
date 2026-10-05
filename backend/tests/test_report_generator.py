@@ -344,6 +344,32 @@ class TestGenerateErrors:
         with pytest.raises(ValueError, match="not completed"):
             mgr.generate(session_id=s.id)
 
+    def test_lost_ownership_during_narrative_does_not_save_report(
+        self, monkeypatch, session_factory, mgr
+    ):
+        u = _make_user(session_factory)
+        s = _make_session(session_factory, u.id)
+        owned = True
+
+        def narrative(*args):
+            nonlocal owned
+            owned = False
+            return json.dumps({
+                "report_en": "EN.", "report_ar": "AR.",
+                "recommendations_en": "R.", "recommendations_ar": "R.",
+            })
+
+        def require_ownership():
+            if not owned:
+                raise RuntimeError("session ownership lost")
+
+        monkeypatch.setattr(mgr, "_generate_narrative", narrative)
+        with pytest.raises(RuntimeError, match="session ownership lost"):
+            mgr.generate(session_id=s.id, write_guard=require_ownership)
+
+        with session_factory() as db:
+            assert db.query(SurveyReportRecord).filter_by(session_id=s.id).count() == 0
+
 
 class TestGenerateHappyPath:
     def test_returns_survey_report(self, monkeypatch, session_factory, mgr):
@@ -655,6 +681,33 @@ class TestSREHighSeverityBackstop:
         assert rows[0].priority == "HIGH"
         assert rows[0].status == "pending"
         assert "SR-ISCO-ISIC-02" in rows[0].ai_reasoning
+
+    @pytest.mark.parametrize("fail_on", [1, 2])
+    def test_ownership_checked_before_escalation_and_report_commits(
+        self, monkeypatch, session_factory, mgr, fail_on
+    ):
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "R.",
+        }))
+        s = self._make_incoherent_session(session_factory)
+        checks = 0
+
+        def require_ownership():
+            nonlocal checks
+            checks += 1
+            if checks == fail_on:
+                raise RuntimeError("session ownership lost")
+
+        with pytest.raises(RuntimeError, match="session ownership lost"):
+            mgr.generate(session_id=s.id, write_guard=require_ownership)
+
+        assert checks == fail_on
+        with session_factory() as db:
+            # An escalation committed while ownership was valid is retained;
+            # the write attempted after ownership is lost never reaches SQL.
+            assert db.query(HITLQueue).filter_by(session_id=s.id).count() == fail_on - 1
+            assert db.query(SurveyReportRecord).filter_by(session_id=s.id).count() == 0
 
     def test_high_severity_escalation_idempotent_on_regenerate(
         self, monkeypatch, session_factory, mgr

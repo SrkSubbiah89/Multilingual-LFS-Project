@@ -1,0 +1,23 @@
+{
+  "finding": 9,
+  "source_csv": "eval/results/dev_selection/corrective_retry_check/20260824T142616Z_flat.csv",
+  "source_sha256": "7742a4ff7c46df6eb75a5fe775ec5f627d2d758265370d9377d8a8bc22095d33",
+  "recorded_embedding_model_versions": [
+    "intfloat/multilingual-e5-small"
+  ],
+  "claimed_method_labels": [
+    "flat_isco08_official_ilo2021_v1_enriched_e5large",
+    "flat_isco08_official_ilo2021_v1_enriched_e5large_corrective"
+  ],
+  "profile_expected_embedding_model": "intfloat/multilingual-e5-large",
+  "executed_embedding_model": null,
+  "provenance_status": "historical_execution_identity_unresolved",
+  "config_hash_status": "does_not_reliably_identify_encoder_before_harness_fix",
+  "affected_downstream_manifests": [],
+  "downstream_manifest_correction": {
+    "model_versions.embedding": null,
+    "reason": "Original manifests do not resolve the executed encoder; retain this explicit uncertainty when consuming them."
+  },
+  "accuracy_changed": false,
+  "note": "The harness recorded a constant e5-small encoder. The intended profile label is insufficient to prove executed identity; independent startup/model or collection evidence is required."
+}

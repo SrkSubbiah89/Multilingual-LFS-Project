@@ -172,7 +172,7 @@ def validate_reference(reference_csv: Path, expected_sha256: str, expected_n: in
             f"got {actual_sha} (path={reference_csv})"
         )
     rows = _load_rows(reference_csv)
-    _require_columns(rows, ["case_id", "input_language", "gold_isic", "gold_isced"], "reference CSV")
+    _require_columns(rows, ["case_id", "input_language", "gold_isco_4digit", "gold_isic", "gold_isced"], "reference CSV")
     if len(rows) != expected_n:
         _fail(f"reference CSV row count mismatch: expected {expected_n}, got {len(rows)} (path={reference_csv})")
 
@@ -184,6 +184,10 @@ def validate_reference(reference_csv: Path, expected_sha256: str, expected_n: in
                 dupes.append(i)
             seen.add(i)
         _fail_with_ids("reference CSV has duplicate case_id values", dupes)
+
+    bad_gold = [r["case_id"] for r in rows if not _ISCO4_RE.fullmatch((r.get("gold_isco_4digit") or "").strip())]
+    if bad_gold:
+        _fail_with_ids("reference CSV has missing/invalid gold_isco_4digit", bad_gold)
 
     nonblank_isic = [r["case_id"] for r in rows if (r.get("gold_isic") or "").strip()]
     if nonblank_isic:
@@ -221,13 +225,18 @@ _HIERARCHICAL_EXTRA_COLUMNS = [
 
 def validate_result_csv(
     csv_path: Path,
-    reference_ids: list[str],
+    reference_rows: list[dict],
     expected_n: int,
     system: str,
     hierarchical_prefix: str,
     max_stage_latency_ms: float,
 ) -> tuple[list[dict], dict]:
     label = f"{system} result CSV"
+    # IDs alone cannot establish that the labels being scored are canonical.
+    if not reference_rows or not all(isinstance(r, dict) and "gold_isco_4digit" in r for r in reference_rows):
+        _fail("result validation requires canonical reference rows, including gold_isco_4digit")
+    reference_ids = [r["case_id"] for r in reference_rows]
+    canonical_gold = {r["case_id"]: r["gold_isco_4digit"].strip() for r in reference_rows}
     if not csv_path.exists():
         _fail(f"{label} not found: {csv_path}")
     actual_sha = sha256_file(csv_path)
@@ -266,6 +275,11 @@ def validate_result_csv(
     bad_gold = [r["case_id"] for r in rows if not _ISCO4_RE.match((r.get("gold_isco_4digit") or "").strip())]
     if bad_gold:
         _fail_with_ids(f"{label} has missing/invalid gold_isco_4digit (must be exactly 4 digits)", bad_gold)
+    mismatched_gold = [r["case_id"] for r in rows if r["gold_isco_4digit"].strip() != canonical_gold[r["case_id"]]]
+    if mismatched_gold:
+        _fail_with_ids(f"{label} gold_isco_4digit does not match the canonical reference", mismatched_gold)
+    # Subsequent statistics use labels taken directly from the hashed reference.
+    rows = [dict(r, gold_isco_4digit=canonical_gold[r["case_id"]]) for r in rows]
     bad_pred = [r["case_id"] for r in rows if not _ISCO4_RE.match((r.get("pred_isco_4digit") or "").strip())]
     if bad_pred:
         _fail_with_ids(f"{label} has missing/invalid pred_isco_4digit (must be exactly 4 digits)", bad_pred)
@@ -365,6 +379,8 @@ def validate_result_csv(
         "n_rows_match": True,
         "ids_unique": True,
         "ids_match_reference_order": True,
+        "gold_labels_match_reference": True,
+        "scoring_gold_source": "canonical_reference_csv",
         "n_nonblank_error": 0,
         "evaluation_status_checked": "evaluation_status" in rows[0],
         "sre_status_checked": "sre_status" in rows[0],
@@ -577,13 +593,12 @@ def main() -> None:
         reference_rows, ref_gate = validate_reference(
             args.reference_csv, args.expected_reference_sha256, args.expected_n
         )
-        reference_ids = [r["case_id"] for r in reference_rows]
         flat_rows, flat_gate = validate_result_csv(
-            args.flat_csv, reference_ids, args.expected_n, "flat",
+            args.flat_csv, reference_rows, args.expected_n, "flat",
             args.expected_hierarchical_method_prefix, args.max_stage_latency_ms,
         )
         hier_rows, hier_gate = validate_result_csv(
-            args.hierarchical_csv, reference_ids, args.expected_n, "hierarchical",
+            args.hierarchical_csv, reference_rows, args.expected_n, "hierarchical",
             args.expected_hierarchical_method_prefix, args.max_stage_latency_ms,
         )
     except GateFailure as exc:

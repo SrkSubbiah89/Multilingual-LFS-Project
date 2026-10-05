@@ -1,0 +1,59 @@
+{
+  "status": "passed",
+  "started_at_utc": "2026-10-05T03:14:33.737165+00:00",
+  "client_timezone": "Asia/Dubai",
+  "started_at_client_time": "2026-10-05T07:14:33.737165+04:00",
+  "isolation": {
+    "image": "redis:7",
+    "image_pull": "never",
+    "existing_redis_used": false,
+    "dotenv_loaded": false,
+    "llm_constructed": false,
+    "container_name": "codex-lfs-redis-c44e0ab03bfb",
+    "ownership_label": "org.openai.codex.disposable-redis-verification",
+    "ownership_value": "c44e0ab03bfb4fffae2bc76008e09b3e",
+    "image_id": "sha256:604502f6c579cb24daf50d5befb7cea78fa4d974f85d6d358dcfcc6f2569cb30",
+    "container_id": "88e5ad06b7bc81c93261a124e00cdf47ff96d3ffcabbf577e7dfe231bbc3e788",
+    "host": "127.0.0.1",
+    "port": 54574,
+    "database": "sqlite:///:memory:",
+    "network_restricted_to_disposable_redis": true
+  },
+  "checks": {
+    "shared_state_restoration": {
+      "passed": true,
+      "state": "clarifying",
+      "language": "hi",
+      "clarification_target": "job_duties",
+      "clarification_count": 2,
+      "correction_fields": [
+        "education_level",
+        "job_title"
+      ],
+      "history_restored": true,
+      "returning_and_correction_flags_restored": true,
+      "ttl_applied": true
+    },
+    "second_worker_update_visible": {
+      "passed": true
+    },
+    "mutual_exclusion_and_release": {
+      "passed": true,
+      "blocked": true,
+      "wait_seconds": 0.234
+    },
+    "lost_owner_checkpoint": {
+      "passed": true,
+      "checkpoint_rejected": true,
+      "release_rejected": true,
+      "second_worker_can_reacquire": true,
+      "controlled_deletion_key": "lfs:session-lock:215839465815036"
+    }
+  },
+  "cleanup": {
+    "removed": true,
+    "identity_verified": true,
+    "container_id": "88e5ad06b7bc81c93261a124e00cdf47ff96d3ffcabbf577e7dfe231bbc3e788"
+  },
+  "finished_at_utc": "2026-10-05T03:14:49.303566+00:00"
+}

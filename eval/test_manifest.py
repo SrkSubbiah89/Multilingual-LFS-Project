@@ -35,6 +35,18 @@ BASE_KWARGS = dict(
 )
 
 
+def test_manifest_carries_encoder_identity_from_case_rows():
+    row = make_row(embedding_model_version="intfloat/multilingual-e5-large")
+    manifest = mf.build_manifest([row], **BASE_KWARGS)
+    assert manifest.model_versions["embedding"] == "intfloat/multilingual-e5-large"
+
+
+def test_manifest_rejects_conflicting_encoder_provenance():
+    row = make_row(embedding_model_version="intfloat/multilingual-e5-large")
+    with pytest.raises(ValueError, match="conflicts"):
+        mf.build_manifest([row], model_versions={"embedding": "intfloat/multilingual-e5-small"}, **BASE_KWARGS)
+
+
 # ---------------------------------------------------------------------------
 # Percentile helper
 # ---------------------------------------------------------------------------

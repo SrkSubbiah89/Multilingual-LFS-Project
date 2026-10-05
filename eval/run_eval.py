@@ -156,7 +156,7 @@ from backend.agents.isced_classifier import ISCEDClassifier  # noqa: E402
 from backend.agents.semantic_relation import SemanticRelationEngine  # noqa: E402
 from backend.rag.hierarchical_store import MODEL_NAME as EMBEDDING_MODEL_NAME  # noqa: E402
 from backend.rag.hierarchical_store import LEGACY_PROFILE, OFFICIAL_PROFILE_ILO2021_V1  # noqa: E402
-from backend.rag.official_isco08_catalogue import ENRICHED_PROFILE, ENRICHED_E5LARGE_PROFILE  # noqa: E402
+from backend.rag.official_isco08_catalogue import ENRICHED_PROFILE, ENRICHED_E5LARGE_PROFILE, embedding_config_for_profile  # noqa: E402
 from eval.legacy_thesis_ch6.evaluate import BM25Baseline  # noqa: E402
 
 try:
@@ -397,6 +397,7 @@ def build_dry_run_case_result(
         seed=seed,
         input_order_position=row_index,
         evaluation_status="dry_run_not_measured",
+        embedding_model_version="none (dry run; classification not executed)",
     )
 
 
@@ -496,6 +497,7 @@ class CaseResult:
     reranker_candidate_branches: Optional[int] = None   # how many branches contributed stage-4 hits
     stage4_pool: str = "[]"        # JSON, full pooled+sorted list (branch_collapse=False runs only)
     gold_rank_in_pool: Optional[int] = None  # 1-based rank of gold_isco_4digit in stage4_pool, empty if absent
+    gold_pool_status: str = "missing_telemetry"  # present | absent | missing_telemetry | no_gold
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -571,8 +573,7 @@ class CaseResult:
     git_commit: str = ""
     seed: Optional[int] = None
     input_order_position: Optional[int] = None  # 0-based row index in the test-set CSV as loaded
-    retry_count: int = 0  # always 0 for B0/B1/B2 (standard reranker has no retry loop); non-zero only
-    # once a future B3-Reliability run wires backend.agents.isco_reranker_strict.StrictReranker through
+    retry_count: int = 0  # number of followup decision attempts (corrective or query planning)
     invalid_output_flag: bool = False  # LLM responded but JSON could not be parsed / code not recognised
     timed_out_flag: bool = False       # reranker_error signature matched a timeout (see run_one_case())
     # Sampled process RSS (MB) at the point this case finished -- None here
@@ -605,6 +606,21 @@ class CaseResult:
     # eval.manifest.ExperimentRunManifest.evaluation_status for the
     # run-level counterpart of this same field.
     evaluation_status: str = "measured"
+    corrective_retry_attempts: str = "[]"  # JSON; retrieval/reranking trace per corrective attempt
+    query_plan_attempts: str = "[]"  # JSON; decomposition/subquery retrieval/reranking trace
+    llm_calls: str = "[]"  # JSON; usage and purpose for every instrumented LLM call
+    winning_attempt: str = "initial"
+
+
+def _embedding_identity(clf=None, system: str = "hierarchical", profile: str = LEGACY_PROFILE) -> str:
+    if system == "bm25":
+        return "none (bm25: rank-bm25 sparse lexical retrieval, no embedding model)"
+    store = getattr(clf, "_hierarchical_store", None)
+    identity = getattr(store, "embedding_model_identity", None)
+    if isinstance(identity, str) and identity:
+        return identity
+    actual_profile = getattr(clf, "_isco_catalogue_profile", profile)
+    return embedding_config_for_profile(actual_profile if isinstance(actual_profile, str) else profile)[0]
 
 
 def run_one_case(
@@ -659,10 +675,7 @@ def run_one_case(
         config_hash=config_hash,
         keyword_map_enabled=keyword_map_enabled,
         branch_collapse_enabled=branch_collapse_enabled,
-        embedding_model_version=(
-            "none (bm25: rank-bm25 sparse lexical retrieval, no embedding model)"
-            if system == "bm25" else EMBEDDING_MODEL_NAME
-        ),
+        embedding_model_version=_embedding_identity(clf, system),
         capture_pool_metadata_enabled=capture_pool_metadata_enabled,
         run_id=run_id,
         git_commit=git_commit,
@@ -710,10 +723,12 @@ def run_one_case(
     result.reranker_candidate_branches = trace.get("reranker_candidate_branches")
     stage4_pool = trace.get("stage4_pool")
     if stage4_pool is not None:
+        result.gold_pool_status = "absent" if gold_isco_4digit else "no_gold"
         result.stage4_pool = json.dumps(stage4_pool, ensure_ascii=False)
         pool_codes = [c.get("code", "") for c in stage4_pool]
         if gold_isco_4digit in pool_codes:
             result.gold_rank_in_pool = pool_codes.index(gold_isco_4digit) + 1  # 1-based
+            result.gold_pool_status = "present"
 
     # B2 instrumentation only -- present only when capture_pool_metadata_enabled
     # was passed through to clf.classify(); never read for selection/ordering,
@@ -759,7 +774,8 @@ def run_one_case(
         result.hier_stage_query_telemetry = json.dumps(_hier_stage_telemetry, ensure_ascii=False)
 
     result.retrieval_latency_ms = round(
-        sum(v for i in range(1, 5) if (v := trace.get(f"stage{i}_latency_ms")) is not None),
+        sum(v for i in range(1, 5) if (v := trace.get(f"stage{i}_latency_ms")) is not None)
+        + trace.get("additional_retrieval_latency_ms", 0.0),
         2,
     )
 
@@ -772,17 +788,23 @@ def run_one_case(
     result.reranker_model_version = result.reranker_model
     result.prompt_tokens = int(trace.get("reranker_prompt_tokens", 0))
     result.completion_tokens = int(trace.get("reranker_completion_tokens", 0))
-    result.estimated_cost_usd = _estimate_cost_usd(
-        result.reranker_model, result.prompt_tokens, result.completion_tokens
+    calls = trace.get("llm_calls", [])
+    result.estimated_cost_usd = (
+        round(sum(_estimate_cost_usd(call.get("model", ""), call.get("prompt_tokens", 0),
+                                     call.get("completion_tokens", 0)) for call in calls), 6)
+        if calls else _estimate_cost_usd(result.reranker_model, result.prompt_tokens, result.completion_tokens)
     )
+    result.retry_count = int(trace.get("retry_count", 0))
+    result.corrective_retry_attempts = json.dumps(trace.get("corrective_retry_attempts", []), ensure_ascii=False)
+    result.query_plan_attempts = json.dumps(trace.get("query_plan_attempts", []), ensure_ascii=False)
+    result.llm_calls = json.dumps(trace.get("llm_calls", []), ensure_ascii=False)
+    result.winning_attempt = trace.get("winning_attempt", "initial")
     if "reranker_error" in trace:
         result.error = f"reranker_error: {trace['reranker_error']}"  # non-fatal; case still has a result
         result.degraded = True  # prediction is pre-rerank top candidate, not the system under test
         result.timed_out_flag = "timeout" in result.error.lower() or "timed out" in result.error.lower()
 
-    # B2 bookkeeping only -- the standard reranker (_llm_select_from_candidates
-    # -> _parse_llm_response) has no retry loop, so retry_count stays 0 and
-    # this only ever detects the single-attempt outcome. A response that
+    # A response that
     # arrived (no reranker_error) but could not be parsed into a known code
     # falls back to the top candidate silently, recorded via this exact
     # reasoning string set in _parse_llm_response() -- see backend/agents/
@@ -926,7 +948,8 @@ def check_strict_hierarchical(result: CaseResult, max_stage_latency_ms: Optional
     return None
 
 
-def _config_hash(args: argparse.Namespace, resolved_reranker_model: str, keyword_map_enabled: bool) -> str:
+def _config_hash(args: argparse.Namespace, resolved_reranker_model: str, keyword_map_enabled: bool,
+                 resolved_embedding_model: Optional[str] = None) -> str:
     """Hash built ONLY from values actually passed into the pipeline for
     this run. A hash that describes a configuration different from the
     one that ran is worse than no hash. resolved_reranker_model must be
@@ -960,7 +983,7 @@ def _config_hash(args: argparse.Namespace, resolved_reranker_model: str, keyword
             "stage1_mode": args.stage1_mode,
             "reranker_candidates": args.reranker_candidates,
             "branch_collapse": args.branch_collapse,
-            "embedding_model": EMBEDDING_MODEL_NAME,
+            "embedding_model": resolved_embedding_model or _embedding_identity(system=args.system, profile=args.isco_catalogue_profile),
             "reranker_model_resolved": resolved_reranker_model,
             "keyword_map_enabled": keyword_map_enabled,
             "hitl_threshold": HITL_CONFIDENCE_THRESHOLD,
@@ -968,6 +991,7 @@ def _config_hash(args: argparse.Namespace, resolved_reranker_model: str, keyword
             "sre": args.sre,
             "use_llm_reranker": args.use_llm_reranker,
             "isco_catalogue_profile": args.isco_catalogue_profile,
+            "enable_corrective_retry": getattr(args, "enable_corrective_retry", False),
         },
         sort_keys=True,
     )
@@ -1393,7 +1417,8 @@ def main() -> None:
               "ISCEDClassifier/SemanticRelationEngine will not be constructed; "
               "this is an ISCO-08-only retrieval run.")
 
-    cfg_hash = _config_hash(args, resolved_reranker_model, keyword_map_enabled)
+    cfg_hash = _config_hash(args, resolved_reranker_model, keyword_map_enabled,
+                            _embedding_identity(clf, args.system, args.isco_catalogue_profile))
     print(f"config_hash={cfg_hash}  reranker_model={resolved_reranker_model or '(none)'}  "
           f"keyword_map_enabled={keyword_map_enabled}  run_id={run_id}")
     if args.capture_pool_metadata:
