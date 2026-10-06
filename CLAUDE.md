@@ -1837,6 +1837,48 @@ measured — it changes which configuration they describe. Not yet fixed
 at every individual occurrence below as of this entry; each should be
 read with this correction in mind until they are.
 
+**Superseded in part, 2026-10-06 — the served configuration changed, and
+this is now the number to quote for the live local app.** Work committed
+2026-10-05/06 (`db734cb`, `b962003`, `ef9d4f3`, `5b82bf2`, `e51da2e`)
+added a new retrieval method and made it the local default, so the
+"production runs LEGACY_PROFILE at ~11%" statement above is **no longer
+true locally**. `_get_isco_classifier()` (`survey_routes.py`) now reads
+`ISCO_RETRIEVAL_STRATEGY`: the committed code default is still
+`"legacy"`, but the local `.env` sets `parent_document`, so the running
+local app serves **fragment-to-parent retrieval**
+(`ParentDocumentISCOClassifier`). `.env.example` deliberately ships
+`legacy` so a clean checkout never claims an index it has not built —
+that divergence is intentional and documented in
+`Documentation/RAG_IMPROVEMENT_2026-10-06.md`, not a bug. `render.yaml`
+does not set the variable either, so any hosted deploy would run
+`legacy`; the parent index is a local-only Qdrant collection
+(`isco08_parent_children_e5small_f4bb10a7940b4645`, 2,833 points over 436
+parents), so that fallback is correct rather than an oversight.
+
+**The served configuration's real, verified number is 38.83%**
+(7,279/18,747 exact four-digit, nominal 95% CI [38.13%, 39.53%]) on the
+same reused WISCO partition — **+6.28pp over its own same-encoder dense
+baseline** (32.55%, paired b=720/c=1,897, nominal exact McNemar
+p≈3.75×10⁻¹²¹), and 2.12pp *below* the historical 40.95% output. Checked
+directly against the committed audit record
+(`Documentation/RAG_ACCURACY_AUDIT_2026-10-06_HISTORY_FINAL_RESULTS.json`),
+not taken from a summary: the paired quadrants reconstruct both totals and
+the 18,747 population exactly, and the per-language counts sum to 7,279.
+`Documentation/LaTeX/thesis/verify_results.py` now re-derives all of it
+under `served_fragment_to_parent` and asserts that consistency.
+
+**A second, independent finding from that same work, which supersedes
+nothing above but sharpens it**: the 40.95% run's *executed encoder cannot
+be established*. Its CSV records `intfloat/multilingual-e5-small` while
+the profile label claims e5-large. The committed provenance corrections
+(`eval/results/corrections_20261004/**/*.provenance_correction.json`) set
+`executed_embedding_model: null` and
+`provenance_status: historical_execution_identity_unresolved` — verified
+directly in those files. The arithmetic stays valid; the encoder
+attribution does not. **Do not describe 40.95% as an e5-large result
+without that caveat**, and do not let a future larger-encoder run inherit
+the number — it must establish its own weights and measure afresh.
+
 ## Evaluation code layout — everything now lives under `eval/`
 
 **2026-08-24, two-part correction.** First pass: this section was added
@@ -2778,6 +2820,77 @@ the actual committed evidence directly, not by trusting the prior text.
   frontend recompiled clean, `GET /report?session=1` returns 200 with no
   compile-error markers.
 
+- **Thesis brought in line with the served configuration, 2026-10-06.** The
+  thesis reported the offline configurations but never mentioned the method
+  the application actually serves. Added §6.1.4 "Fragment-to-Parent
+  Retrieval in the Served Configuration" (38.83%, nominal 95% CI
+  [38.13%, 39.53%], +6.28pp over its same-encoder dense baseline, paired
+  b=720/c=1,897, nominal exact McNemar p≈3.75×10⁻¹²¹), a per-language table,
+  appendix run P with the serving-identity digests, and the matching
+  conclusion/objective/validity text. Every figure was re-derived from the
+  committed audit record before being written, and
+  `verify_results.py` gained `served_fragment_to_parent`, which asserts the
+  paired quadrants reconstruct both totals and the 18,747 population and
+  that per-language counts sum to 7,279 — so the thesis numbers are
+  tool-checked like the others. **Two errors were caught this way and are
+  worth remembering**: a per-language delta computed from rounded values
+  instead of counts (Urdu +6.41 vs. the correct +6.40), and an
+  earlier draft of this same entry's thesis text attributing the 39.16%
+  catalogue-alignment figure to the development split when it is the
+  heldout figure (development was +1 case, p=1.0).
+
+  **Naming trap for anyone editing this chapter**: "parent" already meant
+  the *hierarchical parent-filtered* traversal in this thesis. The new
+  method is deliberately called **fragment-to-parent** there, and §6.1.4
+  says explicitly that no level decision restricts the candidate set. Do
+  not collapse the two names.
+
+- **Checked for a real accuracy improvement and did not find a reliable
+  one, 2026-10-06.** The catalogue-alignment candidate (ridge-projecting
+  the e5-small query into the stored e5-large parent space — clever,
+  because it needs no e5-large inference and so sidesteps this machine's
+  memory ceiling) reached **39.16% on heldout, +0.34pp, McNemar p=0.023**.
+  It was **correctly not promoted**, and that decision should stand: the
+  promotion gate was declared *before* the heldout run and required no
+  per-language regression; Tagalog top-1 regressed (Hindi and Urdu top-3
+  also). It was additionally inert on both smaller splits (development +1
+  case p=1.0, validation +3 cases p=0.66), and it leans on stored vectors
+  whose encoder provenance is unresolved. Read together, a 0.34pp move that
+  appears only on the confirmation split, regresses a served language, and
+  imports provenance uncertainty is not an improvement worth taking. **Do
+  not re-promote it without new evidence** — overriding a correctly-applied
+  pre-declared gate to chase it would be exactly the failure this project's
+  discipline exists to prevent.
+
+- **One genuinely unexplored lead, now implemented but UNMEASURED,
+  2026-10-06.** `translate_before_retrieval` existed only on the legacy
+  `ISCOClassifier` and had never been tried on the parent-document path,
+  even though that path's own per-language results fit the hypothesis
+  closely: English 63.91% against Arabic 27.94%, Tagalog 29.85%, Urdu
+  31.60%, with an index built from English-sourced official definitions and
+  examples. It is also e5-small, so unlike the e5-large work it carries no
+  memory blocker. `ParentDocumentISCOClassifier` gained
+  `translate_before_retrieval=False`; the default reproduces the measured
+  38.83% configuration byte for byte. 6 hermetic tests
+  (`backend/tests/test_parent_document_translation.py`) pin the contract.
+
+  **A real transparency bug was caught while building it**: the first
+  version let the translation replace `query` in the returned
+  classification, so a stored result and any report would have shown an
+  English machine translation as the respondent's own words. Fixed — only
+  the retrieval text is translated, `query` keeps the respondent's text,
+  and the translation is recorded in the trace. The legacy classifier still
+  has the original behaviour on its own path; worth revisiting there.
+
+  **No accuracy claim is attached to this, and none may be made without a
+  run.** Evaluating it is not a one-flag job: `eval/compare_parent_document_
+  isco.py` scores from *cached* query embeddings, so a real comparison needs
+  translate → re-cache embeddings of the translated queries → compare,
+  dev-selected and heldout-confirmed with a gate declared in advance, as the
+  catalogue-alignment experiment did. Free memory was 247 MB when this was
+  written, well under the ~1 GB that has repeatedly segfaulted embedding
+  loads here, so nothing was run rather than crashed into.
+
 ## Do not
 
 - Do not resubmit on internal-only evidence — the real, external WISCO
@@ -2793,6 +2906,21 @@ the actual committed evidence directly, not by trusting the prior text.
   from any planning document (including earlier versions of this one)
   without checking them against the running repo first — this document's
   own corrections table above is the demonstration of why.
+- Do not enable `translate_before_retrieval` on the parent-document path in
+  anything reported as the measured 38.83% result — it is implemented but
+  unmeasured, and enabling it changes the configuration bound to the
+  recorded serving identity.
+- Do not re-promote the catalogue-alignment variant (39.16%) on the strength
+  of its heldout p-value. A pre-declared gate rejected it for a per-language
+  regression, and it was null on both smaller splits.
+- Do not call 40.95% an e5-large result without the provenance caveat —
+  its executed encoder is unresolved (`executed_embedding_model: null` in
+  the committed corrections), and a future larger-encoder run cannot
+  inherit the number.
+- Do not quote 21.19% or ~11% as the live local app's accuracy any more.
+  Since 2026-10-06 the local `.env` serves fragment-to-parent retrieval,
+  measured at **38.83%**. Check `ISCO_RETRIEVAL_STRATEGY` before quoting
+  any figure as "what production does."
 - Do not cite the validation-split reranking check (18.69% vs. 18.22%,
   the "fourth reranking check" above) as a confirmed result, and do not
   cite it as evidence that reranking generally helps — it's non-

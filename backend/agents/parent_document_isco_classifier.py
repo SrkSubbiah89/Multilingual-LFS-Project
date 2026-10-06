@@ -53,7 +53,22 @@ def _validate_selection(config, selection_path=SELECTION):
 
 
 class ParentDocumentISCOClassifier:
-    def __init__(self, *, client=None, embed_query=None, config_path=CONFIG):
+    def __init__(self, *, client=None, embed_query=None, config_path=CONFIG,
+                 translate_before_retrieval=False):
+        """translate_before_retrieval (default False) translates a non-English
+        query to English before embedding, via the local model used elsewhere
+        in this codebase. Default False reproduces the measured 38.83%
+        configuration byte for byte.
+
+        UNMEASURED ON THIS PATH. The +20pp dev-sample gain recorded for the
+        legacy classifier used a different retrieval method, and no
+        development, validation or heldout run exists for this combination.
+        Enabling it changes the served configuration away from the one bound
+        to the recorded serving identity, so it must not be enabled in a run
+        reported as the measured parent-document result until it has its own
+        dev-selected, heldout-confirmed evidence.
+        """
+        self.translate_before_retrieval = bool(translate_before_retrieval)
         self.config = json.loads(Path(config_path).read_text(encoding='utf-8'))
         config = self.config
         if (config['profile'] != ENRICHED_PROFILE or config['aggregation'] != 'max'
@@ -151,6 +166,20 @@ class ParentDocumentISCOClassifier:
                                      show_progress_bar=False, batch_size=1)[0].tolist()
         return embed
 
+    def _translate_to_english(self, text, language):
+        """Translate *text* to English with the same local model and fallback
+        contract as ISCOClassifier._translate_to_english. Any failure returns
+        the original text, so a translation problem degrades to untranslated
+        behaviour instead of blocking classification.
+
+        That method uses no instance state, so it is reused here rather than
+        duplicated; ``None`` is passed as its ``self`` deliberately, so a
+        future change that does rely on instance state raises immediately
+        instead of silently reading this class's attributes.
+        """
+        from backend.agents.isco_classifier import ISCOClassifier
+        return ISCOClassifier._translate_to_english(None, text, language)
+
     def classify(self, job_title, context='', language='', top_k=3, use_llm=True, trace=None,
                  max_stage_latency_ms=None):
         if not isinstance(job_title, str) or not job_title.strip():
@@ -158,7 +187,22 @@ class ParentDocumentISCOClassifier:
         if isinstance(top_k, bool) or not isinstance(top_k, int) or not 1 <= top_k <= 436:
             raise ValueError('top_k must be between 1 and 436')
         query = job_title.strip()
-        vector = np.asarray(self.embed_query(query), dtype=np.float32)
+        # Only the retrieval text is ever translated: `query` keeps the
+        # respondent's own words, so a stored result or report never presents
+        # a machine translation as something the respondent wrote.
+        retrieval_text = query
+        # getattr, not attribute access: several tests build instances with
+        # object.__new__, and "absent" must mean the measured configuration.
+        if getattr(self, 'translate_before_retrieval', False):
+            detected = (language or '').strip().lower() or _detect_script(query)
+            if detected != 'en':
+                translated = self._translate_to_english(query, detected).strip()
+                retrieval_text = translated or query
+                if trace is not None:
+                    trace['translated_before_retrieval'] = retrieval_text != query
+                    trace['translation_source_language'] = detected
+                    trace['retrieval_text'] = retrieval_text
+        vector = np.asarray(self.embed_query(retrieval_text), dtype=np.float32)
         if vector.shape != (384,) or not np.isfinite(vector).all() or not np.isclose(np.linalg.norm(vector), 1, atol=1e-3):
             raise ValueError('Invalid query embedding')
         groups = self.client.query_points_groups(collection_name=self.config['collection'],
