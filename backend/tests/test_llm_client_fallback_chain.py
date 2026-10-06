@@ -31,8 +31,17 @@ def _isolate_from_real_dotenv(monkeypatch):
     Anthropic account has zero credit) via load_dotenv() at module import
     time. Every test in this file exercises the chain logic itself, so it
     must not silently inherit that -- clear it here and let individual
-    tests opt back in explicitly (see TestFallbackExclude)."""
+    tests opt back in explicitly (see TestFallbackExclude).
+
+    LFS_LOCAL_ONLY is cleared for the same reason, added 2026-10-06. The
+    real .env sets it to true, and get_llm() short-circuits to
+    _get_local_only_llm() before the fallback chain is ever reached, so
+    every test here failed against a developer .env. Local-only mode is
+    deliberate production behaviour with its own coverage in
+    test_llm_client_local_only.py; this file covers the cloud chain, which
+    by definition is not local-only."""
     monkeypatch.delenv("LLM_FALLBACK_EXCLUDE", raising=False)
+    monkeypatch.delenv("LFS_LOCAL_ONLY", raising=False)
 
 
 class TestOllamaFirst:
