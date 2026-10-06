@@ -1,5 +1,30 @@
 ﻿# Thesis review and gap report — 3 October 2026
 
+> **Status note added 7 October 2026 — read before citing the gap table below.**
+> This document records the state on 3 October and is kept unchanged as the
+> historical record. Several gaps it lists as open have since been closed, so
+> the table must not be read as the current state:
+>
+> - **All four P1 application defects are repaired and regression-tested** —
+>   reviewer authorization, status/wage extraction, fresh-database startup, and
+>   the top-3 evaluation denominator (corrected to 61/130 = 46.92%). Evidence
+>   per finding: [CODE_FIXES_2026-10-05.md](../../CODE_FIXES_2026-10-05.md).
+>   In particular, the "ordinary respondents can access and modify other
+>   respondents' HITL records" entry **no longer describes the system**;
+>   both HITL endpoints now require an explicitly configured active reviewer.
+> - **Historical execution provenance** was investigated rather than closed:
+>   the enriched-large run's executed encoder is formally unresolved, recorded
+>   in committed provenance corrections and now stated in the thesis itself.
+> - **The served retrieval configuration changed** on 6 October to
+>   fragment-to-parent retrieval (38.83%), reported in thesis Section 6.1.4
+>   with its own verification; see
+>   [RAG_ACCURACY_AUDIT_2026-10-06.md](../../RAG_ACCURACY_AUDIT_2026-10-06.md).
+>
+> Gaps that remain genuinely open: independent final benchmark on untouched
+> data, real multi-standard labels and coverage, SRE validity and calibration,
+> conversational language quality, human outcomes, and production runtime
+> evidence.
+
 **Outcome:** all seven active chapters, the abstract, bibliography, architecture diagram, and appendices were revised for academic accuracy, traceability, and consistency with the actual implementation and saved experiments. A results graph and experiment-provenance appendix were added. The thesis remains a prototype evaluation with disclosed limitations; this review is not a certification of perfection, institutional approval, or international survey compliance.
 
 Main deliverable: [reviewed thesis PDF](thesis_reviewed.pdf). Build instructions: [README](README.md). Primary-reference review: [citation audit](CITATION_AUDIT.md). Numerical evidence: [results verification](results_verification.json).

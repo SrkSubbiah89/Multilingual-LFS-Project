@@ -163,20 +163,21 @@ Pre-reranking top-3 candidate coverage is a retrieval metric:
   = \frac{\#\{\text{eligible cases with gold in the first three candidates}\}}
           {\#\{\text{eligible retrieval cases}\}}.
 \]
-It differs from accuracy of the final reranked prediction. The current
-\texttt{analyze.py} implementation excludes blank
+It differs from accuracy of the final reranked prediction. The
+\texttt{analyze.py} implementation previously excluded blank
 \texttt{gold\_rank\_in\_pool} values, although the harness leaves this value
-blank when retrieval misses the gold code. That denominator inflates
-top-3 coverage. A missing gold candidate must count as a failure when a
-valid pool exists, while unavailable telemetry must be identified
-separately. Affected summaries require recomputation; this defect does not
-by itself invalidate separately checked top-1 figures.
+blank when retrieval misses the gold code, which inflated top-3 coverage.
+A missing gold candidate now counts as a failure wherever a valid pool
+exists, and unavailable telemetry is identified separately. Corrected
+summaries were written alongside, not over, the original raw predictions:
+full-scale retrieval top-3 is 61/130 = 46.92\%, previously reported as
+61/108 = 56.48\%. Top-1 figures were checked separately and are unchanged.
 
-The exact-match analyzer also does not enforce
-\texttt{evaluation\_status}, so it can label a dry-run row as measured.
-Accuracy evidence must therefore be restricted to verified inference
-runs, using run records and statuses rather than trusting the analyzer's
-status field alone.
+The exact-match analyzer previously did not enforce
+\texttt{evaluation\_status} and could label a dry-run row as measured. It
+now distinguishes unmeasured rows explicitly, and accuracy evidence is
+restricted to verified inference runs identified by run records and
+statuses.
 
 For non-BM25 runs, the CSV encoder field and configuration hash currently
 use a fixed small-model name even for large-encoder profiles. Encoder

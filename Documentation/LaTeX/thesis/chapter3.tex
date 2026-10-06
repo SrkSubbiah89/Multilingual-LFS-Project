@@ -21,9 +21,10 @@ ISIC Rev.~4, ISCED~2011, and ISCED-F~2013
 Coverage and code-normalisation exceptions are reported separately.
 \item \textbf{Privacy-aware design.} Authentication, respondent-session
 ownership checks, audit records, and soft deletion are implemented.
-Outstanding authorisation and data-lifecycle defects
-(Chapter~\ref{chap:implementation}) prevent a claim of deployment readiness
-or regulatory compliance.
+Authorisation and data-lifecycle defects identified in the October 2026
+review have since been repaired and regression-tested
+(Chapter~\ref{chap:implementation}); verified repairs do not by themselves
+establish deployment readiness or regulatory compliance.
 \item \textbf{Explicit uncertainty.} Retrieval similarities and rule
 scores support review decisions. They are heuristics, not empirically
 calibrated probabilities of correct classification.
@@ -42,8 +43,9 @@ separate experimental hierarchical Crew, outside this default workflow.
 supervisor-review pages. Prompts target English, Arabic, Urdu, Hindi, and
 Tagalog, with Gulf Arabic handled as an Arabic variety. Translated
 interfaces and right-to-left presentation do not establish correct
-language-specific answer handling. The Hindi/Urdu routing defect is
-disclosed in Chapter~\ref{chap:implementation}.
+language-specific answer handling. The Hindi/Urdu routing defect found in
+that review, and its repair, are described in
+Chapter~\ref{chap:implementation}.
 
 \textbf{Application layer.} FastAPI authenticates requests, checks session
 ownership, invokes components, persists answers, and assembles responses.
@@ -329,5 +331,7 @@ generation.
 Call count and latency vary with state, input, fast mode, and model
 configuration. Retrieval latency and end-to-end interview duration measure
 different workloads. The review also found that refined classifications
-or corrected titles can differ from stored responses. These defects limit
-claims of complete end-to-end correctness until repaired and retested.
+or corrected titles could differ from stored responses. These defects were
+repaired and covered by regression tests; passing tests constrain the
+behaviours they exercise and do not establish complete end-to-end
+correctness.

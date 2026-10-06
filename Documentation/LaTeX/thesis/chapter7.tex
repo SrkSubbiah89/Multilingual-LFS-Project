@@ -126,10 +126,13 @@ establish production availability, throughput, or cost. Some paired
 experimental outputs and expanded evaluations remain incomplete.
 
 \noindent\textbf{L8 --- Application correctness and access control.}
-Known routing, answer-extraction, persistence, reviewer-authorization,
-measurement, and fresh-installation defects remain unresolved
-(Chapter~\ref{chap:implementation}). They limit participant readiness and
-the use of application outputs as research evidence.
+The routing, answer-extraction, persistence, reviewer-authorization,
+measurement, and fresh-installation defects found in the October 2026
+review were repaired and covered by regression tests
+(Chapter~\ref{chap:implementation}). The evidence for those repairs is
+automated testing and local verification, not operation with participants,
+so it constrains the behaviours exercised rather than establishing
+deployment readiness.
 
 \section{Future Research Directions}
 \label{sec:conc-future}
@@ -176,8 +179,9 @@ API integration, concurrency, failures, and recovery before changing the
 default. Preserve configuration identities between offline and deployed
 results. Benchmark alternative critical-tier models on their actual tasks,
 rather than infer suitability from occupation-reranking outcomes.
-Correct the documented routing, persistence, access-control, evaluation,
-and deployment defects and verify the affected workflows before participant use.
+Re-verify the repaired routing, persistence, access-control, evaluation,
+and deployment behaviours in the intended deployment environment before
+participant use, since the present evidence is local and automated.
 
 \noindent\textbf{F7 --- Other survey instruments.}
 Investigate generalisation of state-based collection, multi-standard

@@ -185,8 +185,13 @@ expert validation and probability calibration remain outstanding.
 On a project-generated, occupation-group-separated WISCO benchmark of
 18,747 language-specific reference titles, flat retrieval achieved
 21.19\% exact unit-group accuracy compared with 10.35\% for hierarchical
-retrieval. Combining official-definition enrichment with multilingual
-E5-large embeddings increased the observed accuracy to 40.95\%.
+retrieval. Combining official-definition enrichment with a larger intended
+multilingual encoder produced the highest observed accuracy, 40.95\%;
+that run's preserved records do not establish which encoder actually
+executed, so the gain is not attributed to encoder size. The configuration
+the prototype actually serves is a fragment-to-parent retriever reaching
+38.83\% on the same records, 6.28 points above its own same-encoder
+baseline and bound to a recorded serving identity.
 These later comparisons reused the same benchmark during development and
 are therefore interpreted as comparative evidence requiring confirmation
 on an untouched test set. Tested LLM reranking configurations did not show
@@ -200,8 +205,9 @@ prototype's empirical and operational limitations. A synthetic
 30-scenario interview run demonstrates execution of the implemented
 workflow, but does not measure respondent usability or burden reduction.
 The planned human pilot has not been conducted and requires ethics
-approval before recruitment. Identified routing, persistence, and access
-control defects also require remediation before deployment. The results
+approval before recruitment. Routing, persistence, and access-control
+defects identified in review have been repaired and regression-tested,
+with re-verification in the deployment environment still outstanding. The results
 support further research on multilingual classification and assisted
 survey coding rather than immediate replacement of a validated field
 survey instrument.

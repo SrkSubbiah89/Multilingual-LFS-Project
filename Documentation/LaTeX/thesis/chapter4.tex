@@ -82,13 +82,17 @@ Ollama & Port 11434 & Separately configured local model service \\
 \end{tabularx}
 \end{table}
 
-A first-boot defect remains in the backend Dockerfile. Its initialization
-command imports the declarative \texttt{Base} and invokes
-\texttt{create\_all()} without first importing model declarations.
-The metadata is empty at that point, so a fresh PostgreSQL volume does not
-receive the tables. A previously initialized database can conceal the
-problem. The image also omits the root Alembic configuration. The Compose
-command cannot yet be treated as a validated fresh installation procedure.
+The October 2026 review found a first-boot defect in the backend
+Dockerfile. Its initialization command imported the declarative
+\texttt{Base} and invoked \texttt{create\_all()} without first importing
+model declarations, so the metadata was empty and a fresh PostgreSQL
+volume received no tables; a previously initialized database concealed the
+problem, and the image omitted the root Alembic configuration. The image
+now packages that configuration and runs \texttt{alembic upgrade head}
+before starting the server, verified against a fresh PostgreSQL~15 volume
+with a repeated upgrade and a full table and column comparison. The
+procedure is validated for that environment, not for an institutional
+deployment target.
 
 The \texttt{/ready} endpoint checks database connectivity with
 \texttt{SELECT 1}, not schema presence, classifier availability, or
@@ -132,18 +136,21 @@ ISCED, and semantic-coherence JSON are stored alongside report text,
 enabling those fields to survive cache reads.
 
 The response model provides \texttt{supersedes\_id} and
-\texttt{deleted\_at} for revision history, but not all write paths use
-them. Duties-based occupation refinement can be returned to the interface
-without replacing the stored classification. A corrected job title can
-remain only in context when entity extraction does not create a new
-response; completion skips an already-stored job title, leaving the report
-with the earlier answer. These persistence limitations remain unresolved.
+\texttt{deleted\_at} for revision history. The October 2026 review found
+write paths that bypassed them: duties-based occupation refinement could
+be returned to the interface without replacing the stored classification,
+and a corrected job title could remain only in context when entity
+extraction created no new response, so completion skipped the stored title
+and the report kept the earlier answer. Refinements and corrections now
+save active revisions, retire superseded review entries, and reclassify
+even when extraction is skipped; completion and reports read the active
+revision.
 
 Deleting a session sets a timestamp and retains its records. The prefill
-query does not currently exclude deleted sessions or inactive response
-revisions, so deleted answers can enter a new interview. Soft deletion
-implements retention and visibility checks in selected routes, not
-verified erasure.
+query previously included deleted sessions and inactive revisions, so
+deleted answers could enter a new interview; it now excludes both. Soft
+deletion implements retention and visibility checks in selected routes,
+not verified erasure.
 
 \section{Classification Catalogues and Embeddings}
 \label{sec:impl-kb}
@@ -287,9 +294,10 @@ slow test deselected. Historical runs with several
 \texttt{PYTHONHASHSEED} values demonstrate repeatability under tested
 conditions, not absence of every defect or nondeterministic behavior.
 A focused review on 3 October 2026 passed 194 existing conversation,
-orchestration, and evaluation tests while identifying unresolved defects.
-A fresh deployment, full current suite, browser assessment, and
-participant study were outside that review.
+orchestration, and evaluation tests while identifying 28 defects. Those
+defects were repaired and covered by added regression tests; a full suite
+run on 7 October 2026 recorded 2,341 passing tests and one slow test
+deselected. A participant study remains outside this evidence.
 
 The legacy BM25 comparison uses developer-authored synthetic cases.
 The principal occupation benchmark and its limitations are described in
