@@ -10,6 +10,7 @@ import { ACTIVE_SESSION_KEY, openSurveySession, sendMessage, updateSessionLangua
 import { QUICK_OPTIONS, getQuickOptions } from "../components/survey-options";
 import LanguageToggle from "../components/LanguageToggle";
 import { getAgentExecutionStatus } from "../components/agent-execution";
+import { getOccupationAnalysis, getOccupationLabels, getIscoPresentation } from "../components/occupation-analysis";
 
 // ── i18n strings ──────────────────────────────────────────────────────────────
 
@@ -1112,6 +1113,7 @@ function buildMeta(res) {
     isCodeSwitched:res.is_code_switched,
     entities:      res.entities || [],
     isco:          res.isco_classifications || [],
+    occupation:    getOccupationAnalysis(res),
     isic:          res.isic_classification  || null,
     isced:         res.isced_classification || null,
     nationality:   res.nationality_classification || null,
@@ -1318,14 +1320,9 @@ function MessageBubble({ msg, lang, t }) {
               </div>
 
               {/* ISCO */}
-              {msg.meta.isco?.length > 0
-                ? msg.meta.isco.map((clf, i) => <IscoPanel key={i} clf={clf} lang={lang} />)
-                : (
-                  <div style={{ padding: "10px 12px", borderBottom: `1px solid #f3f4f6` }}>
-                    <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>ISCO-08 Classification</p>
-                    <p style={{ fontSize: 11, color: C.faint, fontStyle: "italic" }}>No job title detected yet — ISCO pipeline will run when you describe your occupation.</p>
-                  </div>
-                )
+              {msg.meta.isco?.length > 0 && msg.meta.occupation?.status !== "not_applicable"
+                ? msg.meta.isco.map((clf, i) => <IscoPanel key={i} clf={clf} lang={lang} occupation={msg.meta.occupation} />)
+                : <OccupationEmptyState occupation={msg.meta.occupation} lang={lang} />
               }
 
               {/* ISIC + ISCED + Nationality */}
@@ -1346,11 +1343,29 @@ function MessageBubble({ msg, lang, t }) {
 
 // ── IscoPanel ─────────────────────────────────────────────────────────────────
 
-function IscoPanel({ clf, lang }) {
-  const title  = lang === "ar" ? clf.primary_title_ar : clf.primary_title_en;
+function OccupationEmptyState({ occupation, lang }) {
+  const labels = getOccupationLabels(lang);
+  const source = occupation?.source || "current";
+  const message = occupation?.status === "not_applicable" ? labels.notApplicable
+    : occupation?.status === "unclassified" ? labels.unclassified
+    : occupation?.status === "not_provided" ? labels.notProvided : labels.notCollected;
+  return (
+    <div style={{ padding: "10px 12px", borderBottom: "1px solid #f3f4f6" }}>
+      <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{labels[source]}</p>
+      {occupation?.title && <p style={{ fontSize: 11, color: C.text, marginBottom: 4 }}>{labels.jobTitle}: {occupation.title}</p>}
+      <p style={{ fontSize: 11, color: C.muted }}>{message}</p>
+    </div>
+  );
+}
+
+function IscoPanel({ clf, lang, occupation }) {
+  const labels = getOccupationLabels(lang);
+  const presentation = getIscoPresentation(clf, lang);
+  const title  = (lang === "ar" || lang === "ar-gulf" ? clf.primary_title_ar : "") || clf.primary_title_en;
   const pct    = Math.round((clf.confidence || 0) * 100);
   const method = METHOD_LABELS[clf.method] || METHOD_LABELS.flat_semantic;
-  const path   = clf.hierarchy_path || [];
+  const path   = clf.hierarchy_path?.length ? clf.hierarchy_path :
+    /^[0-9]{4}$/.test(clf.primary_code || "") ? [1, 2, 3, 4].map(length => clf.primary_code.slice(0, length)) : [];
   const stages = clf.stage_confidences || {};
 
   const stageRows = [
@@ -1365,29 +1380,29 @@ function IscoPanel({ clf, lang }) {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
         <div>
-          <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Occupation — ISCO-08</p>
-          <p style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>Job title: <span style={{ color: C.text, fontWeight: 600 }}>{clf.job_title}</span></p>
+          <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>{labels[occupation?.source || "current"]}</p>
+          <p style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{labels.jobTitle}: <span style={{ color: C.text, fontWeight: 600 }}>{clf.job_title}</span></p>
         </div>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
           <span style={{ background: `${method.color}18`, border: `1px solid ${method.color}40`, color: method.color, borderRadius: 99, padding: "2px 8px", fontSize: 9, fontWeight: 600 }}>
-            {method.label}
+            {presentation.label || METHOD_LABELS[clf.method]?.label || labels.retrieved}
           </span>
           {clf.hitl_required && (
             <span style={{ background: "#fef2f2", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 99, padding: "2px 8px", fontSize: 9, fontWeight: 600 }}>
-              ⚠ HITL Review
+              ⚠ {labels.review}
             </span>
           )}
         </div>
       </div>
 
-      {/* 4-stage pipeline */}
-      {path.length > 0 && stages.stage4 > 0 ? (
+      {/* Prefixes describe taxonomy; scores appear only for actual legacy stages. */}
+      {path.length > 0 && (
         <div style={{ marginBottom: 8 }}>
-          <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>4-Stage Hierarchical Pipeline</p>
+          <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{presentation.showStageScores ? labels.stages : labels.hierarchy}</p>
           {stageRows.map((row, idx) => {
             const score    = stages[row.key];
             const isUnit   = idx === 3;
-            const scorePct = score > 0 ? Math.round(score * 100) : null;
+            const scorePct = presentation.showStageScores && Number.isFinite(score) ? Math.round(score * 100) : null;
             return (
               <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 14, flexShrink: 0 }}>
@@ -1410,19 +1425,15 @@ function IscoPanel({ clf, lang }) {
             );
           })}
         </div>
-      ) : (
-        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "6px 10px", marginBottom: 8 }}>
-          <p style={{ fontSize: 9, fontWeight: 700, color: "#d97706", textTransform: "uppercase" }}>Flat RAG Fallback</p>
-          <p style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Hierarchical collections not populated. Run <code>python -m backend.rag.load_full_isco</code> to enable.</p>
-        </div>
       )}
 
       {/* Confidence bar */}
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-          <span style={{ fontSize: 10, color: C.muted }}>Overall confidence</span>
-          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: pct >= 70 ? C.green : C.amber }}>{pct}%</span>
+          <span style={{ fontSize: 10, color: C.muted }}>{presentation.similarity ? labels.score : labels.confidence}</span>
+          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: pct >= 70 ? C.green : C.amber }}>{presentation.similarity ? Number(clf.confidence || 0).toFixed(3) : `${pct}%`}</span>
         </div>
+        {presentation.similarity && <p style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>{labels.scoreNote}</p>}
         <div style={{ height: 5, background: "#e5e7eb", borderRadius: 99, overflow: "hidden" }}>
           <div style={{ height: 5, background: pct >= 70 ? C.green : C.amber, width: `${pct}%`, borderRadius: 99 }} />
         </div>
@@ -1437,16 +1448,16 @@ function IscoPanel({ clf, lang }) {
       {/* Alternatives */}
       {clf.alternatives?.length > 0 && (
         <div style={{ marginTop: 6 }}>
-          <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Alternatives</p>
+          <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{labels.alternatives}</p>
           {clf.alternatives.slice(0, 3).map((alt, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f9fafb", border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", marginBottom: 3 }}>
               <div style={{ display: "flex", gap: 6, minWidth: 0 }}>
                 <span style={{ fontFamily: MONO, fontSize: 11, color: C.muted, flexShrink: 0 }}>{alt.code}</span>
                 <span style={{ fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {(lang === "ar" ? alt.title_ar : alt.title_en) || ""}
+                  {((lang === "ar" || lang === "ar-gulf" ? alt.title_ar : "") || alt.title_en) || ""}
                 </span>
               </div>
-              <span style={{ fontFamily: MONO, fontSize: 9, color: C.faint, flexShrink: 0 }}>{Math.round(alt.confidence * 100)}%</span>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: C.faint, flexShrink: 0 }}>{presentation.similarity ? Number(alt.confidence || 0).toFixed(3) : `${Math.round(alt.confidence * 100)}%`}</span>
             </div>
           ))}
         </div>
