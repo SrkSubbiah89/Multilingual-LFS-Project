@@ -118,22 +118,26 @@ def isolate_process(model=DEFAULT_MODEL, request_timeout=30):
 class ReadOnlyOccupationBridge:
     """Use only fields actually returned by the semantic debug endpoint."""
 
-    def __init__(self, timeout=15, on_progress=None):
+    def __init__(self, timeout=15, on_progress=None, duties=""):
         self.calls = []
         self.timeout = timeout
         self.on_progress = on_progress
+        self.duties = duties
 
     def classify(self, text, *, context="", language="en", use_llm=True):
         print("Occupation tool: requesting existing backend semantic retrieval", flush=True)
         started = time.perf_counter()
         url = "http://127.0.0.1:8000/debug/isco/" + urllib.parse.quote(text, safe="")
+        url += "?" + urllib.parse.urlencode({"language": language, "duties": self.duties,
+                                            "include_trace": "true" if self.duties else "false"})
         with urllib.request.urlopen(url, timeout=self.timeout) as response:
             data = json.load(response)
         if "error" in data or not re.fullmatch(r"\d{4}", str(data.get("code", ""))):
             raise RuntimeError("Existing backend returned no usable occupation code")
         self.calls.append({"input": text, "endpoint": "/debug/isco/{job_title}",
                            "response": data, "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
-                           "context_forwarded": False, "language_forwarded": False,
+                           "context_forwarded": False, "language_forwarded": True,
+                           "explicit_duties_forwarded": bool(self.duties),
                            "llm_reranking": False})
         if self.on_progress:
             self.on_progress()
@@ -190,6 +194,7 @@ def parse_args():
     parser.add_argument("--inference-timeout", type=float, default=30, help="Local LLM request timeout, 2--60 seconds")
     parser.add_argument("--total-timeout", type=float, default=180, help="Hard subprocess deadline, 15--240 seconds")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--duties", default="", help="Optional synthetic duties for the read-only occupation probe")
     parser.add_argument("--output", type=Path,
                         help="Evidence output; existing runs are preserved automatically")
     args = parser.parse_args()
@@ -197,6 +202,8 @@ def parse_args():
         parser.error("Only an already-pulled local Ollama model can be used")
     if not 2 <= args.inference_timeout <= 60 or not 15 <= args.total_timeout <= 240:
         parser.error("Inference timeout must be 2--60 seconds and total deadline 15--240 seconds")
+    if len(args.duties) > 1600:
+        parser.error("Synthetic probe duties must be at most 1,600 characters")
     try:
         datetime.strptime(args.verification_date, "%Y-%m-%d")
     except ValueError:
@@ -230,8 +237,8 @@ def run_probe(args):
             "crewai": "real sequential specialist agents and evidence auditor; no mocked CrewAI runtime",
             "occupation": "real running backend semantic retrieval, bridged through read-only /debug/isco",
             "industry_and_education": "actual project keyword/rule classifiers, with local-only LLM configuration",
-            "occupation_bridge_limits": ["no context or language forwarded", "no occupation LLM reranking",
-                                          "debug endpoint does not expose full classifier trace, hierarchy or HITL decision"],
+            "occupation_bridge_limits": ["no auxiliary context forwarded; language and optional explicit duties are forwarded",
+                                          "no occupation LLM reranking", "no survey persistence; hierarchy is not reconstructed"],
             "respondent_database_writes": False, "otp_or_external_messages": False,
             "accuracy_evaluation": False, "survey_route_persistence_test": False,
         },
@@ -239,6 +246,8 @@ def run_probe(args):
                               "industry_text": "computer programming and software development company",
                               "education_text": "bachelor degree in computer science", "language": "en"},
     }
+    if args.duties:
+        evidence["synthetic_job_duties"] = args.duties
     started = time.perf_counter()
     occupation = industry = education = None
 
@@ -263,7 +272,8 @@ def run_probe(args):
         evidence["package_versions"] = {name: version(name) for name in ("crewai", "litellm")}
         llm = get_llm_strict(args.model, temperature=0.0)
         llm.timeout = args.inference_timeout
-        occupation = ReadOnlyOccupationBridge(timeout=min(args.inference_timeout, 15), on_progress=persist_progress)
+        occupation = ReadOnlyOccupationBridge(timeout=min(args.inference_timeout, 15), on_progress=persist_progress,
+                                             duties=args.duties)
         industry_classifier = ISICClassifier(reranker_model=args.model)
         industry_classifier._llm.timeout = args.inference_timeout
         industry = ObservedClassifier(industry_classifier, "isic", on_progress=persist_progress)
@@ -301,6 +311,7 @@ def main():
     command = [sys.executable, str(Path(__file__).resolve()), "--worker",
                "--model", args.model, "--inference-timeout", str(args.inference_timeout),
                "--total-timeout", str(args.total_timeout), "--verification-date", args.verification_date,
+               "--duties", args.duties,
                "--output", str(args.output)]
     started = time.perf_counter()
     try:

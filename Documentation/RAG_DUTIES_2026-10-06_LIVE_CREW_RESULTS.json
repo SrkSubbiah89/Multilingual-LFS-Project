@@ -1,0 +1,219 @@
+{
+  "verification_date": "2026-10-06",
+  "observed_at_utc": "2026-10-06T15:31:49.345907+00:00",
+  "model_pin": "ollama/qwen2.5:3b",
+  "success": true,
+  "status": "completed",
+  "limits": {
+    "inference_timeout_seconds": 30.0,
+    "hard_process_deadline_seconds": 180.0
+  },
+  "scope": {
+    "inputs": "one synthetic English employment profile",
+    "crewai": "real sequential specialist agents and evidence auditor; no mocked CrewAI runtime",
+    "occupation": "real running backend semantic retrieval, bridged through read-only /debug/isco",
+    "industry_and_education": "actual project keyword/rule classifiers, with local-only LLM configuration",
+    "occupation_bridge_limits": [
+      "no auxiliary context forwarded; language and optional explicit duties are forwarded",
+      "no occupation LLM reranking",
+      "no survey persistence; hierarchy is not reconstructed"
+    ],
+    "respondent_database_writes": false,
+    "otp_or_external_messages": false,
+    "accuracy_evaluation": false,
+    "survey_route_persistence_test": false
+  },
+  "synthetic_profile": {
+    "job_title": "software developer",
+    "industry_text": "computer programming and software development company",
+    "education_text": "bachelor degree in computer science",
+    "language": "en"
+  },
+  "synthetic_job_duties": "I analyse user requirements, design software, write and test code, and maintain applications.",
+  "elapsed_seconds": 78.097,
+  "observed_classifier_calls": {
+    "isco": [
+      {
+        "input": "software developer",
+        "endpoint": "/debug/isco/{job_title}",
+        "response": {
+          "code": "2512",
+          "title": "Software Developers",
+          "conf": 0.9139527350000001,
+          "ms": 163,
+          "method": "isco_parent_document_duties_rag",
+          "hitl_required": true,
+          "duties_used": true,
+          "trace": {
+            "duties_used": true,
+            "duties_truncated": false,
+            "query_mode": "title_and_duties",
+            "retrieval_query": "software developer I analyse user requirements, design software, write and test code, and maintain applications.",
+            "title_only_input": false,
+            "duties_accuracy_evaluated": false,
+            "method": "isco_parent_document_duties_rag",
+            "profile": "official_ilo2021_v1_enriched",
+            "candidates_scored": 436,
+            "child_weight": 0.5,
+            "aggregation": "max",
+            "child_collection": "isco08_parent_children_e5small_f4bb10a7940b4645",
+            "selection_sha256": "632598fd8a70cdabfef3841ef871573dbe6e3ae53dcacf3a2009e294973563ef",
+            "query_encoder": "intfloat/multilingual-e5-small",
+            "source_catalogue_sha256": "f78a8557272aca82049a0b5392303593844209053b8c425eb0dc4e331fbc1105",
+            "reranker_fired": false,
+            "score_calibrated": false,
+            "context_used": false,
+            "evidence": [
+              {
+                "code": "2512",
+                "score": 0.9139527350000001,
+                "child_score": 0.92528147,
+                "parent_score": 0.902624,
+                "fragment_id": "9548a592da6773d1ee779890b8e5c7a754d497b1f5fc79c5c4a4ffd5aba8a982",
+                "fragment_kind": "definition"
+              },
+              {
+                "code": "2514",
+                "score": 0.8846122000000001,
+                "child_score": 0.89314985,
+                "parent_score": 0.87607455,
+                "fragment_id": "a828650b4df4ada0d33cb0b60c132d5edd4246f564899cb7473f95b3bbc20e41",
+                "fragment_kind": "definition"
+              },
+              {
+                "code": "2519",
+                "score": 0.8652029,
+                "child_score": 0.889909,
+                "parent_score": 0.8404968,
+                "fragment_id": "1f0403a8f55a0388e841ae5d3d143d02cb43d06b0e16bad0e3384ece22477eb3",
+                "fragment_kind": "example"
+              }
+            ]
+          }
+        },
+        "elapsed_ms": 191.27,
+        "context_forwarded": false,
+        "language_forwarded": true,
+        "explicit_duties_forwarded": true,
+        "llm_reranking": false
+      }
+    ],
+    "isic": [
+      {
+        "input": "computer programming and software development company",
+        "method": "keyword",
+        "elapsed_ms": 9.15
+      }
+    ],
+    "isced": [
+      {
+        "input": "bachelor degree in computer science",
+        "method": "keyword",
+        "elapsed_ms": 9.46
+      }
+    ]
+  },
+  "blocked_network_targets": [],
+  "runtime_logging_observations": [],
+  "package_versions": {
+    "crewai": "1.9.3",
+    "litellm": "1.75.3"
+  },
+  "execution": {
+    "mode": "crewai_sequential",
+    "crew_attempted": true,
+    "crew_completed": true,
+    "requested_dimensions": [
+      "isco",
+      "isic",
+      "isced"
+    ],
+    "tool_executed_dimensions": [
+      "isco",
+      "isic",
+      "isced"
+    ],
+    "fallback_dimensions": [],
+    "failed_dimensions": [],
+    "failure_reasons": {},
+    "agent_roles": [
+      "Occupation Classification Specialist",
+      "Industry Classification Specialist",
+      "Education Classification Specialist",
+      "Classification Evidence Auditor"
+    ],
+    "audit_tool_executed": true,
+    "cooperation_verified": true,
+    "guardrail_rejections": {},
+    "llm_transport": "ollama_native_chat",
+    "llm_model": "ollama/qwen2.5:3b",
+    "inference_timeout_seconds": 30,
+    "inference_budget_seconds": 120
+  },
+  "classification_results": {
+    "isco": {
+      "primary": {
+        "code": "2512",
+        "title_en": "Software Developers",
+        "title_ar": "",
+        "confidence": 0.9139527350000001
+      },
+      "method": "isco_parent_document_duties_rag",
+      "hitl_required": true,
+      "hierarchy_path": null
+    },
+    "isic": {
+      "section": "J",
+      "section_title": "Information and Communication",
+      "division_code": "62",
+      "division_title": "Computer programming, consultancy and related activities",
+      "group_code": "620",
+      "group_title": "Computer programming, consultancy and related activities",
+      "class_code": "6201",
+      "class_title": "Computer programming activities",
+      "confidence": 0.75,
+      "method": "keyword",
+      "alternatives": [
+        {
+          "class_code": "2620",
+          "class_title": "Manufacture of computers and peripheral equipment",
+          "division_code": "26",
+          "section": "C",
+          "confidence": 0.25
+        },
+        {
+          "class_code": "9511",
+          "class_title": "Repair of computers and peripheral equipment",
+          "division_code": "95",
+          "section": "S",
+          "confidence": 0.25
+        }
+      ],
+      "raw_text": "computer programming and software development company",
+      "hierarchy_path": [],
+      "stage_confidences": {},
+      "hitl_required": null,
+      "fallback_used": false,
+      "fallback_reason": null
+    },
+    "isced": {
+      "level": 6,
+      "level_title": "Bachelor's or equivalent level",
+      "broad_code": "06",
+      "broad_title": "Information and Communication Technologies",
+      "narrow_code": "061",
+      "narrow_title": "Information and communication technologies",
+      "detailed_code": "0613",
+      "detailed_title": "Software and applications development and analysis",
+      "confidence": 1.0,
+      "method": "keyword",
+      "raw_text": "bachelor degree in computer science",
+      "hierarchy_path": [],
+      "stage_confidences": {},
+      "top_candidates": [],
+      "hitl_required": null,
+      "fallback_used": false,
+      "fallback_reason": null
+    }
+  }
+}

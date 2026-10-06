@@ -1,5 +1,7 @@
 # Accuracy reconciliation and retrieval follow-up — 6 October 2026
 
+The [duties-routing continuation](RAG_DUTIES_2026-10-06.md) fixes explicit duties reaching the live parent classifier and records a later frozen catalogue-alignment experiment. That candidate scored 39.16% on the historical benchmark but was not activated because Tagalog performance decreased. The active title-only result remains 38.83%; synthetic duties diagnostics do not establish field accuracy.
+
 The local application still serves **parent-document ISCO RAG, measured at 38.83%** on the historically reused WISCO reference split. **32.55% is its dense comparison baseline**, not the active method's measured accuracy. The earlier **40.95%** output is numerically higher, but its executed encoder cannot be established from the saved run metadata.
 
 The report now distinguishes these three results in all five interface languages. The historical percentage was removed from the individual survey classification card. Benchmark percentages describe aggregate reference results; they are not the confidence or field accuracy of an individual survey classification.

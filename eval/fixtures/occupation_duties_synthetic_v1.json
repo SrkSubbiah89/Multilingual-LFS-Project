@@ -1,0 +1,418 @@
+{
+  "schema_version": 1,
+  "fixture_id": "occupation_duties_synthetic_v1",
+  "notice": "SYNTHETIC ENGINEERING FIXTURE ONLY. Developer-authored examples and expectations; no real respondents, independent expert coding, or fresh field accuracy evidence.",
+  "dataset_label": "synthetic_or_operationally_realistic",
+  "purpose": "Paired vague-title versus explicit-duties mechanism diagnostics; semantic misses are reported, not used to claim accuracy.",
+  "respondent_data": false,
+  "expert_validated": false,
+  "native_language_reviewed": false,
+  "accuracy_claim_allowed": false,
+  "split_role": "engineering_regression",
+  "source_references": [
+    {
+      "reference_id": "ILO-ISCO08-2021",
+      "issuer": "International Labour Organization",
+      "standard": "ISCO-08",
+      "source_url": "https://webapps.ilo.org/ilostat-files/ISCO/newdocs-08-2021/ISCO-08/ISCO-08%20EN%20Structure%20and%20definitions.xlsx",
+      "local_normalized_catalogue": "eval/local_catalogues/ilo_isco08_2021/normalized/isco08_official_normalized_enriched.csv",
+      "source_catalogue_sha256": "f78a8557272aca82049a0b5392303593844209053b8c425eb0dc4e331fbc1105",
+      "official_units": {
+        "2221": "Nursing Professionals",
+        "2341": "Primary School Teachers",
+        "2411": "Accountants",
+        "2512": "Software Developers",
+        "5120": "Cooks"
+      }
+    }
+  ],
+  "label_provenance": "Developer-authored synthetic expectations grounded in official unit-group definitions; no classifier predictions or LLM judge supply labels. Semantic and native-language expert review has not occurred.",
+  "grouping_note": "Translations of each scenario belong to one scenario_family. All five duties within each language share a vague title; this is an engineering matrix, not 25 independent respondent observations.",
+  "cases": [
+    {
+      "case_id": "SYN-DUTIES-software-en",
+      "scenario_family": "software",
+      "language": "en",
+      "title": "Staff member",
+      "duties": "I analyse users' requirements, design computer software, write and test code, and maintain software systems.",
+      "synthetic_expected_code": "2512",
+      "synthetic_expected_label": "Software Developers",
+      "expected_code_reference": "ILO-ISCO08-2021#2512",
+      "expectation_rationale": "Requirements analysis, software design, coding, testing and maintenance.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-cook-en",
+      "scenario_family": "cook",
+      "language": "en",
+      "title": "Staff member",
+      "duties": "I prepare and cook everyday meals from recipes under the chef's supervision.",
+      "synthetic_expected_code": "5120",
+      "synthetic_expected_label": "Cooks",
+      "expected_code_reference": "ILO-ISCO08-2021#5120",
+      "expectation_rationale": "Meals prepared to recipes under a chef, rather than managing a kitchen.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-accountant-en",
+      "scenario_family": "accountant",
+      "language": "en",
+      "title": "Staff member",
+      "duties": "I design and manage accounting systems, examine financial statements, and check compliance with accounting standards.",
+      "synthetic_expected_code": "2411",
+      "synthetic_expected_label": "Accountants",
+      "expected_code_reference": "ILO-ISCO08-2021#2411",
+      "expectation_rationale": "Accounting systems, financial statements and standards compliance, rather than simple data entry.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": true,
+        "industry_not_classifier_input": "Hospital",
+        "note": "Employer activity must not replace the occupation described by the duties."
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-primary_teacher-en",
+      "scenario_family": "primary_teacher",
+      "language": "en",
+      "title": "Staff member",
+      "duties": "I teach reading, writing and mathematics to children in primary school and assess their classwork.",
+      "synthetic_expected_code": "2341",
+      "synthetic_expected_label": "Primary School Teachers",
+      "expected_code_reference": "ILO-ISCO08-2021#2341",
+      "expectation_rationale": "Teaching several subjects to primary-school children.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-nursing_professional-en",
+      "scenario_family": "nursing_professional",
+      "language": "en",
+      "title": "Staff member",
+      "duties": "I assess patients' nursing needs, plan their care, administer prescribed treatments and supervise other nursing staff.",
+      "synthetic_expected_code": "2221",
+      "synthetic_expected_label": "Nursing Professionals",
+      "expected_code_reference": "ILO-ISCO08-2021#2221",
+      "expectation_rationale": "Assessment and planning of nursing care with supervision of nursing staff.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-software-ar",
+      "scenario_family": "software",
+      "language": "ar",
+      "title": "موظف",
+      "duties": "أحلل احتياجات المستخدمين، وأصمم البرمجيات الحاسوبية، وأكتب الشيفرة وأختبرها، وأصون الأنظمة البرمجية.",
+      "synthetic_expected_code": "2512",
+      "synthetic_expected_label": "Software Developers",
+      "expected_code_reference": "ILO-ISCO08-2021#2512",
+      "expectation_rationale": "Requirements analysis, software design, coding, testing and maintenance.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-cook-ar",
+      "scenario_family": "cook",
+      "language": "ar",
+      "title": "موظف",
+      "duties": "أجهز الوجبات وأطهوها حسب الوصفات تحت إشراف الطاهي المسؤول عن المطبخ.",
+      "synthetic_expected_code": "5120",
+      "synthetic_expected_label": "Cooks",
+      "expected_code_reference": "ILO-ISCO08-2021#5120",
+      "expectation_rationale": "Meals prepared to recipes under a chef, rather than managing a kitchen.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-accountant-ar",
+      "scenario_family": "accountant",
+      "language": "ar",
+      "title": "موظف",
+      "duties": "أضع نظام المحاسبة وأديره، وأحلل القوائم المالية، وأتحقق من الالتزام بالمعايير المحاسبية.",
+      "synthetic_expected_code": "2411",
+      "synthetic_expected_label": "Accountants",
+      "expected_code_reference": "ILO-ISCO08-2021#2411",
+      "expectation_rationale": "Accounting systems, financial statements and standards compliance, rather than simple data entry.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": true,
+        "industry_not_classifier_input": "مستشفى",
+        "note": "Employer activity must not replace the occupation described by the duties."
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-primary_teacher-ar",
+      "scenario_family": "primary_teacher",
+      "language": "ar",
+      "title": "موظف",
+      "duties": "أعلّم أطفال المدرسة الابتدائية القراءة والكتابة والرياضيات، وأقيّم أعمالهم الصفية.",
+      "synthetic_expected_code": "2341",
+      "synthetic_expected_label": "Primary School Teachers",
+      "expected_code_reference": "ILO-ISCO08-2021#2341",
+      "expectation_rationale": "Teaching several subjects to primary-school children.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-nursing_professional-ar",
+      "scenario_family": "nursing_professional",
+      "language": "ar",
+      "title": "موظف",
+      "duties": "أقيّم احتياجات المرضى التمريضية، وأخطط لرعايتهم، وأعطي العلاجات الموصوفة، وأشرف على طاقم التمريض.",
+      "synthetic_expected_code": "2221",
+      "synthetic_expected_label": "Nursing Professionals",
+      "expected_code_reference": "ILO-ISCO08-2021#2221",
+      "expectation_rationale": "Assessment and planning of nursing care with supervision of nursing staff.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-software-ur",
+      "scenario_family": "software",
+      "language": "ur",
+      "title": "ملازم",
+      "duties": "میں صارفین کی ضروریات کا تجزیہ کرتا ہوں، کمپیوٹر سافٹ ویئر بناتا ہوں، کوڈ لکھتا اور آزماتا ہوں، اور سافٹ ویئر نظام کی دیکھ بھال کرتا ہوں۔",
+      "synthetic_expected_code": "2512",
+      "synthetic_expected_label": "Software Developers",
+      "expected_code_reference": "ILO-ISCO08-2021#2512",
+      "expectation_rationale": "Requirements analysis, software design, coding, testing and maintenance.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-cook-ur",
+      "scenario_family": "cook",
+      "language": "ur",
+      "title": "ملازم",
+      "duties": "میں کھانا پکانے کی ترکیبوں کے مطابق روزمرہ کے کھانے تیار اور پکاتا ہوں، باورچی خانے کے سربراہ کی نگرانی میں۔",
+      "synthetic_expected_code": "5120",
+      "synthetic_expected_label": "Cooks",
+      "expected_code_reference": "ILO-ISCO08-2021#5120",
+      "expectation_rationale": "Meals prepared to recipes under a chef, rather than managing a kitchen.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-accountant-ur",
+      "scenario_family": "accountant",
+      "language": "ur",
+      "title": "ملازم",
+      "duties": "میں حساب داری کے نظام ترتیب دیتا اور چلاتا ہوں، مالی بیانات کا تجزیہ کرتا ہوں، اور حساب داری کے معیارات کی پابندی جانچتا ہوں۔",
+      "synthetic_expected_code": "2411",
+      "synthetic_expected_label": "Accountants",
+      "expected_code_reference": "ILO-ISCO08-2021#2411",
+      "expectation_rationale": "Accounting systems, financial statements and standards compliance, rather than simple data entry.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": true,
+        "industry_not_classifier_input": "ہسپتال",
+        "note": "Employer activity must not replace the occupation described by the duties."
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-primary_teacher-ur",
+      "scenario_family": "primary_teacher",
+      "language": "ur",
+      "title": "ملازم",
+      "duties": "میں ابتدائی اسکول کے بچوں کو پڑھنا، لکھنا اور ریاضی سکھاتا ہوں اور ان کے جماعتی کام کا جائزہ لیتا ہوں۔",
+      "synthetic_expected_code": "2341",
+      "synthetic_expected_label": "Primary School Teachers",
+      "expected_code_reference": "ILO-ISCO08-2021#2341",
+      "expectation_rationale": "Teaching several subjects to primary-school children.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-nursing_professional-ur",
+      "scenario_family": "nursing_professional",
+      "language": "ur",
+      "title": "ملازم",
+      "duties": "میں مریضوں کی نرسنگ کی ضروریات کا جائزہ لیتا ہوں، ان کی نگہداشت کا منصوبہ بناتا ہوں، تجویز کردہ علاج دیتا ہوں اور نرسنگ عملے کی نگرانی کرتا ہوں۔",
+      "synthetic_expected_code": "2221",
+      "synthetic_expected_label": "Nursing Professionals",
+      "expected_code_reference": "ILO-ISCO08-2021#2221",
+      "expectation_rationale": "Assessment and planning of nursing care with supervision of nursing staff.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-software-hi",
+      "scenario_family": "software",
+      "language": "hi",
+      "title": "कर्मचारी",
+      "duties": "मैं उपयोगकर्ताओं की ज़रूरतों का विश्लेषण करता हूँ, कंप्यूटर सॉफ़्टवेयर की रूपरेखा बनाता हूँ, कोड लिखकर उसकी जाँच करता हूँ और सॉफ़्टवेयर प्रणालियों का रखरखाव करता हूँ।",
+      "synthetic_expected_code": "2512",
+      "synthetic_expected_label": "Software Developers",
+      "expected_code_reference": "ILO-ISCO08-2021#2512",
+      "expectation_rationale": "Requirements analysis, software design, coding, testing and maintenance.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-cook-hi",
+      "scenario_family": "cook",
+      "language": "hi",
+      "title": "कर्मचारी",
+      "duties": "मैं रसोई के प्रमुख की देखरेख में व्यंजनों के निर्देशों के अनुसार रोज़ के भोजन तैयार करता हूँ और पकाता हूँ।",
+      "synthetic_expected_code": "5120",
+      "synthetic_expected_label": "Cooks",
+      "expected_code_reference": "ILO-ISCO08-2021#5120",
+      "expectation_rationale": "Meals prepared to recipes under a chef, rather than managing a kitchen.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-accountant-hi",
+      "scenario_family": "accountant",
+      "language": "hi",
+      "title": "कर्मचारी",
+      "duties": "मैं लेखांकन प्रणाली की योजना बनाता हूँ और उसे चलाता हूँ, वित्तीय विवरणों का विश्लेषण करता हूँ और लेखांकन मानकों के पालन की जाँच करता हूँ।",
+      "synthetic_expected_code": "2411",
+      "synthetic_expected_label": "Accountants",
+      "expected_code_reference": "ILO-ISCO08-2021#2411",
+      "expectation_rationale": "Accounting systems, financial statements and standards compliance, rather than simple data entry.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": true,
+        "industry_not_classifier_input": "अस्पताल",
+        "note": "Employer activity must not replace the occupation described by the duties."
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-primary_teacher-hi",
+      "scenario_family": "primary_teacher",
+      "language": "hi",
+      "title": "कर्मचारी",
+      "duties": "मैं प्राथमिक विद्यालय के बच्चों को पढ़ना, लिखना और गणित सिखाता हूँ और उनकी कक्षा के काम का मूल्यांकन करता हूँ।",
+      "synthetic_expected_code": "2341",
+      "synthetic_expected_label": "Primary School Teachers",
+      "expected_code_reference": "ILO-ISCO08-2021#2341",
+      "expectation_rationale": "Teaching several subjects to primary-school children.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-nursing_professional-hi",
+      "scenario_family": "nursing_professional",
+      "language": "hi",
+      "title": "कर्मचारी",
+      "duties": "मैं रोगियों की नर्सिंग ज़रूरतों का आकलन करता हूँ, उनकी देखभाल की योजना बनाता हूँ, निर्धारित उपचार देता हूँ और नर्सिंग कर्मचारियों की देखरेख करता हूँ।",
+      "synthetic_expected_code": "2221",
+      "synthetic_expected_label": "Nursing Professionals",
+      "expected_code_reference": "ILO-ISCO08-2021#2221",
+      "expectation_rationale": "Assessment and planning of nursing care with supervision of nursing staff.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-software-tl",
+      "scenario_family": "software",
+      "language": "tl",
+      "title": "Kawani",
+      "duties": "Sinusuri ko ang pangangailangan ng mga gumagamit, nagdidisenyo at gumagawa ako ng computer software, sumusulat at sumusubok ng code, at nagpapanatili ng mga software system.",
+      "synthetic_expected_code": "2512",
+      "synthetic_expected_label": "Software Developers",
+      "expected_code_reference": "ILO-ISCO08-2021#2512",
+      "expectation_rationale": "Requirements analysis, software design, coding, testing and maintenance.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-cook-tl",
+      "scenario_family": "cook",
+      "language": "tl",
+      "title": "Kawani",
+      "duties": "Naghahanda at nagluluto ako ng mga pagkain ayon sa mga resipe sa ilalim ng pangangasiwa ng punong tagapagluto.",
+      "synthetic_expected_code": "5120",
+      "synthetic_expected_label": "Cooks",
+      "expected_code_reference": "ILO-ISCO08-2021#5120",
+      "expectation_rationale": "Meals prepared to recipes under a chef, rather than managing a kitchen.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-accountant-tl",
+      "scenario_family": "accountant",
+      "language": "tl",
+      "title": "Kawani",
+      "duties": "Nagdidisenyo at namamahala ako ng sistema ng accounting, sinusuri ang mga ulat sa pananalapi, at tinitiyak na sumusunod ang mga ito sa mga pamantayan sa accounting.",
+      "synthetic_expected_code": "2411",
+      "synthetic_expected_label": "Accountants",
+      "expected_code_reference": "ILO-ISCO08-2021#2411",
+      "expectation_rationale": "Accounting systems, financial statements and standards compliance, rather than simple data entry.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": true,
+        "industry_not_classifier_input": "Ospital",
+        "note": "Employer activity must not replace the occupation described by the duties."
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-primary_teacher-tl",
+      "scenario_family": "primary_teacher",
+      "language": "tl",
+      "title": "Kawani",
+      "duties": "Nagtuturo ako ng pagbasa, pagsulat at matematika sa mga bata sa paaralang elementarya at sinusuri ang kanilang gawain sa klase.",
+      "synthetic_expected_code": "2341",
+      "synthetic_expected_label": "Primary School Teachers",
+      "expected_code_reference": "ILO-ISCO08-2021#2341",
+      "expectation_rationale": "Teaching several subjects to primary-school children.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    },
+    {
+      "case_id": "SYN-DUTIES-nursing_professional-tl",
+      "scenario_family": "nursing_professional",
+      "language": "tl",
+      "title": "Kawani",
+      "duties": "Sinusuri ko ang pangangailangan sa pangangalaga ng mga pasyente, pinaplano ang kanilang nursing care, nagbibigay ng iniresetang paggamot, at nangangasiwa sa ibang kawani ng nursing.",
+      "synthetic_expected_code": "2221",
+      "synthetic_expected_label": "Nursing Professionals",
+      "expected_code_reference": "ILO-ISCO08-2021#2221",
+      "expectation_rationale": "Assessment and planning of nursing care with supervision of nursing staff.",
+      "title_alone_insufficient": true,
+      "metadata": {
+        "industry_conflict": false
+      }
+    }
+  ]
+}

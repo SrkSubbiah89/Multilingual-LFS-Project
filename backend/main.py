@@ -306,15 +306,22 @@ def health_check():
 
 
 @app.get("/debug/isco/{job_title}", tags=["debug"])
-def debug_isco(job_title: str):
+def debug_isco(job_title: str, duties: str = "", language: str = "", include_trace: bool = False):
     import time, traceback
     try:
         from backend.api.survey_routes import _get_isco_classifier
+        from backend.agents.occupation_inputs import classify_occupation_input
         t = time.perf_counter()
-        clf = _get_isco_classifier().classify(job_title, use_llm=False)
+        trace = {}
+        clf = classify_occupation_input(_get_isco_classifier(), job_title, duties=duties,
+                                       language=language, use_llm=False, trace=trace)
         ms = int((time.perf_counter() - t) * 1000)
-        return {"code": clf.primary.code, "title": clf.primary.title_en, "conf": clf.primary.confidence,
-                "ms": ms, "method": clf.method, "hitl_required": clf.hitl_required}
+        result = {"code": clf.primary.code, "title": clf.primary.title_en, "conf": clf.primary.confidence,
+                  "ms": ms, "method": clf.method, "hitl_required": clf.hitl_required,
+                  "duties_used": trace.get("duties_used", False)}
+        if include_trace:
+            result["trace"] = trace
+        return result
     except Exception as exc:
         return {"error": str(exc), "traceback": traceback.format_exc()}
 

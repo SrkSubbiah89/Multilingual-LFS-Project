@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 from pathlib import Path
 from dotenv import load_dotenv
+from backend.agents.occupation_inputs import classify_occupation_input
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env", override=False)
 
 _FAST_MODE = os.getenv("LFS_FAST_MODE", "false").lower() in ("1", "true", "yes")
@@ -954,7 +955,10 @@ def _send_message_impl(
     occupation_field = "last_job_title" if ctx.collected_data.get("employment_status") in (
         "unemployed", "not_in_labour_force"
     ) else "job_title"
-    occupation_fields = {occupation_field, "job_duties", "industry", "employment_sector", "employment_nature"}
+    occupation_fields = ({occupation_field, "job_duties", "industry", "employment_sector", "employment_nature"}
+                         if occupation_field == "job_title" else {occupation_field})
+    # Current-job tasks cannot be evidence about a previous occupation.
+    occupation_duties = ctx.collected_data.get("job_duties", "") if occupation_field == "job_title" else ""
     if _CREW_CLASSIFICATION_ENABLED and not _FAST_MODE:
         if _fields_new.intersection(occupation_fields):
             title_input = str(ctx.collected_data.get(occupation_field, "")).strip()
@@ -970,13 +974,16 @@ def _send_message_impl(
             from backend.agents.survey_classification_crew import SurveyClassificationCrew
             def lazy_classifier(getter):
                 return SimpleNamespace(classify=lambda text, **kwargs: getter().classify(text, **kwargs))
+            def lazy_occupation_classifier():
+                return SimpleNamespace(classify=lambda text, **kwargs: classify_occupation_input(
+                    _get_isco_classifier(), text, duties=occupation_duties, **kwargs))
             context_parts = [f"language={lp_result.detected_language}"] + [
                 str(ctx.collected_data[field]) for field in
-                ("job_duties", "industry", "employment_sector", "employment_nature")
-                if ctx.collected_data.get(field)
+                ("industry", "employment_sector", "employment_nature")
+                if occupation_field == "job_title" and ctx.collected_data.get(field)
             ]
             classification_batch = SurveyClassificationCrew(
-                isco_classifier=lazy_classifier(_get_isco_classifier) if title_input else None,
+                isco_classifier=lazy_occupation_classifier() if title_input else None,
                 isic_classifier=lazy_classifier(_get_isic_classifier) if industry_input else None,
                 isced_classifier=lazy_classifier(_get_isced_classifier) if education_input else None,
             ).classify(
@@ -996,7 +1003,7 @@ def _send_message_impl(
             if classification_batch.isco is None:
                 raise RuntimeError("Occupation classification failed in the survey crew")
             return classification_batch.isco
-        result = _get_isco_classifier().classify(text, **kwargs)
+        result = classify_occupation_input(_get_isco_classifier(), text, duties=occupation_duties, **kwargs)
         agent_execution["ISCOClassifier"] = "completed"
         return result
 
@@ -1027,11 +1034,10 @@ def _send_message_impl(
 
     for entity in job_title_entities:
         try:
-            # Build context-enriched string from all collected occupational data.
-            # This enriches the embedding query (not just the LLM re-ranking prompt)
-            # so the hierarchical vector search benefits from duties/industry/sector.
+            # Duties enter the shared query adapter once. Auxiliary context
+            # retains the legacy classifier's industry/language contract.
             _ctx_parts = [f"language={lp_result.detected_language}"]
-            for _fld in ("job_duties", "industry", "employment_sector", "employment_nature"):
+            for _fld in ("industry", "employment_sector", "employment_nature"):
                 _val = ctx.collected_data.get(_fld, "")
                 if _val:
                     _ctx_parts.append(_val)
@@ -1100,12 +1106,12 @@ def _send_message_impl(
     #   (b) NER ran but failed to extract a JOB_TITLE entity
     # We run ISCO only on the turn job_title was first stored so it doesn't
     # re-run every subsequent turn.
-    if not isco_results and "job_title" in _fields_new:
+    if not isco_results and occupation_field == "job_title" and "job_title" in _fields_new:
         _stored_title = ctx.collected_data.get("job_title", "").strip()
-        if _stored_title and len(_stored_title) >= 3:
+        if _stored_title and len(_stored_title) >= 3 and _stored_title not in ("N/A", "never_worked"):
             try:
                 _ctx_parts = [f"language={lp_result.detected_language}"]
-                for _fld in ("job_duties", "industry", "employment_sector", "employment_nature"):
+                for _fld in ("industry", "employment_sector", "employment_nature"):
                     _val = ctx.collected_data.get(_fld, "")
                     if _val:
                         _ctx_parts.append(_val)
@@ -1217,11 +1223,11 @@ def _send_message_impl(
     # ── Stage 4 re-classify: re-run ISCO with job_duties context once available ─
     # job_duties was just stored this turn and we already have job_title → re-run
     # so the classification benefits from the full duties description.
-    if "job_title" not in _fields_new and _fields_new.intersection({"job_duties", "industry", "employment_sector", "employment_nature"}) and ctx.collected_data.get("job_title"):
+    if occupation_field == "job_title" and "job_title" not in _fields_new and _fields_new.intersection({"job_duties", "industry", "employment_sector", "employment_nature"}) and ctx.collected_data.get("job_title") not in (None, "", "N/A", "never_worked"):
         _stored_title = ctx.collected_data["job_title"].strip()
         try:
             _ctx_parts = [f"language={lp_result.detected_language}"]
-            for _fld in ("job_duties", "industry", "employment_sector", "employment_nature"):
+            for _fld in ("industry", "employment_sector", "employment_nature"):
                 _val = ctx.collected_data.get(_fld, "")
                 if _val:
                     _ctx_parts.append(_val)
@@ -2058,17 +2064,14 @@ def _ensure_isco_classification(
         # If they never worked there's nothing to classify
         if not occ_value or occ_value in ("N/A", "never_worked"):
             return
-        isco_query = occ_value
+        job_duties = ""
         industry = ""   # unemployed path doesn't collect current industry
     else:
         occ_field = "job_title"
         occ_value = collected_data.get("job_title", "")
         if not occ_value or occ_value == "N/A":
             return
-        # Include supplied duties in the fallback query. Title-only benchmark
-        # results do not establish the accuracy of this combined input.
         job_duties = collected_data.get("job_duties", "")
-        isco_query = f"{occ_value} {job_duties}".strip() if job_duties and job_duties != "N/A" else occ_value
         industry = collected_data.get("industry", "")
 
     occ_row = (
@@ -2084,8 +2087,8 @@ def _ensure_isco_classification(
         return  # already classified — nothing to do
 
     try:
-        clf = _get_isco_classifier().classify(
-            isco_query,
+        clf = classify_occupation_input(
+            _get_isco_classifier(), occ_value, duties=job_duties,
             context=f"industry={industry}",
             use_llm=not _FAST_MODE,
         )
