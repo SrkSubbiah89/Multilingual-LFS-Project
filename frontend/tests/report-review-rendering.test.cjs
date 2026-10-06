@@ -70,5 +70,6 @@ for (const language of ["en", "ar", "ur", "hi", "tl"]) {
     }));
     assert.ok(html.includes(t.iscoHierarchy));
     assert.ok(!html.includes("4-Stage Hierarchical Pipeline"));
+    assert.ok(!html.includes("40.95%"), "Historical accuracy must not be attached to an individual ISCO classification");
   });
 }

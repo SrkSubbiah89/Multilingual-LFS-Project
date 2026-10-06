@@ -1,0 +1,228 @@
+{
+  "created_at_utc": "2026-10-06T03:53:23.677390+00:00",
+  "dataset": "WISCO ISCO-08 v3 historically reused heldout split",
+  "case_ids_input_text_languages_gold_codes_identical": true,
+  "labour_force_survey_field_validation": false,
+  "historical_encoder_provenance": {
+    "finding": 9,
+    "source_csv": "eval/results/raw_runs/enriched_e5large_heldout_20260824/20260824T123941Z_flat.csv",
+    "source_sha256": "2ec7befd1ee7a1135e0bc31db2dae2c09920c81f9f73c915a1748efc72be95b9",
+    "recorded_embedding_model_versions": [
+      "intfloat/multilingual-e5-small"
+    ],
+    "claimed_method_labels": [
+      "flat_isco08_official_ilo2021_v1_enriched_e5large"
+    ],
+    "profile_expected_embedding_model": "intfloat/multilingual-e5-large",
+    "executed_embedding_model": null,
+    "provenance_status": "historical_execution_identity_unresolved",
+    "config_hash_status": "does_not_reliably_identify_encoder_before_harness_fix",
+    "affected_downstream_manifests": [
+      {
+        "path": "eval/results/raw_runs/enriched_e5large_heldout_20260824/manifests/manifest_enriched_e5large_heldout_20260824.csv",
+        "sha256": "b33bc2c4104eab31f119707c92a15528b5d89aef14cd6b256db9dbdc02451967"
+      },
+      {
+        "path": "eval/results/raw_runs/enriched_e5large_heldout_20260824/manifests/manifest_enriched_e5large_heldout_20260824.jsonl",
+        "sha256": "c72270bfe565c0366e3191741718ade18179f3b47b4cf344f356298946f28d55"
+      }
+    ],
+    "downstream_manifest_correction": {
+      "model_versions.embedding": null,
+      "reason": "Original manifests do not resolve the executed encoder; retain this explicit uncertainty when consuming them."
+    },
+    "accuracy_changed": false,
+    "note": "The harness recorded a constant e5-small encoder. The intended profile label is insufficient to prove executed identity; independent startup/model or collection evidence is required."
+  },
+  "current_frozen_reference_identity": {
+    "selection_sha256": "632598fd8a70cdabfef3841ef871573dbe6e3ae53dcacf3a2009e294973563ef",
+    "selected": {
+      "child_weight": 0.5,
+      "aggregation": "max"
+    },
+    "query_encoder": {
+      "encoder_id": "intfloat/multilingual-e5-small",
+      "encoder_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+      "weights_sha256": "1a55775f53449dac10a2bcbc312469fac40b96d53198c407081a831f81c98477",
+      "query_prefix": "query: ",
+      "normalize_embeddings": true
+    },
+    "catalogue_profile": "official_ilo2021_v1_enriched",
+    "fragment_cache_sha256": "f4bb10a7940b4645fedda332096d23b72598e3aa482cb247eac00f64057f2c5b",
+    "catalogue_cache_sha256": "d99c65ec6d09966608e1d7a0ace5c45a9a84b3bbfbd3daa2094c09606311037d",
+    "comparison_report_sha256": "57ff9dec891f66b6e6526d5e17430cfac56b991667f5f0a6da2a194fb2a0bfa0",
+    "runtime_config_sha256": "1a1da48331b61542b129808c269f669b0f436e042f2f13e8a608fcadc16adea3",
+    "selection_file_sha256": "5ce113f3e215d59b2231f17d8dfd63397a02fe004577344dc0576583c6e29e3d"
+  },
+  "methods": {
+    "historical_intended_e5large_encoder_unresolved": {
+      "n": 18747,
+      "top1_correct": 7676,
+      "top1_accuracy": 0.4094521790153091
+    },
+    "historical_enriched_dense_small": {
+      "n": 18747,
+      "top1_correct": 6102,
+      "top1_accuracy": 0.3254920787325972
+    },
+    "dense_flat": {
+      "n": 18747,
+      "top1_correct": 6102,
+      "top1_accuracy": 0.3254920787325972
+    },
+    "parent_document_rag": {
+      "n": 18747,
+      "top1_correct": 7279,
+      "top1_accuracy": 0.38827545740651837
+    }
+  },
+  "per_language": {
+    "ar": {
+      "historical_intended_e5large_encoder_unresolved": {
+        "n": 3762,
+        "top1_correct": 1421,
+        "top1_accuracy": 0.37772461456671985
+      },
+      "historical_enriched_dense_small": {
+        "n": 3762,
+        "top1_correct": 946,
+        "top1_accuracy": 0.25146198830409355
+      },
+      "dense_flat": {
+        "n": 3762,
+        "top1_correct": 946,
+        "top1_accuracy": 0.25146198830409355
+      },
+      "parent_document_rag": {
+        "n": 3762,
+        "top1_correct": 1051,
+        "top1_accuracy": 0.2793726741095162
+      }
+    },
+    "en": {
+      "historical_intended_e5large_encoder_unresolved": {
+        "n": 3818,
+        "top1_correct": 2173,
+        "top1_accuracy": 0.5691461498166579
+      },
+      "historical_enriched_dense_small": {
+        "n": 3818,
+        "top1_correct": 2094,
+        "top1_accuracy": 0.5484546883184913
+      },
+      "dense_flat": {
+        "n": 3818,
+        "top1_correct": 2094,
+        "top1_accuracy": 0.5484546883184913
+      },
+      "parent_document_rag": {
+        "n": 3818,
+        "top1_correct": 2440,
+        "top1_accuracy": 0.6390780513357779
+      }
+    },
+    "hi": {
+      "historical_intended_e5large_encoder_unresolved": {
+        "n": 3793,
+        "top1_correct": 1551,
+        "top1_accuracy": 0.4089111521223306
+      },
+      "historical_enriched_dense_small": {
+        "n": 3793,
+        "top1_correct": 1282,
+        "top1_accuracy": 0.33799103611916687
+      },
+      "dense_flat": {
+        "n": 3793,
+        "top1_correct": 1282,
+        "top1_accuracy": 0.33799103611916687
+      },
+      "parent_document_rag": {
+        "n": 3793,
+        "top1_correct": 1524,
+        "top1_accuracy": 0.40179277616662273
+      }
+    },
+    "tl": {
+      "historical_intended_e5large_encoder_unresolved": {
+        "n": 3766,
+        "top1_correct": 1249,
+        "top1_accuracy": 0.33165161975570895
+      },
+      "historical_enriched_dense_small": {
+        "n": 3766,
+        "top1_correct": 871,
+        "top1_accuracy": 0.23127987254381308
+      },
+      "dense_flat": {
+        "n": 3766,
+        "top1_correct": 871,
+        "top1_accuracy": 0.23127987254381308
+      },
+      "parent_document_rag": {
+        "n": 3766,
+        "top1_correct": 1124,
+        "top1_accuracy": 0.2984599044078598
+      }
+    },
+    "ur": {
+      "historical_intended_e5large_encoder_unresolved": {
+        "n": 3608,
+        "top1_correct": 1282,
+        "top1_accuracy": 0.3553215077605322
+      },
+      "historical_enriched_dense_small": {
+        "n": 3608,
+        "top1_correct": 909,
+        "top1_accuracy": 0.251940133037694
+      },
+      "dense_flat": {
+        "n": 3608,
+        "top1_correct": 909,
+        "top1_accuracy": 0.251940133037694
+      },
+      "parent_document_rag": {
+        "n": 3608,
+        "top1_correct": 1140,
+        "top1_accuracy": 0.31596452328159647
+      }
+    }
+  },
+  "paired_comparisons": {
+    "historical_small_to_current_dense": {
+      "both_correct": 6102,
+      "reference_only_correct": 0,
+      "candidate_only_correct": 0,
+      "both_wrong": 12645,
+      "prediction_mismatches": 0,
+      "difference_correct_candidate_minus_reference": 0,
+      "difference_percentage_points_candidate_minus_reference": 0.0
+    },
+    "current_dense_to_parent": {
+      "both_correct": 5382,
+      "reference_only_correct": 720,
+      "candidate_only_correct": 1897,
+      "both_wrong": 10748,
+      "prediction_mismatches": 7608,
+      "difference_correct_candidate_minus_reference": 1177,
+      "difference_percentage_points_candidate_minus_reference": 6.278337867392116
+    },
+    "historical_intended_large_to_parent": {
+      "both_correct": 5348,
+      "reference_only_correct": 2328,
+      "candidate_only_correct": 1931,
+      "both_wrong": 9140,
+      "prediction_mismatches": 10700,
+      "difference_correct_candidate_minus_reference": -397,
+      "difference_percentage_points_candidate_minus_reference": -2.117672160879074
+    }
+  },
+  "source_sha256": {
+    "historical_intended_large": "2ec7befd1ee7a1135e0bc31db2dae2c09920c81f9f73c915a1748efc72be95b9",
+    "historical_small": "13da26c20a571db6ae7e0185d3ce0bb768e3bedab1f9dd01d3bf2a366d50745c",
+    "current_predictions": "e2ec8e13de7e1434748599c94869c5d1744758d6fab74bc61b371d9cf347ead7",
+    "historical_correction": "2a6f42bfe452d706c58d721010ee33db465a9cc3d51567f2910149221ec7c971",
+    "audit_script": "a23c88191a9cf66c7658e3bf4b1e1286de1ddc03e1f63027910f9433e1ce8b51"
+  },
+  "interpretation": "32.55% is the same-profile dense baseline; the configured parent method scored 38.83%. Historical 40.95% has unresolved executed encoder provenance; no verified encoder comparison or field-accuracy claim."
+}

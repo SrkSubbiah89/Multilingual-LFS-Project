@@ -1,0 +1,168 @@
+{
+  "before": {
+    "created_at_utc": "2026-10-06T03:48:35.779833+00:00",
+    "stage": "before",
+    "operation": "Read-only database counts/readiness; after-stage debug queries disable LLM reranking",
+    "database_counts": {
+      "users": 216,
+      "otp_codes": 665,
+      "survey_sessions": 589,
+      "survey_responses": 2480,
+      "audit_logs": 10750,
+      "data_access_logs": 5204,
+      "agent_decision_logs": 730,
+      "quality_reviews": 73,
+      "hitl_queue": 849,
+      "person_register": 38,
+      "survey_report_records": 109,
+      "alembic_version": 1
+    },
+    "migration_revision": "d841b2079c65",
+    "supervisor_user_id": 5,
+    "supervisor_active": true,
+    "runtime_configuration": {
+      "ISCO_RETRIEVAL_STRATEGY": "parent_document",
+      "LFS_FAST_MODE": "false",
+      "LFS_LOCAL_ONLY": "true",
+      "ENABLE_SURVEY_CLASSIFICATION_CREW": "true",
+      "OLLAMA_MODEL": "qwen2.5:3b",
+      "HITL_REVIEWER_USER_IDS": "5"
+    },
+    "health": {
+      "status": "ok",
+      "fast_mode": false,
+      "lfs_fast_mode_env": "false",
+      "services": {
+        "redis": "ok",
+        "qdrant": "ok",
+        "ollama": "ok"
+      }
+    },
+    "readiness": {
+      "status": "ready",
+      "database": "connected",
+      "redis": "connected"
+    }
+  },
+  "after": {
+    "created_at_utc": "2026-10-06T03:54:54.861914+00:00",
+    "stage": "after",
+    "operation": "Read-only database counts/readiness; after-stage debug queries disable LLM reranking",
+    "database_counts": {
+      "users": 216,
+      "otp_codes": 665,
+      "survey_sessions": 589,
+      "survey_responses": 2480,
+      "audit_logs": 10750,
+      "data_access_logs": 5204,
+      "agent_decision_logs": 730,
+      "quality_reviews": 73,
+      "hitl_queue": 849,
+      "person_register": 38,
+      "survey_report_records": 109,
+      "alembic_version": 1
+    },
+    "migration_revision": "d841b2079c65",
+    "supervisor_user_id": 5,
+    "supervisor_active": true,
+    "runtime_configuration": {
+      "ISCO_RETRIEVAL_STRATEGY": "parent_document",
+      "LFS_FAST_MODE": "false",
+      "LFS_LOCAL_ONLY": "true",
+      "ENABLE_SURVEY_CLASSIFICATION_CREW": "true",
+      "OLLAMA_MODEL": "qwen2.5:3b",
+      "HITL_REVIEWER_USER_IDS": "5"
+    },
+    "health": {
+      "status": "ok",
+      "fast_mode": false,
+      "lfs_fast_mode_env": "false",
+      "services": {
+        "redis": "ok",
+        "qdrant": "ok",
+        "ollama": "ok"
+      }
+    },
+    "readiness": {
+      "status": "ready",
+      "database": "connected",
+      "redis": "connected"
+    },
+    "occupation_probes": {
+      "en": {
+        "code": "2512",
+        "title": "Software Developers",
+        "conf": 0.914402325,
+        "ms": 1421,
+        "method": "isco_parent_document_rag",
+        "hitl_required": true
+      },
+      "ar": {
+        "code": "2514",
+        "title": "Applications Programmers",
+        "conf": 0.841265375,
+        "ms": 357,
+        "method": "isco_parent_document_rag",
+        "hitl_required": true
+      },
+      "ur": {
+        "code": "2512",
+        "title": "Software Developers",
+        "conf": 0.8574712600000001,
+        "ms": 291,
+        "method": "isco_parent_document_rag",
+        "hitl_required": true
+      },
+      "hi": {
+        "code": "2512",
+        "title": "Software Developers",
+        "conf": 0.8739121,
+        "ms": 307,
+        "method": "isco_parent_document_rag",
+        "hitl_required": true
+      },
+      "tl": {
+        "code": "2512",
+        "title": "Software Developers",
+        "conf": 0.861453225,
+        "ms": 258,
+        "method": "isco_parent_document_rag",
+        "hitl_required": true
+      }
+    }
+  },
+  "database_counts_unchanged": true,
+  "frontend_http_status": 200,
+  "backend_pid": 23520,
+  "frontend_pid": 25612,
+  "backend_restarted": false,
+  "frontend_rebuilt_and_restarted": true,
+  "retrieval_configuration_changed": false,
+  "browser_checks": {
+    "passed": 6,
+    "failed": 0,
+    "languages": [
+      "en",
+      "ar",
+      "ur",
+      "hi",
+      "tl"
+    ],
+    "fixture_services_cleaned_up": true
+  },
+  "frontend_tests": {
+    "passed": 33,
+    "failed": 0
+  },
+  "frontend_production_build": {
+    "passed": true,
+    "public_api_url": "http://localhost:8000"
+  },
+  "test_scope": "Current follow-up regression and report checks; earlier3193-test full suite remains separate evidence.",
+  "backend_evaluation_tests": {
+    "passed": 229,
+    "failed": 0,
+    "scope": "Focused parent retrieval and follow-up experiments/history audit",
+    "warnings": 1
+  }
+}

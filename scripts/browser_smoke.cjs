@@ -178,12 +178,30 @@ async function reportCheck(page) {
           assert.match(content, /32\.55%/);
           assert.match(content, /236\/642/);
           assert.match(content, /209\/642/);
+          const active = await page.locator('[data-evidence-role="active"]').innerText();
+          const baseline = await page.locator('[data-evidence-role="baseline"]').innerText();
+          assert.match(active, /38\.83%/);
+          assert.match(active, /7,279\/18,747/);
+          assert.doesNotMatch(active, /32\.55%|40\.95%/);
+          assert.match(baseline, /32\.55%/);
+          assert.doesNotMatch(baseline, /38\.83%|40\.95%/);
+          const historical = page.locator('section[aria-label]').filter({ hasText: 'intfloat/multilingual-e5-large' });
+          const historicalText = await historical.innerText();
+          assert.match(historicalText, /40\.95%/);
+          assert.match(historicalText, /7,676\/18,747/);
+          // Each language must explain the unresolved executed encoder.
+          const unresolved = {en: 'Unresolved', ar: 'غير محسوم', ur: 'غیر طے شدہ', hi: 'अनिश्चित', tl: 'Hindi pa matiyak'};
+          assert.ok(historicalText.includes(unresolved[language]));
+          assert.equal(await page.getByText('Best-tested config (benchmark, not live): 40.95%', { exact: true }).count(), 0);
           const direction = await page.locator('#__next > div[dir]').getAttribute('dir');
           assert.equal(direction, ['ar', 'ur'].includes(language) ? 'rtl' : 'ltr');
           await page.setViewportSize({ width: 390, height: 844 });
           const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
           assert.ok(dimensions.scroll <= dimensions.width + 1, 'Mobile page must fit the viewport');
-          return { language, direction, exact_matches: '7279/18747', accuracy: '38.83%', mobile_width: dimensions.width };
+          return { language, direction, exact_matches: '7279/18747', accuracy: '38.83%', baseline_accuracy: '32.55%',
+            historical_exact_matches: '7676/18747', historical_accuracy: '40.95%',
+            historical_executed_encoder: 'unresolved', individual_classification_historical_badge: false,
+            mobile_width: dimensions.width };
         }, page);
       }
       await check('no JavaScript runtime errors', async () => {

@@ -2,7 +2,9 @@
 
 The local application now uses **parent-document ISCO RAG** inside the existing CrewAI classification workflow. On the 18,747-case WISCO reference benchmark it achieved **38.83% (7,279 correct)**, compared with **32.55% (6,102 correct)** for dense retrieval using the same official enriched catalogue and E5-small encoder: **+6.28 percentage points**, or 1,177 additional correct codes.
 
-This is a controlled comparison on historically reused occupation-title data. The enriched catalogue was previously designed in response to historical held-out errors. These results do not establish accuracy on fresh respondent interviews, duties descriptions, or the Labour Force Survey population. The historical 21.19% flat / 10.35% strict-hierarchy experiment remains unchanged in the report; it used a different catalogue configuration. Older E5-large results are separate experiments and are not surpassed by this result.
+This is a controlled comparison on historically reused occupation-title data. The enriched catalogue was previously designed in response to historical held-out errors. These results do not establish accuracy on fresh respondent interviews, duties descriptions, or the Labour Force Survey population. The historical 21.19% flat / 10.35% strict-hierarchy experiment remains unchanged in the report; it used a different catalogue configuration. The historical intended E5-large result is a separate experiment and is not surpassed by this result; its executed encoder provenance remains unresolved.
+
+The [accuracy reconciliation and follow-up](RAG_ACCURACY_AUDIT_2026-10-06.md) confirms that the active 38.83% result improves the unchanged 32.55% dense baseline but remains 2.12 percentage points below the historical 40.95% output. It records the encoder metadata conflict, corrects the report labels, and preserves two development-only follow-up experiments that did not improve accuracy.
 
 ## Measured results
 

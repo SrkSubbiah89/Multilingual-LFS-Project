@@ -711,12 +711,6 @@ export default function ReportPage() {
                     <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-widest">
                       {t.iscoSection}
                     </h3>
-                    <span
-                      className="text-[10px] bg-violet-100 text-violet-700 border border-violet-300 px-1.5 py-0.5 rounded-full font-medium"
-                      title="This is a controlled-benchmark figure for a different, non-production catalogue configuration — not the accuracy of the classification shown below. See the WISCO v2 comparison further down this report."
-                    >
-                      Best-tested config (benchmark, not live): 40.95%
-                    </span>
                   </div>
                   <span className="text-[10px] text-gray-400 font-mono">ILO ISCO-08</span>
                 </div>

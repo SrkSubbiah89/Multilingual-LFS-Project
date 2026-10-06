@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "dataset": "WISCO ISCO-08 v3 grouped split",
+  "split": "heldout",
+  "run_date": "2026-08-24",
+  "intended_catalogue_profile": "official_ilo2021_v1_enriched_e5large",
+  "intended_embedding_model": "intfloat/multilingual-e5-large",
+  "executed_embedding_model": null,
+  "provenance_status": "historical_execution_identity_unresolved",
+  "reranker": "off",
+  "historically_reused_benchmark": true,
+  "labour_force_survey_field_validation": false,
+  "metrics": {
+    "n": 18747,
+    "top1_correct": 7676,
+    "top1_accuracy": 0.4094521790153091
+  },
+  "per_language": {
+    "ar": {
+      "n": 3762,
+      "top1_correct": 1421,
+      "top1_accuracy": 0.37772461456671985
+    },
+    "en": {
+      "n": 3818,
+      "top1_correct": 2173,
+      "top1_accuracy": 0.5691461498166579
+    },
+    "hi": {
+      "n": 3793,
+      "top1_correct": 1551,
+      "top1_accuracy": 0.4089111521223306
+    },
+    "tl": {
+      "n": 3766,
+      "top1_correct": 1249,
+      "top1_accuracy": 0.33165161975570895
+    },
+    "ur": {
+      "n": 3608,
+      "top1_correct": 1282,
+      "top1_accuracy": 0.3553215077605322
+    }
+  },
+  "source_csv": "eval/results/raw_runs/enriched_e5large_heldout_20260824/20260824T123941Z_flat.csv",
+  "source_csv_sha256": "2ec7befd1ee7a1135e0bc31db2dae2c09920c81f9f73c915a1748efc72be95b9",
+  "provenance_correction": "eval/results/corrections_20261004/raw_runs/enriched_e5large_heldout_20260824/20260824T123941Z_flat.provenance_correction.json",
+  "provenance_correction_sha256": "2a6f42bfe452d706c58d721010ee33db465a9cc3d51567f2910149221ec7c971"
+}
