@@ -7,7 +7,7 @@ import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from types import SimpleNamespace
 
 from pathlib import Path
@@ -47,6 +47,8 @@ from backend.auth.email_otp import check_rate_limit
 from backend.agents.conversation_manager import ConversationContext, ConversationManager, ConversationState
 from backend.agents.language_processor import LanguageProcessor, LanguageProcessorResult
 from backend.agents.isco_classifier import ISCOClassifier
+if TYPE_CHECKING:
+    from backend.agents.parent_document_isco_classifier import ParentDocumentISCOClassifier
 from backend.agents.hitl_quality_manager import HITLQualityManager
 from backend.agents.report_generator import SurveyReport, get_report_generator
 from backend.agents.isic_classifier import ISICClassifier
@@ -108,7 +110,8 @@ async def _check_rate_limit(request: Request) -> None:
 
 _conversation_manager: Optional[ConversationManager] = None
 _language_processor:   Optional[LanguageProcessor]   = None
-_isco_classifier:      Optional[ISCOClassifier]       = None
+_isco_classifier: Optional["ISCOClassifier | ParentDocumentISCOClassifier"] = None
+_isco_classifier_init_lock = threading.Lock()
 _hitl_quality_manager: Optional[HITLQualityManager]  = None
 _isic_classifier:         Optional[ISICClassifier]         = None
 _isced_classifier:        Optional[ISCEDClassifier]        = None
@@ -169,51 +172,31 @@ def _get_agents() -> tuple[ConversationManager, LanguageProcessor]:
     return _conversation_manager, _language_processor
 
 
-def _get_isco_classifier() -> ISCOClassifier:
-    """Return the ISCO classifier, initialising it lazily on first call.
+def _get_isco_classifier() -> "ISCOClassifier | ParentDocumentISCOClassifier":
+    """Lazily load the configured occupation retriever and its local encoder."""
+    with _isco_classifier_init_lock:
+        return _initialise_isco_classifier()
 
-    Separated from _get_agents() because ISCOClassifier loads a 1.3 GB
-    SentenceTransformer model and populates Qdrant on first use, which
-    can take 30–120 s.  We only pay that cost when the first JOB_TITLE
-    entity is detected, not on every first /message call.
-    """
+
+def _initialise_isco_classifier():
+    """Called under the initialization lock to avoid duplicate model loads."""
     global _isco_classifier
     # Retry if store was unavailable at first init (e.g. Qdrant slow to start)
-    if _isco_classifier is None or (
-        _isco_classifier._hierarchical_store is None and _isco_classifier._flat_store is None
+    if _isco_classifier is None or (not getattr(_isco_classifier, "ready", False) and
+        getattr(_isco_classifier, "_hierarchical_store", None) is None
+        and getattr(_isco_classifier, "_flat_store", None) is None
     ):
-        # Attempted 2026-10-01: switching this to the project's real,
-        # heldout-confirmed best-tested config (force_flat=True,
-        # ENRICHED_E5LARGE_PROFILE -- 40.95% on the full 18,747-case WISCO
-        # heldout). Reverted the same day,
-        # live-caught, not assumed: on this machine's current real memory
-        # conditions, loading multilingual-e5-large for the live survey
-        # path reproduced the exact memory-exhaustion failure class already
-        # extensively documented elsewhere in this file -- sometimes a
-        # graceful "paging file too small" RuntimeError (caught, degrades
-        # to no classification), sometimes a hard segfault that killed the
-        # entire backend process outright (confirmed via a real live
-        # request that never returned and left /health unresponsive).
-        # A classifier that can crash the whole server is worse than one
-        # that's simply less accurate -- stability wins here. The e5-large
-        # config remains real, valid, and used for this project's actual
-        # citable accuracy numbers (produced via eval/ scripts, run
-        # carefully offline, same discipline as every other e5-large use
-        # in this codebase) -- only the LIVE production survey path was
-        # reverted, not the evidence behind the number.
-        #
-        # Correction, 2026-10-02: this function's bare ISCOClassifier()
-        # call below uses isco_catalogue_profile's default, LEGACY_PROFILE
-        # -- a DIFFERENT, separately-built catalogue from the
-        # ENRICHED_E5LARGE_PROFILE/official_ilo2021_v1 family the 40.95%
-        # (and every 21.19%/29.70%/32.55% number elsewhere in this
-        # codebase) actually describes. The legacy profile here has never
-        # been measured against the full 18,747-case WISCO heldout at all;
-        # the only real measurement of it is a smaller 500-case subsample
-        # (Documentation/Phase_2/FINAL_RESULTS_PACKAGE.md): 8.6% flat /
-        # 11.0% hierarchical (this call's real path, force_flat defaults
-        # to False). Do not cite 21.19% or 40.95% as this call's accuracy.
-        _isco_classifier = ISCOClassifier()
+        # Legacy preserves earlier runtime behavior. Parent-document retrieval
+        # uses the measured official enriched E5-small index; E5-large cannot
+        # be loaded reliably on this local machine. See the dated RAG report.
+        strategy = os.getenv("ISCO_RETRIEVAL_STRATEGY", "legacy").strip().lower()
+        if strategy == "parent_document":
+            from backend.agents.parent_document_isco_classifier import ParentDocumentISCOClassifier
+            _isco_classifier = ParentDocumentISCOClassifier()
+        elif strategy == "legacy":
+            _isco_classifier = ISCOClassifier()
+        else:
+            raise ValueError("Unknown ISCO_RETRIEVAL_STRATEGY: " + strategy)
     return _isco_classifier
 
 
@@ -2082,8 +2065,8 @@ def _ensure_isco_classification(
         occ_value = collected_data.get("job_title", "")
         if not occ_value or occ_value == "N/A":
             return
-        # Build enriched query: title + duties (UAE LFS C5 + C5a)
-        # The duties description significantly improves ISCO semantic matching.
+        # Include supplied duties in the fallback query. Title-only benchmark
+        # results do not establish the accuracy of this combined input.
         job_duties = collected_data.get("job_duties", "")
         isco_query = f"{occ_value} {job_duties}".strip() if job_duties and job_duties != "N/A" else occ_value
         industry = collected_data.get("industry", "")
@@ -2108,6 +2091,19 @@ def _ensure_isco_classification(
         )
         occ_row.isco_code        = clf.primary.code or None
         occ_row.confidence_score = clf.primary.confidence
+        if clf.hitl_required and clf.primary.code:
+            pending = db.query(HITLQueue).filter(
+                HITLQueue.session_id == session_id,
+                HITLQueue.response_id == occ_row.id,
+                HITLQueue.status == "pending",
+            ).first()
+            if pending is None:
+                db.add(HITLQueue(session_id=session_id, response_id=occ_row.id,
+                    raw_text=occ_value, ai_code=clf.primary.code, ai_confidence=clf.primary.confidence,
+                    ai_reasoning=getattr(clf, "reasoning", None),
+                    hierarchy_path=str(clf.hierarchy_path) if clf.hierarchy_path else None,
+                    priority="HIGH" if clf.primary.confidence < 0.50 else "MEDIUM",
+                    status="pending", created_at=datetime.utcnow()))
         _commit_session(db)
     except RedisError:
         raise

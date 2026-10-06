@@ -60,3 +60,15 @@ test("pending and completed review badges remain visible beside classified occup
     assert.ok(!html.includes(labels.en.hitlRejected));
   }
 });
+
+for (const language of ["en", "ar", "ur", "hi", "tl"]) {
+  test(`${language} reports identify code prefixes as taxonomy rather than executed retrieval stages`, () => {
+    const t = labels[language];
+    assert.ok(t.iscoHierarchy, "Every supported report language needs a hierarchy label");
+    const html = renderToStaticMarkup(React.createElement(ReportCard, {
+      p: { isco_code: "2512" }, t, reviewStatus: "reviewed",
+    }));
+    assert.ok(html.includes(t.iscoHierarchy));
+    assert.ok(!html.includes("4-Stage Hierarchical Pipeline"));
+  });
+}

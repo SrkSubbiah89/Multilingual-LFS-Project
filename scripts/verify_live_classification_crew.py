@@ -140,7 +140,8 @@ class ReadOnlyOccupationBridge:
         return SimpleNamespace(
             primary=SimpleNamespace(code=data["code"], title_en=data["title"], title_ar="",
                                     confidence=data["conf"]),
-            method="read_only_debug_isco_semantic_bridge", hitl_required=None,
+            method=data.get("method", "read_only_debug_isco_semantic_bridge"),
+            hitl_required=data.get("hitl_required"),
             hierarchy_path=None,
         )
 

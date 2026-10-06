@@ -8,6 +8,7 @@ import { useRouter } from "next/router";
 import { getReport } from "../components/api";
 import { getReviewStatus } from "../components/review-status";
 import LanguageToggle from "../components/LanguageToggle";
+import ParentDocumentEvidence from "../components/ParentDocumentEvidence";
 
 // ── WISCO v2 controlled benchmark — real, published, sourced results ──────────
 // Every number below matches
@@ -85,6 +86,7 @@ const T = {
     iscoCode: "Unit Group Code",
     iscoMajor: "Major Group",
     iscoConfidence: "Classification Confidence",
+    iscoHierarchy: "ISCO code hierarchy",
     iscoMethod: "Method",
     hitlRequired: "Human Review Required",
     hitlOk: "AI Verified",
@@ -176,6 +178,7 @@ const T = {
     iscoCode: "رمز المجموعة الوحدوية",
     iscoMajor: "المجموعة الرئيسية",
     iscoConfidence: "ثقة التصنيف",
+    iscoHierarchy: "التسلسل الهرمي لرمز ISCO",
     iscoMethod: "الطريقة",
     hitlRequired: "مراجعة بشرية مطلوبة",
     hitlOk: "تحقق الذكاء الاصطناعي",
@@ -275,6 +278,7 @@ const T = {
     iscoCode: "یونٹ گروپ کوڈ",
     iscoMajor: "بڑا گروپ",
     iscoConfidence: "درجہ بندی کا اعتماد",
+    iscoHierarchy: "ISCO کوڈ کا درجہ وار ڈھانچہ",
     iscoMethod: "طریقہ",
     hitlRequired: "انسانی جائزہ درکار",
     hitlOk: "AI کی تصدیق شدہ",
@@ -366,6 +370,7 @@ const T = {
     iscoCode: "यूनिट ग्रुप कोड",
     iscoMajor: "प्रमुख समूह",
     iscoConfidence: "वर्गीकरण विश्वास",
+    iscoHierarchy: "ISCO कोड का पदानुक्रम",
     iscoMethod: "विधि",
     hitlRequired: "मानव समीक्षा आवश्यक",
     hitlOk: "AI सत्यापित",
@@ -457,6 +462,7 @@ const T = {
     iscoCode: "Unit Group Code",
     iscoMajor: "Major Group",
     iscoConfidence: "Kumpiyansa ng Classification",
+    iscoHierarchy: "Hirarkiya ng ISCO code",
     iscoMethod: "Paraan",
     hitlRequired: "Kailangan ng Human Review",
     hitlOk: "Na-verify ng AI",
@@ -770,7 +776,7 @@ export default function ReportPage() {
                       {/* Hierarchy path */}
                       {p.isco_code && (
                         <div>
-                          <p className="text-[10px] text-gray-500 mb-2">4-Stage Hierarchical Pipeline</p>
+                          <p className="text-[10px] text-gray-500 mb-2">{t.iscoHierarchy}</p>
                           <div className="flex items-center gap-1 flex-wrap">
                             {[
                               { stage: "Major",     code: p.isco_code[0],         cols: "bg-blue-50    border-blue-200   text-blue-700"   },
@@ -1138,6 +1144,8 @@ export default function ReportPage() {
               </div>
 
               {/* ── 9. WISCO v2 Retrieval Comparison ─────────────────────── */}
+              <ParentDocumentEvidence language={lang} />
+
               <div className="bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="px-4 py-2.5 border-b border-blue-100 bg-blue-50 flex items-center justify-between">
                   <div className="flex items-center gap-2">

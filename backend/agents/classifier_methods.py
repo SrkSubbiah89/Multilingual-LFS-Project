@@ -21,6 +21,14 @@ from __future__ import annotations
 # (backend/rag/hierarchical_store.py + backend/rag/hierarchy_engine.py).
 ISCO_HIERARCHICAL_RAG = "isco_hierarchical_rag"
 
+# Opt-in, catalogue-independent lexical/dense alternatives in
+# backend/rag/hybrid_isco.py. RRF/soft-path ranking scores are uncalibrated;
+# these labels do not change the live survey's selected classification method.
+ISCO_HYBRID_RRF = "isco_hybrid_rrf"
+ISCO_HYBRID_SOFT_HIERARCHY_RRF = "isco_hybrid_soft_hierarchy_rrf"
+ISCO_HYBRID_SPARSE_FALLBACK = "isco_hybrid_sparse_fallback"
+ISCO_HYBRID_UNAVAILABLE = "isco_hybrid_unavailable"
+
 # ISIC Rev.4: currently implemented method (keyword lookup over a flat
 # leaf-path table, with optional CrewAI LLM re-ranking below the keyword
 # confidence threshold) -- see backend/agents/isic_classifier.py.

@@ -162,6 +162,37 @@ async function reportCheck(page) {
   results.browser = browser.version();
   const contexts = [];
   try {
+    if (process.argv.includes('--parent-rag-only')) {
+      assert.ok(fixture.report_session_id, 'A seeded report is required');
+      for (const language of ['en', 'ar', 'ur', 'hi', 'tl']) {
+        const context = await newContext(browser, fixture.ordinary, null, language); contexts.push(context);
+        const page = await context.newPage();
+        await check(`parent-document evidence in ${language}`, async () => {
+          await page.goto(`${frontend.origin}/report?session=${fixture.report_session_id}`);
+          const card = page.locator('section[aria-label]').filter({ hasText: 'intfloat/multilingual-e5-small' });
+          await card.waitFor();
+          const content = await card.innerText();
+          assert.match(content, /7,279\/18,747/);
+          assert.match(content, /6,102\/18,747/);
+          assert.match(content, /38\.83%/);
+          assert.match(content, /32\.55%/);
+          assert.match(content, /236\/642/);
+          assert.match(content, /209\/642/);
+          const direction = await page.locator('#__next > div[dir]').getAttribute('dir');
+          assert.equal(direction, ['ar', 'ur'].includes(language) ? 'rtl' : 'ltr');
+          await page.setViewportSize({ width: 390, height: 844 });
+          const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+          assert.ok(dimensions.scroll <= dimensions.width + 1, 'Mobile page must fit the viewport');
+          return { language, direction, exact_matches: '7279/18747', accuracy: '38.83%', mobile_width: dimensions.width };
+        }, page);
+      }
+      await check('no JavaScript runtime errors', async () => {
+        assert.deepEqual(results.runtime_errors, []);
+        assert.deepEqual(results.unexpected_requests, []);
+        return { runtime_errors: 0 };
+      });
+      return;
+    }
     if (process.argv.includes('--report-only')) {
       assert.ok(fixture.report_session_id, 'A seeded reviewed report is required');
       const context = await newContext(browser, fixture.ordinary); contexts.push(context);

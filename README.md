@@ -41,7 +41,7 @@ flowchart TD
     Crew --> Occupation[Occupation specialist]
     Crew --> Industry[Industry specialist]
     Crew --> Education[Education specialist]
-    Occupation --> RAG[ISCOClassifier: hierarchical retrieval and optional reranking]
+    Occupation --> RAG[Configured ISCO retriever: parent-document or legacy hierarchy]
     RAG --> Qdrant[Qdrant: multilingual catalogue vectors]
     Industry --> ISIC[ISICClassifier: configured keyword or retrieval method]
     Education --> ISCED[ISCEDClassifier: attainment and field coding]
@@ -55,11 +55,11 @@ flowchart TD
     PostgreSQL --> Report[ReportGenerator: bilingual EN/AR narrative]
 ```
 
-**RAG hierarchy and CrewAI process are separate choices.** The live ISCO retriever traverses major, sub-major, minor and unit groups. The live collaborative crew uses `Process.sequential`; an experimental `HierarchicalClassificationCoordinator` also exists for manager-delegation comparisons. The title does not require that the crew itself use a hierarchical process.
+**RAG retrieval and CrewAI process are separate choices.** The verified local configuration selects parent-document RAG: official title/example/definition fragments retrieve their parent unit groups, with all 436 codes eligible. `ISCO_RETRIEVAL_STRATEGY=legacy` retains the earlier major-to-unit traversal. The live collaborative crew uses `Process.sequential`; an experimental `HierarchicalClassificationCoordinator` also exists for manager-delegation comparisons.
 
 `ENABLE_SURVEY_CLASSIFICATION_CREW=true` enables the live crew (the default). `LFS_FAST_MODE=true` explicitly bypasses conversation/NER generation and the collaborative crew for demos. API execution metadata distinguishes successful cooperation, direct fallback, cached output, skipped work, and failure. Fast mode is not evidence of live multi-agent generation. Optional `RAGExpert` and `QueryPlanner` modules support configured/evaluation paths; the live ISCO classifier supplies the survey's retrieval path.
 
-The live default uses multilingual-e5-small with four populated legacy ISCO collections (10/43/130/436 groups). Other catalogue profiles and ISIC/ISCED-F vector methods exist, but their evaluated results do not establish the accuracy of this default. ISIC and ISCED-F keyword coverage remains a subset of their official catalogues. Reports and auxiliary support narratives remain EN/AR; interview and report UI labels cover all five languages.
+The [parent-document comparison](Documentation/RAG_IMPROVEMENT_2026-10-06.md) measures **38.83% (7,279/18,747)** exact-code accuracy against **32.55% (6,102/18,747)** dense retrieval with the same official enriched catalogue and multilingual-e5-small encoder. This is a historically reused WISCO title benchmark; it does not establish Labour Force Survey field accuracy. The local configuration enables this method; the environment example keeps `legacy` until its required official index is built. ISIC and ISCED-F coverage remains a subset of their official catalogues. Reports and auxiliary support narratives remain EN/AR; interview and report UI labels cover all five languages.
 
 The shipped environment example selects `qwen2.5:3b`, the local model used in the successful bounded specialist-and-auditor probe. The verified local configuration enables the crew and local-only inference with fast mode disabled. The LLM factory's fallback default when `OLLAMA_MODEL` is unset remains `llama3.2`; that default has not inherited the probe's tool-calling evidence. See the verification report for the probe's synthetic-input and read-only retrieval-bridge limits.
 
@@ -74,7 +74,7 @@ The shipped environment example selects `qwen2.5:3b`, the local model used in th
 | AI Agents | CrewAI; configured Ollama model for general tasks; Claude for critical tasks by default; `LFS_LOCAL_ONLY=true` selects local Ollama for both |
 | Semantic Crosswalk | Project heuristic crosswalk tables; deterministic core checks and explicit HITL warnings |
 | Embeddings | `intfloat/multilingual-e5-small` (sentence-transformers, 384-dim) |
-| Vector DB | Qdrant (4 hierarchical collections, 436 ISCO-08 unit groups) |
+| Vector DB | Qdrant (versioned classification catalogues; parent-document index: 2,833 official fragments / 436 ISCO parents) |
 | Auth | Email OTP (Gmail SMTP / SendGrid fallback) → JWT (HS256) + sliding-window rate limiting |
 | Database | PostgreSQL 15 (11 tables, soft-delete on users/sessions/responses) |
 | Cache | Redis 7 (conversation context, TTL 24 h) |
@@ -475,10 +475,10 @@ Frontend (Next.js 14)
           │     heuristic regex extraction
           │     Redis context persistence (ContextMemory)
           │
-          ├─► ISCOClassifier ──────────────────►  Qdrant (4 collections)
-          │     4-stage hierarchical RAG            hierarchical search
-          │     optional LLM re-rank < 0.92     ► configured GENERAL model
-          │     HITL flag if confidence < 0.70  ► HITLQueue (DB)
+          ├─► Configured ISCO retriever ──────────► Qdrant (versioned catalogues)
+          │     parent-document or legacy hierarchy
+          │     parent-document: cosine blend, no LLM re-rank
+          │     parent-document: human review ───► HITLQueue (DB)
           │
           ├─► ISICClassifier ──────────────────►  keyword → LLM
           │     ISIC Rev.4 4-level: Section→Division→Group→Class (4-digit)
@@ -669,6 +669,7 @@ Copy `.env.example` to `.env` and fill in:
 | `OLLAMA_MODEL` | `qwen2.5:3b` in `.env.example` | Configured local model; factory fallback is `llama3.2` when unset |
 | `DATABASE_URL` | postgres://… | Overridden automatically in Docker |
 | `QDRANT_HOST` | `localhost` | Overridden automatically in Docker |
+| `ISCO_RETRIEVAL_STRATEGY` | `legacy` | Set `parent_document` after building and verifying its official enriched index; see the dated RAG report |
 | `REDIS_URL` | `redis://localhost:6379` | Overridden automatically in Docker |
 | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Token lifetime |
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated list of allowed frontend origins |
@@ -756,6 +757,8 @@ ollama serve
 | DELETE | `/survey/sessions/{id}` | — | Soft-delete session (answer history retained) |
 
 ### Conversational Turn
+
+The response below is an illustrative legacy-retrieval example. Parent-document results report `isco_parent_document_rag`, similarity scores with required human review, and no per-stage retrieval confidences.
 
 ```
 POST /survey/sessions/{id}/message
@@ -1008,6 +1011,8 @@ python eval/legacy_thesis_ch6/wisco/parse_wisco.py     # produces wisco_raw_pars
 │   ├── rag/
 │   │   ├── vector_store.py     # Qdrant flat search + multilingual-e5-small
 │   │   ├── hierarchical_store.py  # 4-stage hierarchical ISCO RAG (singleton)
+│   │   ├── parent_document_isco.py # Official child fragments mapped to ISCO parents
+│   │   ├── parent_isco_config.json # Measured index/encoder and selected parameters
 │   │   └── load_full_isco.py   # Populate ISCO-08 unit groups into Qdrant — loads 436,
 │   │   │                       # matching the official ISCO-08 standard exactly (fixed
 │   │   │                       # 2026-08-12 via a direct primary-source ILO cross-check,
@@ -1119,15 +1124,16 @@ Implemented components and their current scopes are listed below. The [title ali
 | E1 wage gate | Done | monthly_wage_range skipped for employer/self-employed |
 | F3 re-routing | Done | F1=no + F3=no → auto-reclassify to not_in_labour_force |
 | ISCO-08 Knowledge Base | Done | Live hierarchy has 10/43/130/436 groups; project uses padded Armed Forces unit codes; counts do not establish classification accuracy |
-| Hierarchical RAG (4-stage) | Done | Major→Sub-major→Minor→Unit with parent_code filtering |
-| Per-stage Confidence Scoring | Done | Weighted: 0.10×s1 + 0.20×s2 + 0.20×s3 + 0.50×s4 |
-| LLM Re-ranking | Done | Configured GENERAL model; skipped when hierarchical confidence ≥ 0.92 or inference is disabled/unavailable |
-| HITL Escalation (< 0.70) | Done | HITLQueue DB + priority ordering (HIGH first) |
+| Parent-document ISCO RAG | Locally active | 2,833 official fragments; 38.83% vs same-profile dense 32.55% on reused WISCO title cases |
+| Hierarchical RAG (legacy strategy) | Implemented | Major→Sub-major→Minor→Unit with parent_code filtering |
+| Per-stage Confidence Scoring (legacy) | Implemented | Weighted: 0.10×s1 + 0.20×s2 + 0.20×s3 + 0.50×s4 |
+| LLM Re-ranking (legacy) | Implemented | Configured GENERAL model; skipped when hierarchical confidence ≥ 0.92 or inference is disabled/unavailable; off for parent-document RAG |
+| HITL Escalation | Implemented | Legacy threshold < 0.70; parent-document results require review regardless of similarity |
 | Supervisor Review Dashboard | Done | Approve / correct / reject with inline form |
-| Evaluation Framework | Done | BM25 / Flat / Hierarchical 3-system, 100 synthetic cases |
+| Evaluation Framework | Implemented | Synthetic checks plus grouped multilingual WISCO comparisons with development selection and frozen evaluation |
 | Validation Agent (R01–R10) | Done | Project cross-answer consistency rules; wired into VALIDATING FSM state |
-| ISCO-08 Keyword Pre-filter | Done | Major-group anchor prevents semantic drift |
-| ISCO-08 Synonym Enrichment | Done | 50+ unit-group descriptions enriched with synonyms for better recall |
+| ISCO-08 Keyword Pre-filter (legacy) | Implemented | Major-group anchor; parent-document RAG keeps all 436 codes eligible |
+| ISCO-08 Synonym Enrichment (legacy) | Implemented | Separate from the official titles, definitions and examples used in the measured parent-document index |
 | ISIC Rev.4 Classification (4-digit) | Done | Full Section→Division→Group→Class hierarchy; keyword + LLM; 100+ class entries; EN+AR |
 | ISCED-F 2013 Field of Specialisation (4-digit) | Done | ISCED-F 2013 Broad→Narrow→Detailed (0011–1041); keyword two-pass; 11 broad fields, 60+ detailed codes; EN+AR |
 | ISCED 2011 Attainment Level | Done | Levels 0–8, combined with ISCED-F in single classifier; EN+AR |

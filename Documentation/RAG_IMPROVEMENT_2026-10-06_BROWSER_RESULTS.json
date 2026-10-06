@@ -1,0 +1,161 @@
+{
+  "timestamp": "2026-10-06T02:54:32.547Z",
+  "frontend_url": "http://127.0.0.1:3000",
+  "smoke_api_url": "http://127.0.0.1:8001",
+  "playwright_version": "1.63.0",
+  "scope": "Real Chromium against the existing frontend; original API requests proxied exclusively to isolated fixtures. Proxy supplies CORS headers. OTP request delivery is intercepted; OTP verification uses the seeded smoke account.",
+  "proxied_api_origins": [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "https://easy-ronald-subscriber-binary.trycloudflare.com"
+  ],
+  "checks": [
+    {
+      "name": "login with seeded OTP and no delivery",
+      "status": "passed",
+      "detail": {
+        "otp_delivery": "intercepted",
+        "verification": "actual isolated API"
+      },
+      "duration_ms": 17561
+    },
+    {
+      "name": "authenticated chat loads or resumes",
+      "status": "passed",
+      "detail": {
+        "session_id": 1,
+        "state": "collecting_info",
+        "next_field": "employment_status"
+      },
+      "duration_ms": 387
+    },
+    {
+      "name": "five language controls preserve answers and history",
+      "status": "passed",
+      "detail": {
+        "languages": [
+          "ar",
+          "ur",
+          "tl",
+          "en",
+          "hi"
+        ],
+        "answer_requests": 0
+      },
+      "duration_ms": 987
+    },
+    {
+      "name": "Hindi quick answer sends and saves canonical field value",
+      "status": "passed",
+      "detail": {
+        "field": "employment_status",
+        "canonical_value": "employed",
+        "localized_label": "नियोजित"
+      },
+      "duration_ms": 259
+    },
+    {
+      "name": "reload retains the same interview answers and user turns",
+      "status": "passed",
+      "detail": {
+        "session_id": 1,
+        "retained_user_turns": 1
+      },
+      "duration_ms": 256
+    },
+    {
+      "name": "mobile chat input and language control remain usable",
+      "status": "passed",
+      "detail": {
+        "width": 390,
+        "scroll_width": 390,
+        "changed_language": "ar",
+        "translated_layout": {
+          "width": 390,
+          "scroll_width": 390
+        }
+      },
+      "duration_ms": 224
+    },
+    {
+      "name": "structured education correction reopens field of study",
+      "status": "passed",
+      "detail": {
+        "canonical_correction": "bachelor",
+        "next_field": "field_of_study"
+      },
+      "duration_ms": 665
+    },
+    {
+      "name": "ordinary respondent is denied supervisor access",
+      "status": "passed",
+      "detail": {
+        "status": 403
+      },
+      "duration_ms": 248
+    },
+    {
+      "name": "authorized reviewer sees actual confidence and corrects fixture",
+      "status": "passed",
+      "detail": {
+        "escalation_id": 1,
+        "confidence": 0.4,
+        "corrected_code": "2221"
+      },
+      "duration_ms": 1925
+    },
+    {
+      "name": "report shows corrected occupation and human review state",
+      "status": "passed",
+      "detail": {
+        "isco_code": "2221",
+        "isco_confidence": 1,
+        "pending_review": false,
+        "human_review_status": "reviewed",
+        "semantic_rule_delta": -0.05,
+        "confidence_adjustment_claim_visible": false
+      },
+      "duration_ms": 744
+    },
+    {
+      "name": "actual application browser readiness CORS and DNS",
+      "status": "passed",
+      "detail": {
+        "scope": "Unproxied read-only request; no token or respondent writes",
+        "url": "http://localhost:8000/ready",
+        "status": 200,
+        "response": {
+          "status": "ready",
+          "database": "connected",
+          "redis": "connected"
+        }
+      },
+      "duration_ms": 1506
+    },
+    {
+      "name": "no JavaScript runtime errors",
+      "status": "passed",
+      "detail": {
+        "runtime_errors": 0
+      },
+      "duration_ms": 0
+    }
+  ],
+  "runtime_errors": [],
+  "unexpected_requests": [],
+  "screenshots": [
+    "Software/browser_smoke/rag_screenshots/01-login-with-seeded-otp-and-no-delivery.png",
+    "Software/browser_smoke/rag_screenshots/02-authenticated-chat-loads-or-resumes.png",
+    "Software/browser_smoke/rag_screenshots/03-five-language-controls-preserve-answers-and-history.png",
+    "Software/browser_smoke/rag_screenshots/04-hindi-quick-answer-sends-and-saves-canonical-field-value.png",
+    "Software/browser_smoke/rag_screenshots/05-reload-retains-the-same-interview-answers-and-user-turns.png",
+    "Software/browser_smoke/rag_screenshots/06-mobile-chat-input-and-language-control-remain-usable.png",
+    "Software/browser_smoke/rag_screenshots/07-structured-education-correction-reopens-field-of-study.png",
+    "Software/browser_smoke/rag_screenshots/08-ordinary-respondent-is-denied-supervisor-access.png",
+    "Software/browser_smoke/rag_screenshots/09-authorized-reviewer-sees-actual-confidence-and-corrects-fixture.png",
+    "Software/browser_smoke/rag_screenshots/10-report-shows-corrected-occupation-and-human-review-state.png"
+  ],
+  "browser": "154.0.8037.98",
+  "passed": 12,
+  "failed": 0
+}

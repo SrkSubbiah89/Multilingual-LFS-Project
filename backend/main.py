@@ -313,7 +313,8 @@ def debug_isco(job_title: str):
         t = time.perf_counter()
         clf = _get_isco_classifier().classify(job_title, use_llm=False)
         ms = int((time.perf_counter() - t) * 1000)
-        return {"code": clf.primary.code, "title": clf.primary.title_en, "conf": clf.primary.confidence, "ms": ms}
+        return {"code": clf.primary.code, "title": clf.primary.title_en, "conf": clf.primary.confidence,
+                "ms": ms, "method": clf.method, "hitl_required": clf.hitl_required}
     except Exception as exc:
         return {"error": str(exc), "traceback": traceback.format_exc()}
 

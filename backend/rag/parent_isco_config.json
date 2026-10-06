@@ -1,0 +1,19 @@
+{
+  "collection": "isco08_parent_children_e5small_f4bb10a7940b4645",
+  "source_catalogue_sha256": "f78a8557272aca82049a0b5392303593844209053b8c425eb0dc4e331fbc1105",
+  "fragment_map_sha256": "c72cb9bf6b8a6d889b2ab213299a692d75a9a890352fafbda5a512d2472297b4",
+  "encoder_id": "intfloat/multilingual-e5-small",
+  "encoder_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+  "encoder_weights_sha256": "1a55775f53449dac10a2bcbc312469fac40b96d53198c407081a831f81c98477",
+  "points": 2833,
+  "parents": 436,
+  "profile": "official_ilo2021_v1_enriched",
+  "weights_file": "model.safetensors",
+  "child_weight": 0.5,
+  "aggregation": "max",
+  "selection_sha256": "632598fd8a70cdabfef3841ef871573dbe6e3ae53dcacf3a2009e294973563ef",
+  "child_vector_bytes_sha256": "25985bf0c418d613201c7c6eaa9110f6f108659ab8e1b1a83c40b646f007db81",
+  "parent_vector_bytes_sha256": "c7267a887dfa38c3a5d54942f13a4aaf53d2e5deacfb0b5d4a61232e7b177437",
+  "score_interpretation": "uncalibrated cosine blend; human review required",
+  "source_csv": "eval/local_catalogues/ilo_isco08_2021/normalized/isco08_official_normalized_enriched.csv"
+}
