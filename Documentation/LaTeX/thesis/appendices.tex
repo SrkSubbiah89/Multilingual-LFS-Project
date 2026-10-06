@@ -1,372 +1,555 @@
-% ============================================================
-%  APPENDICES
-%  Corrected 2026-08-28 -- see VERIFICATION_NOTES.md.
-% ============================================================
-
-% ─── APPENDIX A — LFS QUESTIONNAIRE FIELDS (VERIFIED) ────────────────────
+% Appendices: source-aligned review, 3 October 2026.
+\appendix
 \chapter{LFS Questionnaire Fields}
 \label{app:questionnaire}
 
-\textbf{Field names, codes, labels, and accepted values below are confirmed
-directly} against \texttt{backend/agents/conversation\_manager.py}'s own
-module docstring and its live \texttt{\_CORRECTION\_FIELD\_SCHEMA} dict ---
-a real, sourced listing, not the original draft's illustrative Section~C
-excerpt with invented question phrasing.
-%% VERIFY AGAINST CODE: the "real label / accepted values" column reflects
-%% the LLM-correction-prompt schema, confirmed real -- but the exact
-%% spoken/typed QUESTION phrasing a respondent actually sees turn-by-turn
-%% (as opposed to the field's label and accepted values) was not
-%% independently re-verified against a separate prompts source in this
-%% pass.
+Table~\ref{tab:app-questionnaire} documents selected fields and canonical
+values from \texttt{ConversationManager}'s correction schema and dynamic
+field order. The item codes are implementation labels, not evidence that
+the prototype reproduces a complete official UAE questionnaire. Interview
+prompts vary by language and state. The schema describes intended values,
+not proof that every translated answer is normalized correctly.
 
 \begingroup
 \setlength{\tabcolsep}{3pt}
 \footnotesize
-\renewcommand{\arraystretch}{1.5}
-\emergencystretch=6em
-\begin{longtable}{>{\centering\bfseries}p{0.6cm}
-                  >{\raggedright}p{3.4cm}
-                  >{\raggedright}p{5.4cm}
-                  >{\raggedright\arraybackslash}p{4.6cm}}
-\caption{LFS fields, real names/codes/labels/accepted-values confirmed
-directly against \texttt{conversation\_manager.py}'s live
-\texttt{\_CORRECTION\_FIELD\_SCHEMA}.}
+\renewcommand{\arraystretch}{1.35}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.06\textwidth}>{\raggedright\arraybackslash}p{0.27\textwidth}
+                       >{\raggedright\arraybackslash}p{0.36\textwidth}>{\raggedright\arraybackslash}p{0.23\textwidth}@{}}
+\caption{Selected implemented fields, canonical values, and routing gates.}
 \label{tab:app-questionnaire}\\
 \toprule
-\textbf{\#} & \textbf{Field} & \textbf{Real label / accepted values} & \textbf{Notes} \\
+\textbf{Code} & \textbf{Field} & \textbf{Canonical values or input} &
+\textbf{Routing} \\
 \midrule
 \endfirsthead
-\multicolumn{4}{c}{\tablename\ \thetable{} -- \textit{continued}} \\
+\multicolumn{4}{c}{\tablename\ \thetable{} --- continued} \\
 \toprule
-\textbf{\#} & \textbf{Field} & \textbf{Real label / accepted values} & \textbf{Notes} \\
+\textbf{Code} & \textbf{Field} & \textbf{Canonical values or input} &
+\textbf{Routing} \\
 \midrule
 \endhead
-\midrule \multicolumn{4}{r}{\small\itshape Continued\ldots} \\ \endfoot
-\bottomrule \endlastfoot
+\midrule
+\multicolumn{4}{r}{\small Continued on the next page} \\
+\endfoot
+\bottomrule
+\endlastfoot
 C1 & \texttt{employment\_status} &
-  Employment Status: \texttt{employed \textbar\ unemployed \textbar\
-  not\_in\_labour\_force} &
-  All paths \\[2pt]
+  \texttt{employed}, \texttt{unemployed},
+  \texttt{not\_in\_labour\_force} & All paths \\
 C3 & \texttt{employment\_nature} &
-  Employment Nature: \texttt{paid\_employee \textbar\ employer \textbar\
-  self\_employed \textbar\ contributing\_family\_member} &
-  Employed path \\[2pt]
+  \texttt{paid\_employee}, \texttt{employer}, \texttt{self\_employed},
+  \texttt{contributing\_family\_member} & Employed \\
+C5 & \texttt{job\_title} & Free-text current occupation &
+  Employed; ISCO-08 input \\
+C5a & \texttt{job\_duties} & Free-text duties &
+  Employed; occupation-refinement input \\
+C6 & \texttt{industry} & Free-text economic activity &
+  Employed; ISIC Rev.~4 input \\
 D7 & \texttt{contract\_type} &
-  Contract Type: \texttt{permanent \textbar\ temporary \textbar\
-  no\_contract} &
-  Employed; gated on \texttt{employment\_nature == paid\_employee} \\[2pt]
+  \texttt{permanent}, \texttt{temporary}, \texttt{no\_contract} &
+  Employed paid employees \\
 E1 & \texttt{monthly\_wage\_range} &
-  Monthly Salary Range (AED): \texttt{under\_5000 \textbar\
-  5000\_to\_10000 \textbar\ 10000\_to\_20000 \textbar\ 20000\_to\_30000
-  \textbar\ above\_30000} &
-  Employed; \textbf{gated on \texttt{employment\_nature ==
-  paid\_employee}} --- confirmed real, and confirms the currency is AED
-  (UAE dirham), consistent with this being a real UAE LFS \\[2pt]
-F1 & \texttt{job\_search\_active} &
-  Actively Searching for Work: \texttt{yes \textbar\ no} &
-  Unemployed path \\[2pt]
+  AED bands: \texttt{under\_5000}, \texttt{5000\_to\_10000},
+  \texttt{10000\_to\_20000}, \texttt{20000\_to\_30000},
+  \texttt{above\_30000} & Employed paid employees \\
+F1 & \texttt{job\_search\_active} & \texttt{yes}, \texttt{no} &
+  Unemployed \\
 F3 & \texttt{available\_for\_work} &
-  Available to Start (2 weeks): \texttt{yes \textbar\ no} &
-  Unemployed; \textbf{if F1=no AND F3=no, reclassifies respondent to
-  \texttt{not\_in\_labour\_force}} --- confirmed real (see Chapter~3) \\[2pt]
-C5 & \texttt{job\_title} &
-  Job Title: free text (e.g.\ Software Engineer, Teacher, Nurse, Driver) &
-  Employed; free text $\to$ ISCO-08 \\[2pt]
-C6 & \texttt{industry} &
-  Industry / Economic Activity: free text (e.g.\ Construction, Healthcare,
-  Education, Finance) &
-  Employed; free text $\to$ ISIC Rev.~4 \\[2pt]
-B6 & \texttt{field\_of\_study} &
-  Main Field of Study: free text (e.g.\ Engineering, Medicine, Business,
-  Education) &
-  All paths, gated on \texttt{education\_level >= bachelor}; free text
-  $\to$ ISCED-F --- confirmed real (code corrected from an earlier
-  fabricated ``B5a'' in an intermediate draft of this appendix) \\
+  \texttt{yes}, \texttt{no}; availability within two weeks &
+  Unemployed; F1=no and F3=no changes status to outside the labour force \\
+B6 & \texttt{field\_of\_study} & Free-text main field &
+  All paths with education \texttt{bachelor}, \texttt{master}, or \texttt{phd} \\
 \end{longtable}
 \endgroup
 
-The full field list (all three paths) is given in
-Chapter~\ref{chap:architecture}, Section~\ref{sec:arch-fsm}.
+Dynamic order also depends on nationality, secondary employment, platform
+work, and previous employment (Section~\ref{sec:arch-fsm}). The wage gate
+belongs to the conversation manager, not the ValidationAgent's rules.
+A known extraction defect can populate wages from an unrelated numeric
+answer and skip the later question. Hindi and Urdu status options also
+have a normalization defect. The table records intended routing rather
+than an assertion that every path is correct.
 
-% ─── APPENDIX B — AGENT CONFIGURATION (ILLUSTRATIVE) ────────────────────
 \chapter{Agent Configuration Reference}
 \label{app:crewai}
 
-%% VERIFY AGAINST CODE: this project's CrewAI agents are constructed
-%% directly in Python (Agent(role=..., goal=..., llm=...) calls inside
-%% each backend/agents/*.py module), not loaded from external YAML files.
-%% The blocks below are illustrative summaries of each module's real,
-%% verified configuration values, written in YAML for readability -- they
-%% do not correspond to an actual YAML file in the repository. Do not
-%% present them as literal file contents.
+Agents are constructed in Python. These listings are descriptive
+configuration summaries, not executable YAML files. Interactive defaults
+are separated from optional evaluation features.
 
-\section*{B.1 --- ISCOClassifier (illustrative summary)}
-\begin{lstlisting}[breaklines=true,caption={ISCOClassifier configuration, verified values.}]
-name: isco_classifier
-approach: >
-  Hierarchical (4-stage, parent-filtered) AND flat (single-collection)
-  retrieval, both implemented and empirically compared -- flat is the
-  better-tested configuration (Chapter 6).
-embeddings: intfloat/multilingual-e5-small (production default)
-            intfloat/multilingual-e5-large (additive, more accurate,
-            not yet default)
-catalogue: 436 unit groups (verified official ILO count)
-confidence_weights (hierarchical only): [0.10, 0.20, 0.20, 0.50]
+\section*{B.1 --- Occupation Classifier}
+\begin{lstlisting}[caption={Current occupation-classifier configuration summary.}]
+interactive_route: ISCOClassifier()
+catalogue_profile: legacy default
+retrieval: hierarchical default; flat available by explicit option
+encoder: multilingual-e5-small default
+official_profiles:
+  unit_groups: 436
+  encoders: multilingual-e5-small or multilingual-e5-large
+  text: title-only or enriched definitions/tasks/examples
 hitl_threshold: 0.70
-skip_rerank_threshold: 0.92   # verified: 99.7% of real cases fall BELOW
-                               # this on the full heldout set, so the LLM
-                               # step fires on nearly every real query
-llm_rerank: TaskType.CRITICAL (Claude 3.5 Sonnet by design, no fallback) --
-            NOT demonstrated working end-to-end in this project's own
-            evaluation (zero usable Anthropic credit); evaluation
-            reranking checks used Groq/Gemini instead, never Claude
+skip_rerank_threshold: 0.92
+reranking:
+  default_factory: TaskType.GENERAL
+  explicit_model: get_llm_strict(model, temperature)
+  enable_llm_false: retrieval only
+  unavailable_default_agent: retrieval-only degradation
 \end{lstlisting}
 
-\section*{B.2 --- SemanticRelationEngine (illustrative summary)}
-\begin{lstlisting}[breaklines=true,caption={SemanticRelationEngine configuration, verified values.}]
-name: semantic_relation
-approach: >
-  Deterministic, hand-built ISCO<->ISIC and ISCO<->ISCED crosswalk tables.
-  NOT sourced from an official ILO/UNESCO correspondence document -- a
-  real search of the complete ISCO-08 Volume I document found no such
-  table exists.
-weights: {isic: 0.55, isced: 0.45}  # applied only when BOTH available;
-                                      # single-standard and neither-available
-                                      # cases use a different, documented
-                                      # fallback (see Chapter 3)
-partial_credit: +0.15 * n_moderate_violations * (1 - raw_score)
-is_coherent_threshold: 0.70
-severity: gap-based (LOW <=1 level, MODERATE =2, HIGH >2 outside expected
-          range) -- a SEPARATE mechanism from the confidence-adjustment
-          bands below, not derived from them
-confidence_adjustment: {>=0.90: +0.10, >=0.70: +0.05, >=0.50: -0.05, else: -0.20}
-submajor_strict_rules:
-  "22": {isic_required: "Q", isced_min: 7}   # Health Professionals
-  "25": {isic_preferred: "J"}                 # ICT Professionals
-  "11": {isced_min: 6}                        # Chief Executives
-validation: 61-case set, 0 mismatches; HIGH-severity HITL escalation
-            verified 3x, 100%/15 escalated, 0%/46 non-HIGH escalated
+The official enriched large-encoder flat profile supplies the principal
+full-heldout retrieval result, not the live interview default. GENERAL routing
+prefers a configured local Ollama model and can fall back through cloud
+providers. CRITICAL routing selects the configured Claude model without
+the GENERAL fallback chain. The current occupation constructor itself
+selects GENERAL when unpinned, despite its older module documentation.
+
+\section*{B.2 --- Semantic Relation Engine}
+\begin{lstlisting}[caption={Implemented coherence rules and score settings.}]
+source: project-authored plausibility tables
+inputs: ISCO-08 code, ISIC section, ISCED 2011 level
+not_an_input: ISCED-F 2013 detailed field
+raw_score:
+  both_dimensions: 0.55 * industry_ok + 0.45 * education_ok
+  one_dimension: available dimension's compatibility score
+  neither_dimension: 0.80
+partial_credit: 0.15 * moderate_count * (1 - raw_score)
+score: clipped to [0, 1], rounded to 4 decimal places
+coherent_threshold: 0.70
+education_gap_severity:
+  1: LOW
+  2: MODERATE
+  3_or_more: HIGH
+confidence_adjustment:
+  score_ge_0.90: +0.10
+  score_ge_0.70: +0.05
+  score_ge_0.50: -0.05
+  otherwise: -0.20
+education_submajor_minimums: {"22": 7, "23": 6, "25": 6, "26": 7}
+industry_submajor_examples: {"22": ["Q"], "23": ["P"], "25": ["J"]}
 \end{lstlisting}
 
-\section*{B.3 --- ValidationAgent (verified rules)}
-\begin{lstlisting}[breaklines=true,caption={ValidationAgent rules, confirmed directly against the live source.}]
-name: validation_agent
-rules:
-  R01: Required fields (employment_status, industry) must be present
-  R02: hours_per_week must be parseable as a number
-  R03: hours_per_week must be in [1, 168]
-  R04: hours_per_week > 80 -> warning (outlier)
-  R05: Unemployed + non-empty job_title -> contradiction
-  R06: Unemployed + hours_per_week > 0 -> contradiction
-  R07: Not-in-labour-force + non-empty job_title -> contradiction
-  R08: full_time + <20 hours/week -> warning
-  R09: part_time + >=35 hours/week -> warning
-  R10: Employed + 0 hours/week -> error
-\end{lstlisting}
-\textbf{This replaces the original draft's ten rules}, which described a
-different, fabricated set (a wage gate, platform-worker rules, an "F3"
-not-in-labour-force re-routing rule) that does not exist in the real
-\texttt{ValidationAgent}. The ten rules above were confirmed by reading
-\texttt{backend/agents/validation\_agent.py} directly.
+Education severity uses the distance outside the allowed level range.
+Industry severity uses a different rule: an industry allowed at the major
+level but excluded by a stricter sub-major rule is MODERATE; an industry
+outside the applicable allowed lists is HIGH. Sub-major 11 has no special
+education override and inherits the managers' major-group range.
+Education rules concern expected attainment, not legally required
+qualifications or field-of-study correspondence.
 
-% ─── APPENDIX C — SEMANTIC RELATION ENGINE: REAL VALIDATION EVIDENCE ────
-\chapter{Semantic Relation Engine — Validation Evidence}
+Returning an adjustment value is distinct from applying it to a saved
+classification. These hand-set rules and thresholds do not produce an
+empirically calibrated probability or an official ILO/UNESCO crosswalk.
+
+\section*{B.3 --- Validation Agent}
+\begin{lstlisting}[caption={Validation rules and semantic stage.}]
+R01: employment_status and industry required for all statuses;
+     job_title, hours_per_week, employment_type also required if employed
+R02: supplied hours_per_week must be numeric
+R03: hours_per_week must be within [1, 168]
+R04: hours_per_week > 80 gives an outlier warning
+R05: unemployed with current job_title gives a contradiction
+R06: unemployed with hours_per_week > 0 gives a contradiction
+R07: outside labour force with current job_title gives a contradiction
+R08: full_time with hours_per_week < 20 gives a warning
+R09: part_time with hours_per_week >= 35 gives a warning
+R10: employed with hours_per_week = 0 gives an error
+semantic_stage: attempted if deterministic checks contain no errors
+semantic_model_factory: TaskType.CRITICAL
+\end{lstlisting}
+
+The route calls \texttt{validate()} without explicitly disabling its
+semantic stage, and catches validation failures. A successful result is
+not required for completion. Required fields also need reconciliation
+with inactive paths (Section~\ref{sec:impl-validation}).
+
+\chapter{Semantic Relation Engine: Validation Evidence}
 \label{app:sre-demo}
 
-%% The original draft's Appendix C showed a "10-case demo output" whose
-%% Arabic explanation field was literal, untranslated placeholder text
-%% ("[AR_TEXT] [AR_TEXT]...") -- itself a sign that content was never
-%% actually filled in, not just a stale number. It has been replaced
-%% entirely with this project's real, verified SRE validation facts.
+The available evidence checks implementation consistency and escalation.
+The 61-case fixture in \path{eval/sre_expanded_validation.py} assigns
+expected outcomes using the same project's plausibility rules. Agreement
+on all 61 cases supports execution of those rules; it does not
+independently validate their accuracy on labour-force data.
 
-The Semantic Relation Engine's crosswalk logic was validated on a 61-case
-set with \textbf{zero mismatches} between expected and computed coherence
-classifications. Separately, HIGH-severity escalation to the live HITL
-queue was verified three times against the real
-\texttt{/survey/sessions/\{id\}/message} endpoint:
+The endpoint script reuses this fixture and checks for queue entries
+tagged as HIGH semantic incoherence. Three documented executions each
+recorded 15 of 15 expected HIGH cases queued and zero of 46 other cases
+queued for that reason:
+\begin{table}[htbp]
+\centering
+\caption{Repeated endpoint checks on the same 61-case fixture.}
+\label{tab:app-sre-runs}
+\begin{tabular}{@{}l r r@{}}
+\toprule
+\textbf{Execution} & \textbf{Expected HIGH queued} &
+\textbf{Other cases with SRE HIGH entry} \\
+\midrule
+1 & 15/15 & 0/46 \\
+2 & 15/15 & 0/46 \\
+3 & 15/15 & 0/46 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\begin{lstlisting}[breaklines=true,caption={HIGH-severity HITL escalation, three independent runs against the live endpoint.}]
-Run 1: 15/15 HIGH-severity cases escalated (100%); 0/46 non-HIGH escalated (0%)
-Run 2: 15/15 HIGH-severity cases escalated (100%); 0/46 non-HIGH escalated (0%)
-Run 3: 15/15 HIGH-severity cases escalated (100%); 0/46 non-HIGH escalated (0%)
-\end{lstlisting}
+These are repeatability checks on the same cases, not independent
+respondent samples. The zero count concerns SRE HIGH entries, not every
+other cause of review. Queue creation does not establish reviewer
+authorization, review completion, or correctness of human decisions.
 
-Byte-identical results across all three runs. A worked example of the real
-scoring formula (Chapter~\ref{chap:architecture}), for a case with both
-ISIC and ISCED data available:
+\section*{C.1 --- Worked Score Example}
 
-\begin{lstlisting}[breaklines=true,caption={Worked example of the real SRE formula.}]
-Occupation: ISCO 2211 (Generalist medical practitioners)
-Industry:   ISIC section Q (Human health and social work)
-Education:  ISCED level 7 (Master's or equivalent)
+For ISCO 2211, ISIC section Q, and ISCED level 7, both implemented checks
+pass. The professionals' major-group education range is $[6,8]$, with a
+stricter minimum of 7 for sub-major 22. Hence
+\[
+  r=0.55(1)+0.45(1)=1,\qquad m=0,\qquad
+  s=\min\{1,r+0.15m(1-r)\}=1.
+\]
+The engine marks the combination coherent and returns an adjustment of
+$+0.10$. This calculation does not establish that every medical occupation
+requires a master's degree.
 
-score_ISIC  = 1.0   (major group 2 compatible with section Q)
-score_ISCED = 1.0   (level 7 within expected [6,8] range for major group 2)
+\section*{C.2 --- Explanation Provenance}
 
-raw_score = 0.55 * 1.0 + 0.45 * 1.0 = 1.00
-moderate_violations = 0  -> no partial-credit adjustment applied
-score = 1.00
-is_coherent = (score >= 0.70) = True
-confidence_adjustment = +0.10   (score >= 0.90 band)
-\end{lstlisting}
+The implementation produces English and Arabic explanations. Its
+strong-alignment template currently attributes consistency to
+\emph{ILO ISCO-ISIC-ISCED crosswalk tables}. That attribution does not match
+the project's hand-built tables and remains an unresolved product wording
+issue. The explanation should identify project-defined plausibility
+rules and their limits; the thesis does not endorse an official
+correspondence claim.
 
-The real bilingual explanation text, confirmed directly from
-\texttt{semantic\_relation.py}'s own \texttt{\_build\_explanations()}
-method (not reconstructed or invented), for a coherent (score $\geq 0.90$)
-case:
-
-\begin{lstlisting}[breaklines=true,caption={Real EN+AR explanation text, verbatim from the live source.}]
-EN: "Strong semantic alignment: occupation ({major_label}), industry
-({isic_label}), and education ({isced_label}) are fully consistent
-according to ILO ISCO-ISIC-ISCED crosswalk tables. Classification
-confidence boosted by +{N}0%."
-
-AR: "تطابق دلالي قوي: المهنة والصناعة والتعليم متسقة تماماً وفق جداول
-التقاطع الدولية ILO. تم تعزيز ثقة التصنيف."
-\end{lstlisting}
-
-\textbf{A genuine, newly-noticed discrepancy, disclosed here rather than
-silently left in place}: this real, live explanation string itself says
-``according to ILO ISCO-ISIC-ISCED crosswalk tables,'' which is not
-accurate given Chapter~\ref{chap:architecture}'s own finding that no such
-official ILO table exists and the real crosswalk is hand-built. This is a
-real wording issue in the production system's own generated text, found
-while writing this appendix, not a documentation-only error --- flagged
-here as a concrete, actionable item (correct or remove that phrase in
-\texttt{\_build\_explanations()}) rather than left unmentioned because it
-falls outside this thesis-correction task's original scope.
-
-% ─── APPENDIX D — PARTICIPANT INFORMATION AND STUDY PROTOCOL (PLANNED) ──
-\chapter{Participant Information and Study Protocol (Planned, Not Yet Submitted)}
+\chapter{Participant Information and Study Protocol}
 \label{app:consent}
 
-\textbf{This appendix was, uniquely among the original draft's chapters,
-already honestly framed} --- it correctly stated that no participant
-recruitment, pilot execution, or data collection had occurred. It is
-retained here with that framing intact, lightly updated for consistency
-with Chapter~\ref{chap:evaluation} and with the fuller draft protocol at
-\texttt{Documentation/Phase\_2/Week\_1/module\_e\_pilot\_protocol\_draft.md}.
+This material describes a proposed study. The repository submission log
+records no submitted ethics application or completed recruitment.
+No participant results are reported. The draft remains subject to
+supervisor and institutional review.
 
-\section*{D.1 --- Participant Information (Draft)}
+\section*{D.1 --- Draft Participant Information}
 
 \noindent\textbf{Study title:}
 Evaluation of a Multilingual Conversational AI System for Labour Force
 Survey Administration.
 
 \noindent\textbf{Principal investigator:}
-Sivarama Krishnan Subbiah (2024MCS110007), M.Tech AI \& Data Science,
+Sivarama Krishnan Subbiah (2024MCS110007), M.Tech AI and Data Science,
 IIIT Kottayam.
 
 \noindent\textbf{Supervisor:}
 Dr.\ Goutam Mali, IIIT Kottayam.
 
-\noindent\textbf{Status note:} As of the writing of this thesis, \textbf{no
-participant recruitment, pilot study execution, or data collection has been
-conducted}, and the study had not been submitted for institutional ethics
-approval. The information below represents the planned protocol only.
+The proposed study compares a conversational AI interview with an
+interviewer-administered survey. Participation would involve employment
+and education questions followed by a satisfaction questionnaire.
+Intended languages are English, Arabic, Urdu, Hindi, and Tagalog;
+translated information and consent materials are not yet finalized.
 
-\begin{itemize}
-  \item \textbf{Purpose:} Evaluating an AI-assisted system for conducting
-  employment surveys in English, Arabic, Urdu, Hindi, and Tagalog.
-  \item \textbf{What participation would involve:} Completing a Labour Force
-  Survey via either the conversational AI interface or a traditional
-  interviewer-administered survey, followed by a brief satisfaction
-  questionnaire.
-  \item \textbf{Voluntary participation:} Participation would be entirely
-  voluntary, with withdrawal possible at any point.
-  \item \textbf{Confidentiality:} Responses would be pseudonymised.
-  \item \textbf{No real-world consequences:} Responses would not be shared
-  with any government agency, employer, or authority, and would not
-  influence any benefit, visa, or employment decision.
-\end{itemize}
+Participation would be voluntary. Approved materials must state consent,
+withdrawal, retention, and deletion procedures before recruitment.
+Responses would be used for research rather than government, benefit,
+visa, or employment decisions. Automated codes may be inaccurate and are
+not official classifications of the participant.
 
-\section*{D.2 --- Ethics Compliance Checklist (Planned)}
+The data-management design must distinguish contact identifiers from
+responses, define access, and explain whether text is sent to external
+model providers. The prototype links identifiers to responses and can use
+cloud fallback providers. Pseudonymisation is a proposed study requirement,
+not an implemented application guarantee. Logging tables do not replace
+consent or an approved retention plan.
+
+\section*{D.2 --- Readiness for the Proposed Study}
 
 \begin{table}[htbp]
 \centering
-\caption{Planned ethics compliance checklist -- current real status.}
+\caption{Documented status and remaining requirements for participant use.}
 \label{tab:app-ethics}
-\small\renewcommand{\arraystretch}{1.35}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{>{\raggedright}p{5.8cm}
-                >{\centering}p{2.4cm}
-                >{\raggedright\arraybackslash}p{4.0cm}}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.27\textwidth}p{0.22\textwidth}X@{}}
 \toprule
-\textbf{Requirement} &
-\textbf{Status} &
-\textbf{Notes} \\
+\textbf{Requirement} & \textbf{Recorded status} & \textbf{Remaining work} \\
 \midrule
-Institutional ethics approval & \textbf{Not submitted} &
-  Single most time-critical open item in this project \\
-Participant recruitment & Not started & \\
-Informed consent / PIS forms & Draft only &
-  See module\_e\_pilot\_protocol\_draft.md, Section 8 \\
-Pseudonymisation design & Designed (system) &
-  Real \texttt{person\_register} table structure exists \\
-GDPR-style access-right logging & Implemented (system) &
-  \texttt{data\_access\_logs} table, real and tested \\
-Audit log retention & Implemented (system) &
-  \texttt{audit\_logs} table, real and tested \\
-Pilot study execution & \textbf{Not started} & \\
+Ethics application & Not submitted &
+  Complete institutional forms and obtain review \\
+Recruitment & Not started &
+  Finalize approved eligibility and process \\
+Information and consent & Draft &
+  Finalize and verify translations \\
+Pseudonymisation & Proposed &
+  Separate identifiers and define access \\
+Cloud processing & Configurable &
+  Specify providers and participant disclosure \\
+Supervisor authorization & Incomplete &
+  Restrict review endpoints to authorized reviewers \\
+Retention and withdrawal & Plan incomplete &
+  Define durations, deletion, and purge operation \\
+Multilingual workflow & Implemented with defects &
+  Correct routing and validate supported languages \\
+Pilot execution & Not started &
+  Proceed after approval and readiness \\
 \bottomrule
-\end{tabular}
-}
+\end{tabularx}
 \end{table}
 
-% ─── APPENDIX E — PROJECT STRUCTURE ─────────────────────────────────────────
-\chapter{Project Structure and Repository}
+The $n=30$ parallel-arm proposal is a feasibility pilot, distinct from
+the English-only synthetic operational run in
+Section~\ref{sec:res-synthetic-pilot}.
+
+\chapter{Project Structure}
 \label{app:structure}
 
-\begin{lstlisting}[breaklines=true,caption={Project directory structure, corrected against the live repository.}]
+This tree lists principal source areas, not every file. Agent classes,
+deterministic helpers, and experimental orchestration are distinct.
+
+\begin{lstlisting}[caption={Principal implementation and evaluation source areas.}]
 .
-|-- requirements.txt           # 28 packages, pip-freeze-pinned
+|-- requirements.txt
+|-- requirements-dev.txt
 |-- alembic.ini
-|
+|-- Dockerfile
+|-- docker/docker-compose.yml
+|-- start.bat
 |-- backend/
-|   |-- agents/                # 13 modules construct a crewai.Agent:
-|   |   |-- language_processor.py
+|   |-- main.py
+|   |-- api/
+|   |   |-- auth_routes.py
+|   |   |-- survey_routes.py
+|   |-- auth/
+|   |   |-- jwt_handler.py
+|   |   |-- email_otp.py
+|   |-- database/
+|   |   |-- models.py
+|   |   |-- connection.py
+|   |   |-- migrations/
+|   |-- agents/
 |   |   |-- conversation_manager.py
+|   |   |-- language_processor.py
 |   |   |-- isco_classifier.py
 |   |   |-- isic_classifier.py
 |   |   |-- isced_classifier.py
+|   |   |-- semantic_relation.py
 |   |   |-- validation_agent.py
 |   |   |-- hitl_quality_manager.py
-|   |   |-- audit_logger.py
-|   |   |-- emotional_intelligence.py
-|   |   |-- semantic_relation.py
 |   |   |-- report_generator.py
 |   |   |-- context_memory.py
-|   |   `-- rag_expert.py
-|   |   # NOT agent-constructing (real, but no crewai.Agent):
-|   |   # nationality_classifier.py, person_register.py,
-|   |   # isco_reranker_strict.py, classifier_methods.py,
-|   |   # method_registry.py
-|   |   # NOTE: no survey_orchestrator.py exists -- orchestration lives
-|   |   # directly in api/survey_routes.py, with no CrewAI hierarchical
-|   |   # delegation anywhere in this codebase.
-|   |-- api/
-|   |   `-- survey_routes.py   # 20 real routes total (see Chapter 4)
-|   |-- llm/llm_client.py      # TaskType.GENERAL / .CRITICAL factory
-|   `-- rag/
-|       |-- hierarchical_store.py
-|       |-- standard_hierarchical_store.py
-|       |-- official_source_enrichment.py
-|       `-- load_full_isco.py
-|
-|-- frontend/
-|   `-- pages/
-|       |-- index.js
-|       |-- chat.js
-|       |-- report.js
-|       `-- supervisor_review.js
-|
-`-- eval/
-    |-- run_eval.py             # main evaluation harness (WISCO, etc.)
+|   |   |-- audit_logger.py
+|   |   |-- emotional_intelligence.py
+|   |   |-- nationality_classifier.py
+|   |   |-- person_register.py
+|   |   |-- cross_standard_coordinator.py
+|   |   |-- query_planner.py
+|   |   |-- hierarchical_classification_crew.py
+|   |   |-- rag_expert.py
+|   |-- llm/llm_client.py
+|   |-- rag/
+|   |   |-- hierarchical_store.py
+|   |   |-- vector_store.py
+|   |   |-- official_isco08_catalogue.py
+|   |   |-- standard_hierarchical_store.py
+|   |   |-- standard_flat_store.py
+|   |-- tests/
+|-- frontend/pages/
+|   |-- index.js
+|   |-- chat.js
+|   |-- report.js
+|   |-- supervisor_review.js
+|-- eval/
+    |-- run_eval.py
+    |-- analyze.py
+    |-- build_wisco_isco_benchmark_v2_group_split.py
+    |-- build_wisco_isco_benchmark_v3_dev_validation_split.py
     |-- generate_synthetic_isic_iscedf_benchmark.py
     |-- validate_synthetic_benchmark_quality.py
-    `-- legacy_thesis_ch6/      # the pre-existing 100-item synthetic-corpus
-                                  # BM25/Flat/Hierarchical comparison
-                                  # (formerly backend/evaluation/); real,
-                                  # still used, but never the primary
-                                  # citable result for this thesis
+    |-- sre_expanded_validation.py
+    |-- sre_hitl_enforcement_endpoint_verification.py
+    |-- legacy_thesis_ch6/
 \end{lstlisting}
+
+The live survey invokes components directly.
+\path{hierarchical_classification_crew.py} separately implements
+manager-led hierarchical CrewAI delegation for experimental use and is
+not imported by that route. Query planning is optional;
+\texttt{RAGExpert} is a reusable helper rather than live orchestration.
+Figure~\ref{fig:system-architecture} distinguishes these paths.
+
+\chapter{Experimental Configuration and Artifact Provenance}
+\label{app:reproducibility}
+
+This appendix identifies the preserved records supporting the principal
+occupation comparisons and synthetic generation. Table~\ref{tab:app-run-config}
+uses short run labels for cross-reference. All five occupation runs evaluate
+the same 18,747 heldout case identifiers. A profile identifies a catalogue
+and encoder configuration; it is distinct from a CSV configuration hash,
+an execution record, or a repository commit marker.
+
+\section{Occupation Retrieval Configurations}
+
+\begin{table}[htbp]
+\centering
+\caption{Principal occupation-run configurations and their evidence sources.
+Encoder identities for B and D require profile/build evidence; the reduced
+or inconsistent CSV metadata alone is insufficient.}
+\label{tab:app-run-config}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{1.0cm}
+  >{\raggedright\arraybackslash}X
+  >{\raggedright\arraybackslash}p{1.9cm}
+  >{\raggedright\arraybackslash}p{3.1cm}@{}}
+\toprule
+\textbf{Run} & \textbf{Profile and catalogue text} &
+\textbf{Encoder / dimensions} & \textbf{Search and record} \\
+\midrule
+A-flat & \path{official_ilo2021_v1}; title-only &
+E5-small / 384 & Flat; full evaluator CSV \\
+A-hier & \path{official_ilo2021_v1}; title-only &
+E5-small / 384 & Hierarchical; full evaluator CSV \\
+B & \path{official_ilo2021_v1_e5large}; title-only &
+E5-large / 1024 & Flat; reduced CSV and collection-build manifest \\
+C & \path{official_ilo2021_v1_enriched}; enriched &
+E5-small / 384 & Flat; full CSV and later run manifest \\
+D & \path{official_ilo2021_v1_enriched_e5large}; enriched &
+E5-large / 1024 & Flat; full CSV and later run manifest \\
+P & \path{official_ilo2021_v1_enriched}; enriched fragments &
+E5-small / 384 & Fragment-to-parent; hashed audit summary \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The encoders are \path{intfloat/multilingual-e5-small} and
+\path{intfloat/multilingual-e5-large}. Enriched text adds official
+definitions and included occupations to the title representation.
+Each flat collection contains 436 unit groups. The A-flat/A-hier command
+record selects the official profile and disables LLM reranking; their CSVs
+record no reranker execution. The C/D manifests also explicitly record
+\texttt{use\_llm\_reranker=false}. B is described as retrieval-only in the
+archived experiment summary, but its reduced CSV does not independently
+record a reranker flag.
+
+Run P is the configuration served by the local application and reported in
+Section~\ref{sec:res-parent-document}. It differs from A--D in both
+retrieval unit and record type. Its index holds 2,833 fragment and parent
+vectors over the same 436 unit groups; a parent's score is the maximum
+over its fragments, with fragment weight $0.5$. Its preserved audit record
+binds the catalogue digest, fragment-map digest, selection digest, encoder
+identity \path{intfloat/multilingual-e5-small}, encoder revision
+\texttt{614241f6}, and an encoder weight digest, so the serving
+configuration is identifiable in a way runs B and D are not. Unlike A, C,
+and D, its per-case predictions are not released with this thesis; the
+reported counts come from that hashed summary. Its scores are an
+uncalibrated similarity blend and are not probabilities.
+
+For A-flat/A-hier, the command record and source at the CSV-recorded
+commit \texttt{280ad76} establish the following settings. The evaluator
+requests five unit-group hits. A-flat returns the highest-similarity code
+and exposes up to three candidates. A-hier uses beam width two:
+up to two children are retained per parent at each non-leaf expansion,
+rather than a globally pruned two-path frontier. Its default stage-one
+mode is \texttt{description}, with a keyword major-group hint taking
+precedence when available. Recorded stage-one sources are 4,100 keyword
+hints and 14,647 semantic searches.
+
+A-hier queries up to five unit-group hits per surviving minor-group
+branch and selects the path whose highest-ranked leaf has the greatest
+raw similarity. The weighted ancestor/leaf score supplies confidence,
+not the path-selection objective. With branch collapse disabled, leaf
+candidates are deduplicated across explored branches and ordered by
+their highest raw similarity; up to five are exposed as candidates.
+The strict hierarchical command requires genuine hierarchical execution
+and sets a 30,000 ms budget per stage, shared across that stage's queries.
+The saved telemetry and eligibility analysis report no fallback or
+stage-budget failure in this completed run.
+
+The historical A implementation prefixes queries with \texttt{query:},
+uses normalized embeddings and query batch size one, and indexes
+\texttt{passage:}-prefixed catalogue text with cosine distance.
+The corresponding C source, identified by its recorded commit
+\texttt{3d10925}, likewise requests five flat hits and exposes three
+candidates. B's reduced export does not preserve this complete
+parameter record. D's later manifest identifies flat retrieval, its
+profile, and disabled reranking, but does not capture every search
+parameter. Missing historical settings should therefore not be filled
+from the interactive application's current defaults.
+
+\section{Historical Records and Source Identity}
+
+The principal artifact locations are:
+\begin{itemize}[leftmargin=*]
+  \item A-flat:
+  \path{eval/local_runs/wisco_official_tier1_precise_deadline_full_20260809T190821Z/flat/20260809T191133Z_wisco_official_tier1_precise_deadline_full_flat.csv}.
+  \item A-hier:
+  \path{eval/local_runs/wisco_official_tier1_precise_deadline_full_20260809T190821Z/hierarchical/20260809T192256Z_wisco_official_tier1_precise_deadline_full_hierarchical.csv}.
+  Commands are preserved in
+  \path{Documentation/AI_HANDOFF/CLAUDE_TASK_36_FINAL_REPORT.md};
+  the input hashes and eligibility checks are in
+  \path{eval/local_runs/wisco_official_tier1_precise_deadline_full_20260809T190821Z/analysis_task37_1_clean_reproduction/analysis_manifest.json}.
+  \item B:
+  \path{eval/local_runs/e5large_full_heldout_20260824/results.csv},
+  with encoder identity, dimensions, and verified collection counts in
+  \path{eval/local_runs/e5large_build_manifest_20260823.json}.
+  The build manifest establishes collection construction, not every
+  setting used during the subsequent evaluation.
+  \item C:
+  \path{eval/results/raw_runs/enriched_catalogue_heldout_20260824/20260824T113739Z_flat.csv},
+  with the later manifest
+  \path{eval/results/raw_runs/enriched_catalogue_heldout_20260824/manifests/manifest_enriched_catalogue_heldout_20260824.jsonl}.
+  \item D:
+  \path{eval/results/raw_runs/enriched_e5large_heldout_20260824/20260824T123941Z_flat.csv},
+  with the later manifest
+  \path{eval/results/raw_runs/enriched_e5large_heldout_20260824/manifests/manifest_enriched_e5large_heldout_20260824.jsonl}.
+\end{itemize}
+
+A-flat/A-hier CSVs record \texttt{280ad76}; C records
+\texttt{3d10925}; D records \texttt{b43f845}. The C/D manifests were
+generated on 25 August 2026 and record \texttt{48f8df6}. These are separate
+historical provenance fields, not the source revision of the present
+thesis. B's reduced CSV stores no commit identifier.
+
+D's CSV incorrectly names the small encoder, while its method label
+and later manifest select the enriched large-encoder profile.
+Moreover, the profile is absent from the catalogue registry at the
+CSV-recorded commit \texttt{b43f845}. That commit marker consequently
+does not establish a complete snapshot of the code executed for D;
+the preserved records do not resolve the discrepancy. A subsequent
+replication should archive the complete executed source, resolved encoder
+revision, catalogue hashes, dependencies, and command alongside predictions.
+
+\section{Recorded Computational Environment}
+
+The C/D manifests describe Windows 10, Python 3.11.9, an Intel processor
+reported as \emph{Intel64 Family 6 Model 154 Stepping 4, GenuineIntel},
+12 logical processors, and 7.71 GiB RAM. No CUDA device is detected.
+Recorded libraries include sentence-transformers 5.2.3, PyTorch 2.10.0,
+transformers 4.46.3, and qdrant-client 1.17.0. The processor's commercial
+model name is not recorded.
+
+These manifests were generated after the executions and describe their
+archived environment record. A and B lack an equivalent complete
+environment manifest. Their hardware and dependency configuration
+cannot be assumed identical to C/D merely because the experiments were
+conducted on a local machine. Cross-run latency differences are descriptive
+measurements, not a fully controlled hardware comparison.
+
+\section{Synthetic-Generation Record}
+
+The 449-row source export
+\path{eval/results/synthetic_isic_iscedf_benchmark/synthetic_isic_iscedf_benchmark_20260827T021738Z.csv}
+records \path{groq/openai/gpt-oss-120b} as
+\texttt{generation\_model} and
+\path{v2_2026-08-27_multilingual} as \texttt{prompt\_version}
+for every row. It also stores the intended category and a source-definition
+hash. The corresponding measured comparison is
+\path{eval/results/synthetic_isic_iscedf_benchmark/synthetic_eval_results_20260827T031325Z.csv}.
+
+The examined generator,
+\path{eval/generate_synthetic_isic_iscedf_benchmark.py},
+constructs the selected model through \texttt{get\_llm\_strict()} at
+temperature 0.8. This is a source-configuration observation; the generation
+CSV does not record temperature, sampling settings, provider model revision,
+or per-call request metadata. Its model and prompt strings should not
+therefore be treated as a complete historical execution trace.
+The two refusal descriptions in the original measured corpus and the
+distinction between generating labels and independent expert labels remain
+as described in Chapters~\ref{chap:evaluation} and~\ref{chap:results}.

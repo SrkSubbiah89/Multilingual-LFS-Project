@@ -1,361 +1,337 @@
 % ============================================================
-%  CHAPTER 2 — RELATED WORK
-%  Corrected 2026-08-28; citation audit completed 2026-08-29 -- see
-%  VERIFICATION_NOTES.md and CITATION_AUDIT.md. All ~40 bib.bib entries
-%  were checked via direct web search, one at a time. Result: most were
-%  real papers cited accurately; 13 were real papers with a wrong author,
-%  title, year, or false "Anonymous" attribution (corrected in bib.bib,
-%  noted inline where the error was substantive); 3 could not be matched
-%  to any real paper after extensive searching and were removed from
-%  every \cite{} in this thesis (bach2025rag, hamed2025isco,
-%  liu2025agenteval -- see bib.bib, commented out there with the audit
-%  trail). What was ALSO corrected here, independent of citation
-%  accuracy: every place this chapter tied a citation (real or not) to a
-%  false claim about THIS project's own architecture, numbering, or
-%  results.
+%  CHAPTER 2 --- RELATED WORK
 % ============================================================
 \chapter{Related Work and Literature Review}
 \label{chap:relatedwork}
 
-This chapter surveys research across four intersecting areas relevant
-to this thesis: automated occupation coding, retrieval-augmented generation,
-multilingual NLP and code-switching, and multi-agent conversational AI systems.
-Research gaps motivating the proposed system are identified in
-Section~\ref{sec:rw-gaps}.
+This chapter develops a focused narrative review of research relevant to
+the prototype: occupation measurement and coding, retrieval methods,
+multilingual processing, and controlled conversational workflows.
+Sources are selected for their relationship to the classification task
+or survey design. Official classification manuals define the target
+concepts; research papers provide methods and empirical evidence;
+software documentation establishes existing platform capabilities.
+Working papers and technical reports are distinguished from published
+journal and conference studies. The review does not constitute an
+exhaustive systematic review or a pooled comparison of published
+accuracy estimates.
 
-%─────────────────────────────────────────────────────────────────────────────
 \section{Labour Force Surveys and Occupation Coding}
 \label{sec:rw-lfs}
-%─────────────────────────────────────────────────────────────────────────────
 
-\subsection{Challenges in Traditional Occupation Coding}
+\subsection{Classification and Measurement}
 
-Occupation coding remains one of the most resource-intensive tasks in official
-statistical surveys.
-Respondents typically describe their work informally --- ``I fix phones for
-people'' or ``I handle accounts at a construction company'' --- and trained
-specialists must translate these descriptions into four-digit ISCO-08 codes.
-Published evidence suggests specialists do not always agree on the same code,
-and coding errors can bias published wage-gap statistics~\cite{iea2024occupationcoding}
-(citation confirmed real via the audit described in \texttt{bib.bib}'s
-header and \texttt{CITATION\_AUDIT.md}).
-The ILO's ISCO-08 classification~\cite{ilo2012isco_v1,ilo2012isco_v2} organises
-\textbf{436} unit groups at four hierarchical levels (major $\to$ sub-major $\to$ minor
-$\to$ unit group) --- this project's own primary-source audit against the
-official ILO structure confirmed this exact count, correcting several
-non-standard/missing codes found in an earlier catalogue (see
-Chapter~\ref{chap:architecture}). A structure of this taxonomic depth creates
-both the challenge and the opportunity for hierarchical retrieval --- though
-this thesis's own evaluation (Chapter~\ref{chap:results}) found that, for
-ISCO-08 specifically, flat retrieval measurably outperformed the hierarchical
-approach, a genuine negative finding reported honestly rather than assumed
-away.
+ISCO-08 defines occupations using the similarity of work tasks and duties
+and organises them through major, sub-major, minor, and unit
+groups~\cite{ilo2012isco_v1}. This structure permits analysis at different
+levels of detail, but makes four-digit coding sensitive to incomplete
+descriptions. The skill model considers tasks, formal education, and
+training or experience. Education is therefore relevant contextual
+information, rather than a sufficient rule for assigning or rejecting an
+individual's occupation.
 
-\subsection{Automated Occupation Coding: Recent Advances}
+Industry and education require separate measurement decisions. ISIC
+Rev.~4 concerns productive activities of statistical units, whereas
+ISCED~2011 and ISCED-F~2013 describe education levels and
+fields~\cite{unsd2008isic,unesco2012isced,unesco2015iscedf}.
+Neither a job title nor an employer's broad sector necessarily supplies
+enough information for detailed industry coding. For an integrated
+survey, target-specific questions and explicit treatment of missing
+information are therefore as important as the classifier used.
 
-Recent work has made progress in automating occupation coding.
-Oloumi~\cite{oloumi2026onet} benchmarked Sentence-BERT embeddings against
-fine-tuned classifiers for mapping free-text job descriptions to O*NET-SOC
-codes, finding embedding-based approaches competitive for unseen job titles,
-though that work is monolingual (English) with no conversational interface.
-(All citations in this subsection confirmed real via the citation audit;
-see \texttt{bib.bib} for any author/title corrections found.)
+\subsection{Coding During the Interview}
 
-The IEA study~\cite{iea2024occupationcoding} applied multilingual BERT to
-ESCO--O*NET crosswalk classification, reporting degradation at four-digit
-ISCO precision and operating in batch post-collection mode rather than
-within a live interview.
+Schierholz et al.~\cite{schierholz2016interview} studied occupation coding
+within a telephone interview using supervised candidate suggestions and
+respondent selection. Their IAB discussion paper evaluates the approach
+with the German KldB classification and discusses interview duration and
+coding quality. It demonstrates that adaptive interview coding predates
+LLM-based systems. Its results concern a different taxonomy and
+administration mode, so they do not provide a numerical baseline for this
+thesis's ISCO-08 retrieval experiment.
 
-Kochar et al.~\cite{kochar2025socbot} developed SOCbot, an LLM-integrated
-questionnaire performing real-time occupation coding through adaptive
-probing --- structurally the closest prior work to this thesis's
-conversational coding design, though English-only and single-agent, with no
-retrieval-augmented component.
+SOCbot, presented by Sturgis et al.~\cite{kochar2025socbot}, combines
+retrieval of UK SOC20 candidates, LLM classification, and follow-up
+questions when the initial response is insufficient. The published study
+includes static classification and a dynamic survey implementation.
+Its comparisons with a production coding pipeline assess coder agreement;
+the authors distinguish this from accuracy against an independently known
+true occupation. SOCbot is consequently close prior work for
+retrieval-assisted conversational occupation measurement. This thesis
+extends the application setting to an integrated UAE-oriented prototype
+with additional classification targets, while conducting a separate
+comparison of ISCO retrieval designs. It does not claim priority for
+combining RAG and interview probing.
 
-The LLM4Jobs system~\cite{anon2025llm4jobs} and the ensemble approach of
-Rony et al.~\cite{rony2025socclassifier} both report competitive occupation-
-classification results but are batch-mode, monolingual systems without a
-conversational interface.
+\subsection{LLM-Based Occupation Standardisation}
 
-Klein Teeselink and Carey~\cite{teeselink2026automation} and Santana and
-Kim~\cite{santana2026ethics} address adjacent questions (task-level AI
-exposure measures; semantic analysis of occupational-ethics corpora)
-without a coding or retrieval pipeline comparable to this thesis's system.
+Li et al.~\cite{anon2025llm4jobs} introduce LLM4Jobs for unsupervised
+occupation extraction and standardisation from free-text job descriptions.
+The approach is evaluated on synthetic and real-world datasets at
+different coding granularities. It establishes that occupation coding can
+be studied as a language understanding and standardisation task without
+fine-tuning a supervised classifier for every target category.
+Its classification experiments do not establish the quality of a complete
+LFS interview or the effect of adaptive questioning on respondents.
 
-\textbf{Table~\ref{tab:ch2-coding} is intentionally not reproduced from the
-original draft.} That table stated a specific accuracy figure for ``this
-thesis'' (85\%+) that does not match this project's own measured result and
-compared it against approximate accuracy figures for the cited systems that
-were not independently re-derived here. Chapter~\ref{chap:results} reports
-this thesis's real, measured ISCO-08 result directly; a fair like-for-like
-comparison against the systems above would require re-running them on the
-same benchmark, which was out of scope for this project.
+The IEA report by Duckworth and Fraillon~\cite{iea2024occupationcoding}
+fine-tunes XLM-RoBERTa for parental occupation coding using ICILS responses
+and ILO occupation titles. It compares multilingual and language-specific
+models and uses hierarchical evaluation measures to recognise partially
+correct classifications. Performance differs when a model is evaluated on
+its source data and when it is evaluated on the ICILS response data,
+illustrating the importance of the evaluation distribution. Hierarchical
+evaluation here concerns partial credit for predictions, rather than the
+parent-filtered retrieval algorithm investigated in this thesis. The
+report is relevant to short occupation responses and multilingual coding,
+although its population and collection context differ from an LFS.
+Its results and those of LLM4Jobs motivate methodological comparisons;
+they do not establish performance on this prototype's target population.
 
-%─────────────────────────────────────────────────────────────────────────────
-\section{Retrieval-Augmented Generation}
+\begin{table}[htbp]
+\centering
+\caption{Selected prior approaches and their relevance to this study.}
+\label{tab:ch2-coding}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{>{\raggedright}p{3.1cm}
+                >{\raggedright}p{4.9cm}
+                >{\raggedright\arraybackslash}p{4.1cm}}
+\toprule
+\textbf{Source} & \textbf{Relevant approach} & \textbf{Comparison boundary} \\
+\midrule
+Schierholz et al.~\cite{schierholz2016interview} & Supervised candidate
+  suggestions during an interview & German KldB and telephone
+  administration; not the WISCO protocol \\
+Li et al.~\cite{anon2025llm4jobs} & Unsupervised LLM occupation extraction
+  and standardisation & Coding experiments do not evaluate this
+  integrated survey workflow \\
+Sturgis et al.~\cite{kochar2025socbot} & Retrieved candidates, LLM coding,
+  and dynamic survey probes & UK SOC20; coder agreement and survey
+  outcomes are distinct from heldout ISCO accuracy \\
+Duckworth and Fraillon~\cite{iea2024occupationcoding} & AI-assisted parental
+  occupation coding & International education-study context \\
+This thesis & Flat versus hierarchical ISCO retrieval and integrated
+  classification and review & External occupation benchmark;
+  synthetic evidence for other targets and operation \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The approaches in Table~\ref{tab:ch2-coding} use different taxonomies,
+populations, input information, and reference-coding procedures. Ranking
+them by headline accuracy would conflate these differences. A direct
+superiority claim would require running comparable implementations on a
+shared, independently labelled dataset with a common protocol.
+
+\section{Retrieval-Augmented Methods for Classification}
 \label{sec:rw-rag}
-%─────────────────────────────────────────────────────────────────────────────
 
-\subsection{RAG Evolution and Current Landscape}
+\subsection{Retrieval and Grounding}
 
-Retrieval-Augmented Generation (RAG) has evolved through several distinct
-generations since its foundational formulation.
-Gupta et al.~\cite{gupta2024ragevo} trace this progression from na\"{i}ve RAG
-through advanced RAG (query rewriting, reranking) to modular RAG (composable
-pipeline components).
-Gao et al.~\cite{gao2024ragsurvey} provide a complementary taxonomy.
-(Citations in this subsection confirmed real via the citation audit; see bib.bib for any corrections.)
+Lewis et al.~\cite{lewis2020rag} introduced RAG by combining retrieved
+external information with a generative language model for
+knowledge-intensive NLP tasks. Retrieval makes relevant information
+available to a model, but the existence of retrieved context alone does
+not guarantee that the final answer is correct. For occupation coding,
+retrieval can instead be used to propose entries from a fixed catalogue,
+with a reranker or deterministic selection step choosing a code.
 
-Chaita et al.~\cite{chaita2025ragsurvey} organise the RAG design space into
-retriever-centric, generator-centric, and hybrid designs. This thesis's own
-system implements both a hierarchical, parent-filtered retrieval path and a
-flat, single-collection retrieval path for ISCO-08 (and, at architectural
-parity, for ISIC Rev.~4 and ISCED-F~2013) --- described precisely in
-Chapter~\ref{chap:architecture} --- and evaluates both empirically rather
-than assuming one design is superior.
+This distinction matters for the present implementation. Embedding-based
+catalogue retrieval can produce a classification without invoking a
+generative model, while optional LLM reranking selects among candidates.
+These stages require separate measurement: retrieval recall determines
+whether the reference code is available for selection, and final accuracy
+determines whether it is selected. An explanation attached to a code is
+not itself evidence of correct classification.
 
-A systematic review by multiple authors~\cite{multiauth2025ragreview}
-suggests that domain-specific RAG for labour-market and official-statistics
-applications remains comparatively unexplored, which this thesis's
-evaluation (Chapter~\ref{chap:evaluation}) speaks to directly.
+Gao et al.~\cite{gao2024ragsurvey} review retrieval and generation
+components and their evaluation. The modular view supports comparing
+retrieval design, catalogue content, and reranking rather than treating
+the whole pipeline as a single undifferentiated RAG method.
 
-\subsection{Agentic RAG}
+\subsection{Flat and Hierarchical Retrieval}
 
-Singh et al.~\cite{singh2025agentic} survey the agentic RAG paradigm, where
-autonomous agents decide dynamically how, when, and what to retrieve.
-Du et al.~\cite{arag2026hierarchical} report that hierarchical tool exposure
-can outperform flat retrieval on multi-hop question-answering benchmarks.
-\textbf{This finding is noted here for context but does not generalise to
-this thesis's own ISCO-08 result}: Chapter~\ref{chap:results} reports that,
-for the four-level ISCO-08 retrieval task specifically, flat retrieval
-measurably and statistically significantly outperformed the hierarchical
-configuration on a real external benchmark (WISCO). The two results are not
-in conflict --- they concern different tasks and retrieval targets --- but
-this thesis does not claim its own hierarchical design was validated by
-A-RAG's result, and states its own, opposite, empirical finding plainly.
+A taxonomy suggests a natural hierarchical search strategy: select a
+major group and restrict subsequent retrieval to its descendants.
+This can narrow the candidate space, but an incorrect parent decision
+can exclude the correct unit group. Flat retrieval avoids that particular
+restriction by searching unit groups directly. The relative performance
+of the two depends on catalogue representations, candidate budgets,
+query information, and the data distribution.
 
-Nguyen et al.~\cite{nguyen2025marag} propose MA-RAG, separating retrieval
-planning from execution across a Planner, Step Definer, Extractor, and QA
-agent. This thesis's system similarly separates orchestration (the
-conversation-flow logic in \texttt{backend/api/survey\_routes.py} and
-\texttt{conversation\_manager.py}) from retrieval execution (the RAG-facing
-modules described in Chapter~\ref{chap:architecture}), though not through
-CrewAI's hierarchical delegation process --- this project's own architecture
-uses no \texttt{Process.hierarchical} or manager-agent pattern anywhere.
+Du et al.~\cite{arag2026hierarchical} investigate hierarchical retrieval
+interfaces for agentic question answering. Their A-RAG framework exposes
+keyword search, semantic search, and chunk reading to a model at different
+granularities. Hierarchy in that setting concerns retrieval tools and
+document access; it differs from predicting successive occupation groups
+and filtering descendants. Its question-answering findings therefore do
+not establish that a parent-filtered ISCO classifier should outperform
+flat unit-group retrieval.
 
-Huang et al.~\cite{huang2025ragrl} apply reinforcement learning to
-citation-grounded answer generation --- relevant context for this thesis's
-own requirement that every classification trace to a specific retrieved
-catalogue entry, though this project does not itself use RL.
+The present study addresses this task-specific uncertainty with matched
+configuration comparisons on WISCO~\cite{wisco2023}. Its conclusion about
+flat and hierarchical retrieval is restricted to the evaluated
+implementations and dataset. Additional ablations of catalogue
+enrichment, embedding size, and reranking establish which changes have
+supporting evidence and which remain configuration choices.
 
-\subsection{RAG for Classification and Survey Domains}
+\subsection{Multilingual Embedding Models}
 
-\textbf{The ``Bach et al.'' citation an earlier internal draft of this
-thesis rested this subsection on could not be verified to exist.} An
-extensive, multi-query search for a 2025 \emph{Journal of Official
-Statistics} paper by Bach, K\"{u}chenhoff, and Schierholz applying RAG to
-German labour-force occupation coding returned no match --- real papers by
-Schierholz on German occupation coding exist (2016--2020, pre-LLM,
-non-RAG), but nothing matching this specific claimed paper. Flagged as a
-likely-fabricated citation per this project's own citation policy and
-removed, along with the specific ``roughly 80\% top-1 accuracy on German
-data'' figure it supported, rather than kept on the chance it is real but
-unindexed.
+Wang et al.~\cite{wang2024multilinguale5} describe the multilingual E5
+family, including small, base, and large models. Their training and
+evaluation demonstrate a practical route to multilingual text
+representations with different resource requirements. Such models
+permit descriptions in several languages to be compared with catalogue
+text, but generic embedding benchmarks are not occupation-coding
+benchmarks. In this thesis, embedding size is consequently evaluated on
+the classification task and considered together with memory and latency
+constraints.
 
-What remains real and worth stating on its own: this thesis's system
-implements both multilingual support and a hierarchical retrieval
-structure for ISCO-08, and evaluates both honestly (Chapter~\ref{chap:results}),
-including the finding that the hierarchical extension underperformed the
-flat baseline for this project's own task.
-
-%─────────────────────────────────────────────────────────────────────────────
 \section{Multilingual NLP and Code-Switching}
 \label{sec:rw-multilingual}
-%─────────────────────────────────────────────────────────────────────────────
 
-(Citations in this section confirmed real via the citation audit; see bib.bib for any corrections.)
+Hamed et al.~\cite{hamed2025codeswitching} review Arabic code-switching
+across language varieties and between Arabic and other languages,
+including limitations in available data and modelling approaches. Their
+review motivates attention to dialectal and mixed-language inputs;
+it does not establish how frequently these occur in this prototype's
+target respondent population or that a particular normalisation method
+improves survey coding.
 
-\subsection{Multilingual Large Language Models}
+The prototype's Gulf Arabic dictionary is a lightweight preprocessing
+choice. Replacing a recognised dialect token can make a description
+closer to the catalogue wording, but it can also leave unrecognised
+variants unchanged or alter useful information. The relevant empirical
+question is whether normalisation changes downstream classification
+under a controlled comparison. The reported ablation uses generated
+dialectal text, so its outcome cannot establish performance on spontaneous
+speech, noisy transcription, or the full range of Gulf varieties.
 
-Liu et al.~\cite{liu2025mllmsurvey} survey the multilingual LLM landscape,
-reporting that a dialect gap persists across current multilingual models for
-regional Arabic varieties. This is directly relevant: this thesis's system
-implements Gulf Arabic dialect handling via a hand-built, 79-rule
-normalisation dictionary (\texttt{\_GULF\_NORMALISE} in
-\texttt{language\_processor.py}), and this thesis's own evaluation
-(Chapter~\ref{chap:results}) found that dictionary detects only a modest
-share of genuinely dialectal generated text and made no measurable
-difference to downstream classification accuracy on the sample tested --- a
-real result consistent with the persistent dialect gap this literature
-describes, not a claim that this project has closed it.
+Language support also requires consistent interpretation of categorical
+answers, negation, numbers, and field corrections. A translated question
+can be displayed correctly while its answer is interpreted incorrectly.
+Functional routing tests therefore complement classifier benchmarks,
+and native-speaker review and cognitive interviewing remain necessary
+for measurement equivalence. The WISCO languages, the synthetic
+evaluation languages, and the five interface languages are reported as
+separate coverage dimensions in Chapter~\ref{chap:evaluation}.
 
-Mao et al.~\cite{mao2025multilingual} document that imbalanced multilingual
-training data causes systematic degradation for lower-resource languages,
-motivating this project's use of a multilingual sentence-embedding model
-(\texttt{intfloat/multilingual-e5-small} in production, with an additive,
-measurably more accurate \texttt{multilingual-e5-large} profile built and
-evaluated but not yet switched to production default) rather than an
-English-centric one.
-
-\subsection{Code-Switching}
-
-Multiple authors~\cite{multiauth2026cswnlp} survey code-switched NLP in the
-LLM era. Their observation that naturalistic conversational code-switching
-datasets are scarce is part of the motivation for this thesis's own use of
-a disclosed, LLM-generated synthetic evaluation dataset for ISIC/ISCED-F
-(Chapter~\ref{chap:evaluation}) where no real, labelled alternative exists
---- with that dataset's limitations stated explicitly, not smoothed over.
-
-Yoo et al.~\cite{yoo2025cscl}, Alzubaidi et al.~\cite{alzubaidi2025arabic},
-and the multilingual-prompting survey~\cite{multiauth2025mlprompt} address
-code-switching curriculum learning, Arabic-specific benchmarking gaps, and
-multilingual prompt design respectively.
-(All three citations confirmed real via the citation audit; see bib.bib for corrections, e.g. yoo2025cscl's exact title.)
-This thesis's \texttt{LanguageProcessor} module implements the multilingual/
-code-switching handling these works motivate; its real, measured behaviour
-(not an assumed one) is reported in Chapter~\ref{chap:results}.
-
-Anonymous authors~\cite{anon2024cswnli} report that code-switching does not
-uniformly degrade LLM performance across all language pairs tested. Whether
-this holds for this project's own survey-domain, occupational-terminology
-setting was not separately tested here.
-
-%─────────────────────────────────────────────────────────────────────────────
-\section{Multi-Agent Systems and Conversational AI}
+\section{Conversational Workflow and Quality Control}
 \label{sec:rw-multiagent}
-%─────────────────────────────────────────────────────────────────────────────
 
-\subsection{Multi-Agent LLM Frameworks}
+\subsection{Existing Computer-Assisted Survey Capabilities}
 
-Liu et al.~\cite{liu2025agenticai} classify frameworks including CrewAI,
-AutoGen, and LangChain as neural-paradigm LLM orchestration. Guo et
-al.~\cite{guo2024multiagent} and Tran et al.~\cite{tran2025multiagent}
-provide complementary taxonomies of multi-agent capability dimensions and
-collaboration structures.
-(Citations in this subsection confirmed real via the citation audit; see bib.bib for any corrections.)
-This thesis's own system uses CrewAI, but --- stated precisely rather than
-by analogy to a general taxonomy --- with \textbf{13 modules under
-\texttt{backend/agents/} each constructing a \texttt{crewai.Agent}} (real,
-current count as of this writing; see the full module list in
-Chapter~\ref{chap:architecture}), all with \texttt{allow\_delegation=False},
-and \textbf{no CrewAI hierarchical delegation process anywhere} --- no
-\texttt{Process.hierarchical}, no manager agent. Each module is invoked
-directly by the survey's own control flow, not by an orchestrating manager
-agent. This is a deliberate architectural characterisation, corrected here
-from an earlier draft that implied a numbered, hierarchically-delegating
-``Agent 1'' through ``Agent 13'' scheme that does not match the real
-implementation.
+Survey Solutions implements conditional question enabling, validation
+expressions, and multilingual questionnaires
+\cite{worldbank2016surveysolutionsvalidation,worldbank2026surveysolutionslanguages}.
+These are established capabilities of computer-assisted survey systems.
+An appropriate comparison for a conversational prototype must therefore
+consider a well-programmed electronic questionnaire, rather than assume
+that all conventional instruments lack routing or consistency checks.
 
-\subsection{CrewAI in Practice}
+The additional design problem is preserving those controls when an answer
+is obtained in free text and can update multiple fields. The prototype
+uses a finite-state controller for interview progression and separates
+field interpretation from classification and validation. Tests of these
+boundaries assess software behaviour; a field study must assess whether
+the same design improves or worsens response quality in use.
 
-The CrewAI framework~\cite{crewai2024} (version 1.9.3 in this project, not
-the 0.60 an earlier internal draft of this thesis incorrectly stated)
-supports role-based agent orchestration. Eyolfson et
-al.~\cite{eyolfson2026mas} report an empirical study of CrewAI in
-production, finding inter-agent communication errors as a common failure
-mode.
-(Confirmed real via the citation audit -- see bib.bib for a real title correction found for this entry.)
-Consistent with that finding, this project's own \texttt{survey\_routes.py}
-validates data passed between modules at each stage rather than trusting
-inter-module payloads unconditionally --- though this project has no single
-module named ``SurveyOrchestrator''; orchestration is implemented directly
-in the API route handlers.
+\subsection{Modular and Multi-Agent Orchestration}
 
-\subsection{Data Integrity and Privacy in Conversational AI}
+Guo et al.~\cite{guo2024multiagent} review LLM-based multi-agent systems
+and their applications and challenges. Multiple specialised components
+can organise responsibilities, but the framework label alone does not
+establish a benefit over a simpler pipeline. Relevant comparisons must
+hold data, models, and task definitions sufficiently constant to isolate
+the effect of orchestration.
 
-Khanna et al.~\cite{khanna2025knowledge}, Zhang et
-al.~\cite{zhang2025hallucination}, Serenari et
-al.~\cite{serenari2025lopsided}, and Gupta~\cite{gupta2025civ} address
-knowledge provenance, LLM hallucination, PII pseudonymisation, and
-cryptographic token integrity respectively.
-(All four citations confirmed real via the citation audit; see bib.bib for corrections, e.g. gupta2025civ's and serenari2025lopsided's real titles.)
-This thesis's system implements audit logging (\texttt{audit\_logger.py},
-constructing a real \texttt{crewai.Agent}), JWT-based authentication, and a
-confidence-threshold-gated human-in-the-loop escalation path
-(\texttt{hitl\_quality\_manager.py}) addressing the same general concerns
-these works raise, though this thesis does not claim to have adopted any
-specific cited technique's exact mechanism unless verified against the live
-code.
+The current system uses CrewAI abstractions~\cite{crewai2024} within an
+application-controlled workflow. Modules are invoked directly, with
+delegation disabled, rather than through an autonomous hierarchical
+manager. The thesis therefore evaluates module invocation and data flow
+as engineering properties. It does not attribute classification gains to
+multi-agent collaboration without a corresponding controlled ablation.
 
-\subsection{Evaluation of Conversational AI Systems}
+\subsection{Cross-Standard Screening and Human Review}
 
-\textbf{Two citation problems found and corrected here.} First,
-``reimann2025conveval'''s arXiv ID (2505.08253) was checked directly and
-belongs to a different paper (Miller \& Tang, ``Evaluating LLM Metrics
-Through Real-World Capabilities''), not a Reimann-authored one; a real
-``Reimann et al.'' source describing a coherence/accuracy/clarity/
-relevance/efficiency framework may exist from 2023 (referenced secondhand
-in at least one other paper found during this check), but was not
-independently located or verified at a specific venue in this pass ---
-cited here with that caveat rather than with a wrong arXiv ID. Second,
-``liu2025agenteval'' (claimed as Liu et al., KDD 2025, LLM agent
-evaluation taxonomy) could not be matched to a real paper; the closest
-match found, a 2026 arXiv survey on LLM-agent evaluation, has no confirmed
-``Liu'' author and a different venue, so it is not cited as a substitute.
-This thesis's own evaluation methodology (Chapter~\ref{chap:evaluation}) is
-stated in full there, including exactly which parts are execution-based
-(real classifier calls against a real benchmark) versus which remain
-unevaluated (e.g.\ the planned pilot study, not yet started).
+Because occupation, industry, and education describe related but distinct
+concepts, cross-standard associations can help identify records that
+deserve examination. Such associations also reflect assumptions about
+typical work and education patterns. An atypical combination may represent
+an error, a valid career transition, an unusual establishment, or skills
+acquired outside formal education. A screening score must consequently
+be distinguished from a truth label.
 
-Zhang et al.~\cite{zhang2025synthetic} evaluate synthetic-data-generation
-methods (CTGAN, TVAE, REaLDTabFormer) for administrative survey records.
-This thesis's own synthetic work takes a different, simpler approach ---
-taxonomy-grounded LLM paraphrase of official classification definitions, not
-a GAN/VAE-based tabular synthesiser --- disclosed and scoped precisely in
-Chapter~\ref{chap:evaluation}, including its real, measured coverage
-limitations.
+The proposed SRE uses explicit, hand-built associations and deterministic
+severity rules. Its evaluation can establish whether a rule fires on its
+test cases and whether flagged cases enter the review queue. Establishing
+its value for official statistics additionally requires independent expert
+annotation, estimates of false positive and false negative rates, and
+analysis of reviewer workload. Authentication and audit logging support
+traceability but do not by themselves demonstrate privacy compliance or
+production security.
 
-%─────────────────────────────────────────────────────────────────────────────
-\section{Research Gaps}
+\section{Research Gaps and Position of the Thesis}
 \label{sec:rw-gaps}
-%─────────────────────────────────────────────────────────────────────────────
 
-The literature review above suggests several gaps this thesis engages with.
-Stated honestly: this thesis makes real progress on some of these and
-leaves others genuinely open, rather than claiming all are fully closed.
+The reviewed work supplies precedents for automated occupation coding,
+retrieval-assisted probing, multilingual representations, and survey
+validation. The gaps below are scoped empirical and integration questions
+for this prototype, rather than claims that these capabilities are absent
+from all previous systems.
 
 \begin{enumerate}[label=\textbf{G\arabic*.}, leftmargin=2.5em]
-  \item \textbf{Real-time conversational occupation coding combined with
-  multilingual support.} This thesis's system implements this; its measured
-  accuracy is reported honestly in Chapter~\ref{chap:results}, not assumed
-  to exceed prior single-language systems.
+  \item \textbf{Task-specific retrieval evidence.} The existence of a
+  classification hierarchy does not determine the best retrieval strategy.
+  A controlled ISCO comparison is required to distinguish hierarchy,
+  embedding, and catalogue effects (RQ1).
 
-  \item \textbf{Whether hierarchical retrieval helps ISCO-08 classification.}
-  This thesis directly tested this and found, for its own task and data,
-  that it does \emph{not} --- flat retrieval outperformed hierarchical
-  retrieval by a large, statistically significant margin. This is reported
-  as a genuine contribution (a tested, negative result), not glossed over.
+  \item \textbf{Evidence for integrated classification and screening.}
+  A system that produces occupation, industry, and education codes must
+  establish their coverage and the behaviour of review rules separately.
+  Independent validation of those associations remains necessary (RQ2).
 
-  \item \textbf{Simultaneous ISCO-08 + ISIC Rev.~4 + ISCED classification
-  within one survey session.} Implemented and described in
-  Chapter~\ref{chap:architecture}; ISIC and ISCED-F accuracy currently rests
-  on a disclosed synthetic benchmark, not real respondent data (see
-  Chapter~\ref{chap:evaluation}).
+  \item \textbf{Transfer to intended languages and dialects.} Multilingual
+  embeddings and interface translations leave uncertainty about answer
+  interpretation, classification, and measurement equivalence in the
+  intended survey population (RQ3).
 
-  \item \textbf{Dialectal Arabic code-switching in survey interviews.} A
-  real dictionary-based normaliser was built and tested; the honest result
-  is that it made no measurable difference to classification accuracy on
-  the sample tested, and that the sample itself is LLM-generated synthetic
-  dialectal text, not real speech. This gap is engaged with, not closed.
-
-  \item \textbf{CrewAI-based multi-agent systems applied to official
-  statistics.} Implemented; evaluated functionally (does the right module
-  fire at the right time --- see \texttt{test\_orchestration\_correctness.py})
-  rather than through a large-scale production study like Eyolfson et
-  al.'s.
-
-  \item \textbf{Integrated data integrity mechanisms for a survey pipeline.}
-  Implemented (audit logging, authentication, HITL escalation); not
-  independently security-audited against the specific cited mechanisms.
-
-  \item \textbf{Validated pilot deployment of a conversational LFS system.}
-  \textbf{Not done.} The randomised pilot (n=30) had not been submitted for
-  ethics approval as of this writing. This remains the single largest open
-  gap this thesis does not close, stated plainly rather than implied to be
-  complete.
+  \item \textbf{From operational execution to respondent outcomes.}
+  Functional checks and synthetic interviews assess system behaviour;
+  they do not establish burden, satisfaction, cost, or survey-mode effects.
+  The transition to a human study remains an evidence gap (RQ4).
 \end{enumerate}
 
-\noindent This thesis engages with all seven gaps to varying degrees ---
-several with real, tested, honestly-reported results (including negative
-ones), and at least one (the pilot) still fully open. Chapter~\ref{chap:results}
-states, gap by gap, exactly which status applies.
+\begin{table}[htbp]
+\centering
+\caption{Mapping research gaps to objectives, available evidence, and open work.}
+\label{tab:ch2-gap-mapping}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{>{\raggedright}p{1.8cm}
+                >{\raggedright}p{4.6cm}
+                >{\raggedright\arraybackslash}p{5.7cm}}
+\toprule
+\textbf{Gap and objectives} & \textbf{Evidence in this thesis} &
+\textbf{Remaining validation} \\
+\midrule
+G1: O2 & External WISCO configuration comparisons, accuracy, and
+  ablations & Independent replication and transfer to UAE descriptions;
+  direct shared-data comparisons with prior systems \\
+G2: O3--O5 & Synthetic classifier evaluations, catalogue audit, and
+  rule/escalation checks & Wider catalogue coverage; real jointly labelled
+  records; expert review of associations and detection errors \\
+G3: O6 & Dataset-specific language results and a generated Gulf
+  normalisation ablation & Native-speaker and cognitive review;
+  naturalistic dialect and code-switch samples; subgroup error analysis \\
+G4: O1, O7, O8 & Interview-flow checks and scripted operational
+  execution & Ethics-approved human evaluation; independent coding;
+  justified sample size; respondent and review-workload outcomes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The strongest comparative evidence concerns ISCO retrieval on an external
+benchmark. The other components have narrower functional or synthetic
+support. This positioning preserves the distinction between implemented
+capabilities, measured outcomes, and unanswered research questions used
+throughout the evaluation and conclusion chapters.

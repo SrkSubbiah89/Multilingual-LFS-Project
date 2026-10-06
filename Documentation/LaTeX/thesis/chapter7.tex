@@ -1,180 +1,185 @@
-% ============================================================
-%  CHAPTER 7 — CONCLUSION AND FUTURE WORK
-%  Corrected 2026-08-28 -- see VERIFICATION_NOTES.md.
-% ============================================================
 \chapter{Conclusion and Future Work}
 \label{chap:conclusion}
 
-% ------------------------------------------------------------
 \section{Summary}
 \label{sec:conc-summary}
-% ------------------------------------------------------------
 
-This thesis designed, implemented, and evaluated a multilingual
-conversational AI system for administering the Labour Force Survey in five
-languages, using a 13-module CrewAI agent architecture with no hierarchical
-delegation.
+This thesis develops a multilingual conversational system for collecting
+labour force questionnaire responses, coding occupation, industry,
+educational attainment, and field of education, and routing uncertain or
+incompatible results to human review. State-based conversation control,
+retrieval and keyword classifiers, a heuristic Semantic Relation Engine,
+and persistent reports and audit records support the implementation.
+The evaluation distinguishes controlled coding benchmarks from synthetic
+operational evidence.
 
-The central contribution --- the \textbf{Semantic Relation Engine} ---
-provides a deterministic three-way coherence check between ISCO-08, ISIC
-Rev.~4, and ISCED classifications, producing a calibrated SemanticCoherence
-score that adjusts confidence and triggers HITL escalation on HIGH-severity
-violations, validated on a 61-case set with zero mismatches and verified to
-escalate HIGH-severity cases to the live HITL queue 100\% of the time across
-three independent runs. \textbf{The crosswalk tables underlying this engine
-are hand-built}, not sourced from an official ILO/UNESCO correspondence
-document --- a real search of the complete ISCO-08 Volume~I document found
-no such table exists, and this remains disclosed as open work
-(Section~\ref{sec:conc-future}), not presented as a solved problem.
+For RQ1, flat ISCO-08 retrieval exceeds the tested hierarchical
+configuration on 18,747 WISCO records: 21.19\% versus 10.35\% exact-match
+accuracy. Catalogue enrichment, combined with the intended larger encoder,
+raises the highest observed accuracy to 40.95\% (7,676 correct), although
+that run's executed encoder is not established from its preserved records.
+This identifies an engineering direction and shows that the tested
+hierarchical restriction is not beneficial in this setting. Later
+configurations were compared after results from the same partition were
+inspected, so the best result is a retrospective benchmark finding
+requiring independent confirmation. It is not the accuracy of the live
+API. The configuration actually served locally is fragment-to-parent
+retrieval, which reaches 38.83\% (7,279 correct) on the same partition and
+improves on its same-encoder dense baseline by 6.28 percentage points
+(Section~\ref{sec:res-parent-document}).
 
-Both hierarchical and flat ISCO-08 retrieval pipelines were implemented and
-compared on a real, external, 18,747-case benchmark (WISCO). \textbf{The
-central empirical finding is that hierarchical retrieval underperformed
-flat retrieval by 10.84 percentage points} (21.19\% vs.\ 10.35\%), the
-opposite of the original design assumption --- reported here as a genuine
-contribution (a tested, negative result), not smoothed over. Building on
-the better (flat) configuration, two further, additive improvements ---
-a larger embedding model and real official-text catalogue enrichment ---
-together produced this thesis's \textbf{best-tested, headline ISCO-08
-result of 40.95\%}, nearly double the original baseline.
+For RQ2, multi-standard coding and deterministic compatibility checks are
+implemented. On 449 taxonomy-grounded synthetic descriptions, enriched
+flat retrieval recovers 82.85\% of generating categories compared with
+13.14\% for the legacy pipeline. The result concerns restricted coverage
+and includes two subsequently identified refusal descriptions. Agreement
+on 61 constructed SRE cases and repeatable escalation demonstrate rule
+and queue correctness, not independent contradiction validation or
+empirical score calibration.
 
-The system also classifies industry (ISIC Rev.~4) and education (ISCED /
-ISCED-F~2013) within the same session. No real, labelled evaluation dataset
-exists for either standard; a disclosed, taxonomy-grounded synthetic
-benchmark produced a real result (82.85\% for flat retrieval vs.\ 13.14\%
-for the legacy keyword pipeline, $n=449$) that is explicitly not equivalent
-to real-respondent validation.
+For RQ3, occupation retrieval is evaluated in English, Arabic, Hindi,
+Tagalog, and Urdu. Enriched-large retrieval improves on the baseline in
+every language, with substantial remaining errors and language gaps.
+Translation has a positive 60-record development result; Gulf normalisation
+has no observed gain in the recorded synthetic experiment. Conversational
+code-switching and general dialect robustness remain unestablished.
 
-\textbf{The planned randomised pilot study ($n=30$) has not been executed
-and had not been submitted for ethics approval as of the writing of this
-thesis.} No pilot data exists anywhere in this thesis.
+For RQ4, 30 synthetic English profiles complete scripted interviews through
+the local API. This supports operational feasibility of the tested flows,
+not respondent burden, satisfaction, or comparative cost-effectiveness.
+The participant pilot was not conducted; no institutional ethics submission
+is recorded.
 
-% ------------------------------------------------------------
 \section{Contributions}
 \label{sec:conc-contributions}
-% ------------------------------------------------------------
 
-\noindent\textbf{C1 --- Semantic Relation Engine.}
-A deterministic three-way ISCO$\leftrightarrow$ISIC$\leftrightarrow$ISCED
-coherence engine with a calibrated SemanticCoherence score, a genuine
-three-tier severity mechanism (LOW/MODERATE/HIGH, gap-based, distinct from
-the confidence-adjustment bands), and verified HITL escalation on HIGH
-violations. The crosswalk tables are hand-built and disclosed as such, not
-sourced from an official correspondence document.
+\noindent\textbf{C1 --- Comparative retrieval evidence.}
+Flat and hierarchical ISCO-08 retrieval and comparisons of catalogue
+richness and encoder size provide evidence for configuration choices.
+The observed advantage of the tested flat configuration is reported
+without claiming universal architectural superiority. Negative and
+exploratory findings accompany the highest observed accuracy.
 
-\noindent\textbf{C2 --- Multilingual LFS conversation flow.}
-A conversation FSM covering the LFS questionnaire in English, Arabic MSA,
-Gulf Arabic dialect, Urdu, Hindi, and Tagalog, enforcing ten deterministic
-response-consistency rules (R01--R10, verified directly against the live
-\texttt{ValidationAgent} implementation).
+\noindent\textbf{C2 --- Heuristic cross-standard review support.}
+A deterministic SRE connects occupation, industry, and educational
+attainment through explicit compatibility rules and severity-triggered
+review. Its heuristic score and hand-built constraints are inspectable
+and tested; their substantive validity and calibration remain open.
 
-\noindent\textbf{C3 --- Two ISCO-08 retrieval configurations, honestly
-compared.} Both hierarchical and flat retrieval were built and evaluated on
-a real external benchmark; the result that flat outperforms hierarchical is
-itself a contribution, not an inconvenience to be hidden.
+\noindent\textbf{C3 --- Integrated multilingual prototype.}
+A state-based questionnaire flow supports five languages, treats Gulf
+Arabic as an Arabic variety, and incorporates conditional questions,
+clarification, confirmation, and ten deterministic consistency rules.
+Multi-standard outputs, authentication, audit records, bilingual reports,
+and review mechanisms share a containerised service stack. Implementation
+support is distinguished from independently measured language quality
+and deployment readiness.
 
-\noindent\textbf{C4 --- Simultaneous multi-standard classification.}
-ISCO-08, ISIC Rev.~4, and ISCED/ISCED-F classification within a single
-conversational session.
+\noindent\textbf{C4 --- Evaluation and diagnostic artifacts.}
+Automated tests, controlled benchmark exports, synthetic operational
+experiments, and preserved prediction artifacts support inspection and
+recomputation. Method labels and configuration records help distinguish
+retrieval results from fallback behaviour. These artifacts identify
+measurement gaps as well as observed performance; they do not themselves
+establish respondent benefit.
 
-\noindent\textbf{C5 --- A tested, deployable system.}
-A Dockerised multi-service stack, an 11-table PostgreSQL schema, audit
-logging, and bilingual report generation, backed by a real, repeatedly-run
-test suite (2,567 tests passing, 1 deselected, at the time of this thesis's
-writing --- not the 18-file figure an earlier internal draft stated ---
-confirmed byte-identical across 10 consecutive full runs under varying
-\texttt{PYTHONHASHSEED} values, Section~\ref{sec:impl-testing}).
-
-% ------------------------------------------------------------
 \section{Limitations}
 \label{sec:conc-limitations}
-% ------------------------------------------------------------
 
-\noindent\textbf{L1 --- No pilot data.} The single largest limitation of
-this thesis: every claim about respondent burden, satisfaction, or
-cost-effectiveness versus a traditional interview remains a target, not a
-measured result, because the pilot has not run.
+\noindent\textbf{L1 --- No participant validation.}
+Burden, satisfaction, accessibility, and comparative interview outcomes
+remain unmeasured. Scripted synthetic sessions cannot resolve them.
 
-\noindent\textbf{L2 --- ISIC Rev.~4 partial coverage.} 134 of 419 official
-4-digit class entries are live-indexed --- stated exactly, not as ``100+ of
-238'' (an earlier internal draft both overstated coverage and understated
-the true official class count).
+\noindent\textbf{L2 --- Reused benchmark and dependent observations.}
+Later configurations were informed by results on the same WISCO partition.
+Nominal intervals and paired tests do not account for related titles or
+multilingual variants, and exploratory comparisons lack multiplicity
+adjustment. The selected configuration requires a fresh test set.
 
-\noindent\textbf{L3 --- ISCED-F partial coverage.} 63 of approximately 80
-detailed fields are live-indexed --- not ``30+ of 280+'' as an earlier
-internal draft stated (that class count does not match any UNESCO ISCED-F
-structure this project verified).
+\noindent\textbf{L3 --- Restricted coverage and synthetic labels.}
+Enriched flat indexes contain 121 officially matched ISIC classes and 61
+ISCED-F fields, rather than complete coverage. Generating categories are
+not expert labels for spontaneous descriptions. Two refusal rows remain
+in the reported 449-record result; expanded-corpus evaluation is incomplete.
 
-\noindent\textbf{L4 --- ISIC/ISCED-F accuracy rests on synthetic data.} The
-82.85\%/13.14\% result (Chapter~\ref{chap:results}) measures recovery of an
-LLM's own generating prompt, not real-respondent performance.
+\noindent\textbf{L4 --- Heuristic cross-standard knowledge.}
+An authoritative correspondence mapping was not established in this
+project. Constructed expected outcomes do not estimate the SRE's error
+rate on respondents. Atypical work and education may be legitimate, so
+violations require review rather than automatic correction.
 
-\noindent\textbf{L5 --- The Semantic Relation Engine's crosswalk is
-hand-built.} Not sourced from an official ILO/UNESCO correspondence
-document, because none was found to exist.
+\noindent\textbf{L5 --- Incomplete language and intervention evaluation.}
+Language results primarily measure occupation-title retrieval. Conversational
+code-switching, entity extraction, dialect detection, and translation lack
+comprehensive independent annotation. Small intervention checks do not
+establish equivalence or a general absence of benefit.
 
-\noindent\textbf{L6 --- Critical-tier LLM dependency, unverified in
-production.} The system's \texttt{TaskType.CRITICAL} tier is designed to
-pin Claude~3.5~Sonnet with no fallback; this project's Anthropic account had
-zero usable credit throughout evaluation, so this tier's real production
-behaviour with Claude has not been demonstrated end-to-end.
+\noindent\textbf{L6 --- Offline and deployed configurations differ.}
+The API retains legacy coding pipelines whose accuracy cannot be inferred
+from official-profile offline results. The Claude-backed critical tier
+has not been demonstrated end-to-end in the recorded evaluation, and
+an API switch to the larger encoder encountered local memory instability.
 
-\noindent\textbf{L7 --- Single development-machine measurement.} All
-computational-efficiency figures (Chapter~\ref{chap:results}) are from one
-local machine; that same machine's memory constraints directly blocked a
-planned larger-scale ISIC/ISCED-F accuracy re-computation.
+\noindent\textbf{L7 --- Limited runtime evidence.}
+Recorded local measurements exclude human interaction and do not
+establish production availability, throughput, or cost. Some paired
+experimental outputs and expanded evaluations remain incomplete.
 
-%% VERIFICATION NEEDED / VERIFY AGAINST CODE: the original draft's L4
-%% ("Tagalog NER limited... lower quality than Arabic and English") was a
-%% specific, plausible-sounding claim not independently verified against
-%% any real measurement in this project's record and has been removed
-%% rather than restated unchecked. If a real Tagalog-NER quality
-%% comparison exists or is run, it belongs here with its real numbers.
+\noindent\textbf{L8 --- Application correctness and access control.}
+Known routing, answer-extraction, persistence, reviewer-authorization,
+measurement, and fresh-installation defects remain unresolved
+(Chapter~\ref{chap:implementation}). They limit participant readiness and
+the use of application outputs as research evidence.
 
-% ------------------------------------------------------------
 \section{Future Research Directions}
 \label{sec:conc-future}
-% ------------------------------------------------------------
 
-\noindent\textbf{F1 --- The pilot study.} The single highest-priority next
-step: complete ethics submission, recruit, and run the planned $n=30$
-pilot (Chapter~\ref{chap:evaluation}) --- nothing else in this future-work
-list matters as much to this thesis's central claims.
+\noindent\textbf{F1 --- Approval-dependent respondent study.}
+Obtain ethics approval before recruitment, then conduct the planned pilot
+with a documented comparison condition. Prespecify outcomes and analysis;
+measure language accessibility, satisfaction, and time including human
+interaction. Use feasibility results to design an adequately powered
+subsequent study rather than assume a small pilot answers all effectiveness
+questions.
 
-\noindent\textbf{F2 --- A sourced ISCO$\leftrightarrow$ISIC crosswalk.}
-Since no official ILO document containing this correspondence was found,
-future work should pursue a different sourcing strategy (e.g.\ direct
-correspondence with ILO statisticians, or a systematic expert-elicitation
-protocol) rather than continuing to search for a document that appears not
-to exist.
+\noindent\textbf{F2 --- Independent coding evaluation.}
+Obtain permitted occupation, industry, and education text with independent
+expert labels, adjudication, and inter-coder reliability. Separate
+partitions by source occupation or respondent and freeze the selected
+configuration before final testing. Use cluster-aware uncertainty where
+records share a source title or multilingual reference.
 
-\noindent\textbf{F3 --- Full ISIC Rev.~4 and ISCED-F coverage.} Extend
-live-indexed coverage from 134/419 and 63/$\sim$80 respectively toward full
-coverage of both standards.
+\noindent\textbf{F3 --- Catalogue and reference governance.}
+Expand officially matched ISIC and ISCED-F coverage, maintain source
+versions and provenance, and validate exclusions and code normalisation.
+Complete quality-controlled expanded synthetic evaluation while
+separately pursuing independent respondent validation.
 
-\noindent\textbf{F4 --- Real-respondent ISIC/ISCED-F evaluation.} Pursue a
-genuine labelled dataset --- most plausibly by extending the eventual pilot
-study's data-collection scope to capture industry and field-of-study
-alongside occupation, or by approaching national statistical agencies
-directly for real, anonymised microdata (a path an IPUMS International
-correspondent suggested when confirming IPUMS itself does not hold this
-data --- see Chapter~\ref{chap:evaluation}).
+\noindent\textbf{F4 --- Expert validation and calibration of review rules.}
+Assess compatibility with domain experts and independently labelled
+combinations. Measure false-positive review burden and missed contradictions,
+including legitimate atypical cases. Calibrate scores or candidate gaps
+on separate data and select review thresholds from validated error and
+workload trade-offs; raw cosine similarity is not a probability.
 
-\noindent\textbf{F5 --- Open-weight critical-tier LLM benchmarking.}
-Benchmark open-weight models against Claude~3.5~Sonnet for the
-\texttt{TaskType.CRITICAL} tier, given this project's own repeated finding
-that LLM reranking did not improve ISCO-08 accuracy in six independent
-checks --- a cheaper, sovereign-deployable model may perform equivalently.
+\noindent\textbf{F5 --- Controlled intervention studies.}
+Evaluate translation, reranking, corrective retrieval, and coordination
+under matched inputs and pinned settings. Prespecify practical effects
+and, for equivalence questions, a margin and sample-size justification.
+Report failure rates, tokens, latency, and expert assessment of changed
+outputs. Measure candidate coverage over all eligible records, including
+those whose reference code is absent from retrieval.
 
-\noindent\textbf{F6 --- Production switch decisions.} Two additive
-improvements (the e5-large embedding profile, and official-text catalogue
-enrichment) are built, live-verified, and evaluated as real accuracy
-improvements, but deliberately not yet switched to production default ---
-this is a decision for the author and supervisor, not made unilaterally in
-this thesis.
+\noindent\textbf{F6 --- Deployment and configuration validation.}
+Test the selected profile on hardware with sufficient memory, then assess
+API integration, concurrency, failures, and recovery before changing the
+default. Preserve configuration identities between offline and deployed
+results. Benchmark alternative critical-tier models on their actual tasks,
+rather than infer suitability from occupation-reranking outcomes.
+Correct the documented routing, persistence, access-control, evaluation,
+and deployment defects and verify the affected workflows before participant use.
 
-\noindent\textbf{F7 --- Generalisation to other official surveys.} Apply
-this architecture's pattern --- multi-standard classification with a
-cross-standard coherence check --- to other official survey instruments,
-once the pattern has been validated against real respondents in its
-original LFS context.
+\noindent\textbf{F7 --- Other survey instruments.}
+Investigate generalisation of state-based collection, multi-standard
+coding, and auditable review after establishing their validity, operational
+constraints, and respondent effects in the original LFS context.

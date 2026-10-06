@@ -1,665 +1,652 @@
-% ============================================================
-%  CHAPTER 6 — RESULTS AND DISCUSSION
-%  Fully rewritten 2026-08-28 -- see VERIFICATION_NOTES.md.
-%  Every number in this chapter is sourced directly from CLAUDE.md's
-%  verified, dated result log. The original draft's entire results
-%  chapter -- including a full "achieved" column with checkmarks against
-%  fabricated targets, and a complete pilot-study burden-comparison table
-%  for a study that has never run -- has been replaced, not edited.
-% ============================================================
+% Numerical results checked against preserved per-case evaluation artifacts.
+% Baseline: eval/local_runs/wisco_official_tier1_precise_deadline_full_20260809T190821Z/{flat,hierarchical}/*.csv
+% Large: eval/local_runs/e5large_full_heldout_20260824/results.csv
+% Enriched: eval/results/raw_runs/{enriched_catalogue_heldout_20260824,enriched_e5large_heldout_20260824}/*.csv
 \chapter{Results and Discussion}
 \label{chap:results}
 
-This chapter reports this project's real, measured results. Where a result
-is still pending or blocked, it is stated as such rather than filled with a
-plausible-looking number.
+This chapter addresses the four research questions through occupation-coding
+benchmarks, synthetic multi-standard experiments, rule-based validation,
+and operational tests. These evidence sources measure different properties:
+WISCO supports a controlled comparison of occupation-title coding; generated
+texts assess taxonomy recovery; scripted interviews assess software
+operation. None validates respondent experience or population estimates
+from a labour force survey.
 
-% ------------------------------------------------------------
-\section{ISCO-08 Classification: The WISCO External Benchmark}
+\section{ISCO-08 Retrieval Design (RQ1)}
 \label{sec:res-isco}
-% ------------------------------------------------------------
 
-\subsection{Canonical Baseline: Flat vs.\ Hierarchical Retrieval}
+\subsection{Benchmark and Statistical Interpretation}
+
+The principal comparison uses the 18,747 records assigned to the frozen
+WISCO v2 heldout partition, derived from an externally sourced multilingual
+occupation-title dataset~\cite{wisco2023}. Exact-match accuracy counts
+predicted four-digit codes equal to their reference code, divided by all
+evaluated records. The official catalogue has 436 unit groups and is
+distinct from the application's legacy profile. No LLM reranker was used
+in the full-partition comparisons below.
+
+Queries use the E5 \texttt{query:} prefix, unit-normalised embeddings,
+and an embedding batch size of one. Flat search requests five candidates
+from its profile's unit-group collection. The canonical hierarchical run
+uses beam width two, description-based first-stage retrieval, and five
+leaf candidates per explored final branch. Keyword anchoring supplies
+the first stage on 4,100 records; the remaining 14,647 use semantic
+first-stage retrieval. A strict guard rejects flat fallback and incomplete
+stage evidence, with a 30-second stage budget. The encoder dimensions are
+384 for e5-small and 1,024 for e5-large.
+
+Tables report counts, percentage-point differences, and 95\% Wilson score
+intervals~\cite{wilson1927}. Paired comparisons use the two-sided exact
+binomial form of McNemar's test~\cite{mcnemar1947}: if $b$ records are correct only under the
+first configuration and $c$ only under the second, the null distribution
+is $\mathrm{Binomial}(b+c,1/2)$. Records are matched by case identifier and
+reference label. Extremely small probabilities are computed without
+floating-point underflow and are not reported as zero.
+
+The intervals and tests are nominal record-level summaries. Language
+variants and related occupation titles need not be independent; no
+cluster-adjusted uncertainty analysis was performed. Moreover, the same
+partition was reused for later comparisons after earlier outcomes had
+been examined. Later configurations therefore provide retrospective
+benchmark results, rather than an independent confirmatory test of a
+configuration selected without access to its results. Group-aware splitting
+reduces development--test overlap but cannot remove selection bias caused
+by repeated inspection of test performance~\cite{cawley2010}.
+
+\subsection{Flat and Hierarchical Retrieval}
 
 \begin{table}[htbp]
 \centering
-\caption{ISCO-08 exact 4-digit accuracy, full 18,747-case WISCO heldout split.}
+\caption{Exact four-digit ISCO-08 accuracy on the frozen WISCO partition
+($n=18,747$), official catalogue and e5-small embeddings.}
 \label{tab:ch6-wisco-canonical}
-\small\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{lcc}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrc}
 \toprule
-\textbf{Configuration} & \textbf{Exact 4-digit accuracy} & \textbf{95\% Wilson CI} \\
+\textbf{Configuration} & \textbf{Correct} & \textbf{Accuracy} & \textbf{95\% Wilson CI} \\
 \midrule
-Flat retrieval & \textbf{21.19\%} & [20.61\%, 21.78\%] \\
-Hierarchical retrieval & 10.35\% & [9.93\%, 10.80\%] \\
+Flat retrieval & 3,973 & 21.19\% & [20.61\%, 21.78\%] \\
+Hierarchical retrieval & 1,941 & 10.35\% & [9.93\%, 10.80\%] \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{Hierarchical retrieval is 10.84 percentage points \emph{worse} than
-flat retrieval} (McNemar exact $p \approx 1.86\times10^{-301}$) --- a real,
-statistically decisive negative finding. This directly contradicts an
-earlier internal draft of this thesis, which reported the opposite
-(hierarchical outperforming flat by 6.4pp) without this benchmark having
-been run. Hierarchical retrieval is never described as outperforming flat
-retrieval anywhere else in this thesis.
+Flat retrieval exceeds the tested hierarchical configuration by 10.84
+percentage points. Paired outcomes comprise 1,341 records correct under
+both systems, 2,632 correct only under flat retrieval, 600 correct only
+under hierarchical retrieval, and 14,174 incorrect under both. The nominal
+exact comparison gives $p=1.86\times10^{-301}$.
 
-\subsection{Improving the Best Configuration: Embedding Model and Catalogue
-Enrichment}
+This result does not support the hypothesis that the implemented
+hierarchical filter improves exact coding. Error propagation is a plausible
+explanation: an incorrect ancestor restricts later retrieval to an unsuitable
+branch, whereas flat retrieval preserves competition across unit groups.
+The finding concerns the particular catalogue, embeddings, and search
+policies tested here; it does not rank every flat and hierarchical method.
 
-Starting from flat retrieval (the better baseline), two independent
-improvements were tested on the identical 18,747-case set.
+\subsection{Embedding Model and Catalogue Enrichment}
+
+The title-only representation contains a code and short occupation title.
+Enrichment adds definitions, tasks, and example occupations from the official
+ILO source~\cite{ilo2012isco_v1}. The encoder changes from
+\texttt{multilingual-e5-small} to \texttt{multilingual-e5-large}; the
+reference codes are retained across these four flat configurations.
 
 \begin{table}[htbp]
 \centering
-\caption{Additive improvements to flat retrieval, full heldout set.}
+\caption{Flat retrieval configurations on the same 18,747 records.
+Differences and nominal exact McNemar probabilities are relative to the
+title-only e5-small baseline.}
 \label{tab:ch6-additive}
-\small\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{lccc}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrrc}
 \toprule
-\textbf{Configuration} & \textbf{Accuracy} & \textbf{$\Delta$ vs.\ baseline} & \textbf{McNemar $p$} \\
+\textbf{Configuration} & \textbf{Correct} & \textbf{Accuracy} & \textbf{$\Delta$ (pp)} & \textbf{$p$} \\
 \midrule
-Baseline (e5-small) & 21.19\% & --- & --- \\
-+ e5-large embeddings & 29.70\% & $+8.50$pp & $7.34\times10^{-167}$ \\
-+ Official-text enrichment (e5-small) & 32.55\% & $+11.36$pp & $2.19\times10^{-274}$ \\
-+ Both combined & \textbf{40.95\%} & \textbf{$+19.75$pp} & $\approx 0$ \\
+Title-only, e5-small & 3,973 & 21.19\% & --- & --- \\
+Title-only, e5-large & 5,567 & 29.70\% & $+8.50$ & $7.34\times10^{-167}$ \\
+Enriched, e5-small & 6,102 & 32.55\% & $+11.36$ & $8.59\times10^{-293}$ \\
+Enriched, e5-large & 7,676 & 40.95\% & $+19.75$ & $7.69\times10^{-663}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{40.95\% is this thesis's headline, best-tested ISCO-08 result} ---
-nearly double the 21.19\% original baseline, and the number this thesis
-cites wherever an ISCO-08 accuracy figure is needed, not the fabricated
-85.3\% an earlier internal draft stated. The two improvements are genuinely
-additive (not redundant), consistent with them working through independent
-mechanisms: embedding-model capacity (e5-large) versus input-text richness
-(enrichment).
+The paired discordant counts $(b,c)$ relative to the baseline are
+$(941,2535)$, $(743,2872)$, and $(668,4371)$, respectively. The highest
+observed accuracy is 40.95\%, with nominal 95\% interval [40.24\%, 41.65\%].
+It exceeds enriched e5-small by 8.40 percentage points, with
+$(b,c)=(1125,2699)$ and $p=5.40\times10^{-147}$. Combining enrichment and
+encoder size improves on either change alone. It does not demonstrate
+statistical independence between their mechanisms; no factorial interaction
+analysis was specified.
 
-The enrichment improvement traces to a real, root-caused engineering defect:
-every catalogue entry's embedding text was originally just
-\texttt{"\{code\} \{2-4 word title\}"}, while the official ILO source
-workbook already available to this project carries full definitions and
-example occupation lists for every entry, discarded by the original
-normalisation script. Several thin-text codes acted as a ``magnet,''
-matching 15--55$\times$ more often than their true frequency. After
-enrichment, these magnet codes' prediction counts returned close to their
-true frequency (e.g.\ code 6122: 468$\to$24 predictions; code 5165:
-276$\to$31).
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/isco_retrieval_accuracy.pdf}
+\caption[Exact ISCO-08 accuracy across five recorded configurations.]{Exact
+ISCO-08 accuracy across five recorded configurations on the same 18,747
+WISCO records. Later configurations reuse the benchmark; the figure
+summarises observed results rather than an independent confirmatory
+comparison. Settings and provenance limits appear in
+Appendix~\ref{app:reproducibility}.}
+\label{fig:isco-retrieval-accuracy}
+\end{figure}
+
+With e5-small fixed, enrichment changes which codes dominate retrieval. Assignments to
+code 6122 decrease from 468 to 24, and assignments to 5165 from 276 to 31.
+This is consistent with short catalogue entries attracting unrelated
+queries. A frequency closer to the reference distribution does not, by
+itself, establish the correctness of individual predictions.
 
 \begin{table}[htbp]
 \centering
-\caption{Per-language accuracy, best combined configuration
-(enriched + e5-large) vs.\ original baseline, full heldout set.}
+\caption{Per-language exact-match accuracy: title-only e5-small versus
+enriched e5-large. Differences are computed before rounding.}
 \label{tab:ch6-perlang}
-\small\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{lccc}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrrr}
 \toprule
-\textbf{Language} & \textbf{Baseline} & \textbf{Best config} & \textbf{$\Delta$} \\
+\textbf{Language} & \textbf{$n$} & \textbf{Baseline} & \textbf{Enriched large} & \textbf{$\Delta$ (pp)} \\
 \midrule
-Arabic & 14.62\% & 37.77\% & $+23.15$pp \\
-English & 37.98\% & 56.91\% & $+18.94$pp \\
-Hindi & 23.07\% & 40.89\% & $+17.82$pp \\
-Tagalog & 14.47\% & 33.17\% & $+18.69$pp \\
-Urdu & 15.33\% & 35.53\% & $+20.21$pp \\
+Arabic & 3,762 & 14.62\% & 37.77\% & $+23.15$ \\
+English & 3,818 & 37.98\% & 56.91\% & $+18.94$ \\
+Hindi & 3,793 & 23.07\% & 40.89\% & $+17.82$ \\
+Tagalog & 3,766 & 14.47\% & 33.17\% & $+18.69$ \\
+Urdu & 3,608 & 15.33\% & 35.53\% & $+20.21$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{Note on e5-large alone}: unlike the combined result, the e5-large
-improvement in isolation did \emph{not} help English (37.98\%$\to$37.59\%,
-a flat, non-meaningful change) --- the gain was concentrated in the four
-non-English languages. This is stated because the combined result's uniform
-per-language gains could otherwise be mistakenly attributed to e5-large
-alone.
+Every language benefits from the combined configuration, although
+substantial error remains. The larger encoder alone does not improve
+English in this run (37.98\% to 37.59\%); combined gains should not be
+attributed to encoder size alone.
 
-\subsection{Does LLM Re-Ranking Help?}
+\subsection{Fragment-to-Parent Retrieval in the Served Configuration}
+\label{sec:res-parent-document}
 
-\textbf{Six independent checks, run at different times, on different
-configurations and providers, produced the same answer: no, with one
-narrow exception.}
+The configurations above are offline comparisons. The local application
+serves a different design, adopted because the enriched e5-large index
+could not be loaded reliably on the available machine
+(Section~\ref{sec:res-validity}). Each official catalogue entry is divided
+into title, definition, and included-example fragments. Fragments are
+indexed individually and retrieve their parent unit group; a parent's
+score is the maximum over its own fragments, with a fixed weight of
+$0.5$ on fragment evidence. All 436 unit groups remain eligible for every
+query.
 
-\begin{enumerate}
-\item e5-large, no rerank vs.\ Groq rerank (500-case sample): 29.20\% both
-  ways, byte-identical, 499/500 predictions unchanged.
-\item Enrichment, reranked (642-case validation split): 32.55\%$\to$32.87\%,
-  $+0.31$pp, not significant ($p=0.5$).
-\item Production default (e5-small) on the previously-unused validation
-  split (642 cases): 18.22\%$\to$18.69\%, $+0.47$pp, not significant
-  ($p=0.25$) --- and all 4 differing predictions traced to the identical,
-  single, already-known Armed Forces catalogue quirk (a 4-digit-code
-  convention mismatch), not a general reranking effect.
-\item Corrective-retry reformulation (a different mechanism from
-  reranking, local model, $n=60$): 51.67\% both ways, exactly identical,
-  McNemar $p=1$.
-\end{enumerate}
+This is distinct from the parent-filtered hierarchical traversal of
+Table~\ref{tab:ch6-wisco-canonical}, despite the shared word: no
+level decision restricts the candidate set, and no code is removed by an
+earlier stage. The encoder is \texttt{multilingual-e5-small} over the same
+enriched official catalogue, so the comparison below holds encoder and
+catalogue fixed and changes only the retrieval unit.
 
-Read plainly: retrieval quality, not generation/reranking quality, is the
-real accuracy ceiling for this task. This finding held up across six
-independent tests, different LLM providers, and two genuinely different
-mechanisms (candidate reranking and query reformulation) --- a robust
-result, reported as such.
+\begin{table}[htbp]
+\centering
+\caption{Served fragment-to-parent configuration against its same-encoder
+dense baseline, on the same 18,747 records. The third row is the
+offline configuration of Table~\ref{tab:ch6-additive}, whose executed
+encoder is not established.}
+\label{tab:ch6-parent-document}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrl}
+\toprule
+\textbf{Configuration} & \textbf{Correct} & \textbf{Accuracy} & \textbf{Status} \\
+\midrule
+Enriched dense, e5-small & 6,102 & 32.55\% & Same-encoder baseline \\
+Fragment-to-parent, e5-small & 7,279 & 38.83\% & Served locally \\
+Enriched flat, intended e5-large & 7,676 & 40.95\% & Encoder unresolved \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\subsection{Does Retrieval Grounding Matter More Than Raw LLM Knowledge?
-Zero-Shot Classification and a Query-Translation Fix}
+Fragment-to-parent retrieval has a nominal 95\% interval of
+[38.13\%, 39.53\%]. Against the same-encoder dense baseline the paired
+discordant counts are $(b,c)=(720,1897)$, a gain of 1,177 codes
+($+6.28$ percentage points, nominal exact McNemar
+$p=3.75\times10^{-121}$). Against the offline intended-large output it is
+397 codes lower ($-2.12$ points, $(b,c)=(2328,1931)$,
+$p=1.26\times10^{-9}$). The latter difference is real in the saved
+predictions, but because that run's executed encoder is not established
+(Section~\ref{sec:res-validity}) it does not isolate an encoder cause.
+
+\begin{table}[htbp]
+\centering
+\caption{Per-language exact-match accuracy of the served fragment-to-parent
+configuration against its same-encoder dense baseline. Differences are
+computed before rounding.}
+\label{tab:ch6-parent-perlang}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Language} & \textbf{$n$} & \textbf{Dense small} & \textbf{Fragment-to-parent} & \textbf{$\Delta$ (pp)} \\
+\midrule
+Arabic & 3,762 & 25.15\% & 27.94\% & $+2.79$ \\
+English & 3,818 & 54.85\% & 63.91\% & $+9.06$ \\
+Hindi & 3,793 & 33.80\% & 40.18\% & $+6.38$ \\
+Tagalog & 3,766 & 23.13\% & 29.85\% & $+6.72$ \\
+Urdu & 3,608 & 25.19\% & 31.60\% & $+6.40$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Every language improves over the same-encoder baseline, with the smallest
+gain in Arabic. The configuration is bound to a recorded serving identity:
+catalogue, fragment map, encoder revision, encoder weight digest, and
+aggregation parameters are hashed in the preserved audit record
+(Appendix~\ref{app:reproducibility}). Unlike the configurations in
+Table~\ref{tab:ch6-additive}, its per-case predictions are not published
+with this thesis, so the figures here are recomputed from that recorded
+summary rather than from released per-case outputs. A later catalogue-alignment variant, which projects the small-encoder
+query into the stored large-encoder parent space through a ridge map
+fitted only on paired official catalogue vectors, reached 39.16\% on this
+partition ($+0.34$ points, 63 codes). It was not adopted. A promotion gate
+declared before that run required a positive gain, case-level
+$p<0.05$, and no per-language regression; Tagalog top-1 accuracy fell, so
+the gate failed on its third condition. The variant was also inert on the
+two smaller splits (development $+1$ case, $p=1.0$; validation $+3$ cases,
+$p=0.66$), and it depends on stored vectors whose encoder provenance is
+unresolved. It is therefore recorded as a non-adopted research candidate
+rather than a result. All figures use the same reused partition and remain offline
+reference measurements, not Labour Force Survey field validation.
+
+\subsection{LLM Reranking and Corrective Retrieval}
+
+% Sources: eval/local_runs/e5large_{vs_e5small,with_groq_reranker}_dev500_20260824/results.csv
+% eval/results/dev_selection/{validation_reranking_check,enriched_catalogue_validation_check,enriched_catalogue_with_rerank_check,corrective_retry_check_ollama,corrective_retry_check_ollama_off}/*.csv
+The available paired checks show small or absent changes. On 500 development
+records, e5-large retrieval and its Groq-reranked variant both classify
+146 correctly (29.20\%); one code changes without changing correctness.
+On 642 validation records, title-only e5-small increases from 117 to
+120 correct (18.22\% to 18.69\%, $b=0$, $c=3$, $p=0.25$). Four codes
+change, all for the same occupation, ``Air force captain''. Enriched
+e5-small increases from 209 to 211 correct (32.55\% to 32.87\%,
+$b=0$, $c=2$, $p=0.50$).
+
+A local-model corrective-retrieval check, which reformulates the query
+before another retrieval attempt, returns 31/60 correct with and without
+the mechanism (51.67\%). Nine final codes change, including two gains and
+two losses in correctness ($b=2$, $c=2$, $p=1.00$). These experiments
+do not demonstrate a material benefit for the tested settings. They do
+not establish equivalence or show that all LLM interventions are ineffective.
+The samples overlap the development process, use different configurations,
+and are not independent replications. Failure to reject a null hypothesis
+is not proof of a zero effect~\cite{wasserstein2016}.
+
+\subsection{Zero-Shot Coding and Query Translation}
 \label{sec:results-translation}
 
-A natural follow-on question, prompted directly during a late-stage review
-of this work (2026-09-10): if a large cloud model does not help as a
-\emph{reranker} on top of retrieval, could it replace retrieval entirely?
-Groq's \texttt{gpt-oss-120b} was asked to classify job descriptions
-directly to a 4-digit ISCO-08 code with \emph{no} candidate list and no
-retrieval step at all --- genuinely untested territory in this project,
-distinct from every reranking check above.
+% Zero shot: eval/results/wisco_groq_zeroshot/results.jsonl, matched to canonical flat CSV.
+% Translation: eval/results/wisco_groq_zeroshot/translation_{baseline,translated}/*.csv
+An exploratory zero-shot run asks \texttt{gpt-oss-120b} for a code without
+a candidate list. Its saved output contains 324 records, with 61 correct
+(18.83\%). Restricting the official flat e5-small baseline to the same
+identifiers gives 86/324 correct (26.54\%). There are 31 zero-shot-only
+and 56 retrieval-only successes, yielding nominal exact $p=0.00967$.
+Retrieval performs better on this recorded subset; the quota-limited
+partial run is not a random representative sample or a full comparison
+of prompting strategies.
 
-\textbf{Result: 18.83\% ($n=324$) --- below the 21.19\% flat-retrieval
-baseline.} Read plainly: an LLM's general knowledge alone, without being
-handed the actual catalogue to search over, is \emph{worse} than simple
-retrieval. This is informative in itself: it demonstrates that the
-engineered retrieval architecture this thesis builds is doing real,
-necessary work, not something a sufficiently large model would render
-unnecessary.
+A translation experiment uses 60 development records, 15 in each of four
+non-English languages. Local \texttt{qwen2.5:3b} translates the query into
+English before retrieval against the English-sourced enriched catalogue.
+The experiment tests alignment with the reference text; it does not assume
+that translation always improves multilingual retrieval.
 
-Investigating \emph{why} retrieval-grounded classification underperforms
-for non-English queries specifically led to a second, genuinely positive
-finding. The enriched catalogue's embedding text (Section~\ref{sec:res-isco})
-is English-sourced --- official ILO definitions and example
-job titles. A non-English query therefore embeds further from its true
-catalogue match than an English translation of the same query would,
-even though the embedding model itself is multilingual. Translating
-non-English \texttt{job\_title} text to English via a local model
-(\texttt{qwen2.5:3b}, no API cost) immediately before embedding, with no
-other change to the retrieval pipeline, was tested on a 60-case
-stratified dev-split sample (15 cases each of Arabic, Hindi, Urdu,
-Tagalog):
-
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
+\caption{Exploratory query translation: exact-match successes out of 15
+records per language.}
+\label{tab:ch6-translation}
+\small\renewcommand{\arraystretch}{1.3}
 \begin{tabular}{lrr}
 \toprule
-Language & Original-language query & Translated to English first \\
+\textbf{Language} & \textbf{Original query} & \textbf{English translation} \\
 \midrule
-Arabic & 40.0\% & 60.0\% \\
-Hindi & 40.0\% & 66.7\% \\
-Urdu & 26.7\% & 33.3\% \\
-Tagalog & 26.7\% & 53.3\% \\
+Arabic & 6/15 (40.0\%) & 9/15 (60.0\%) \\
+Hindi & 6/15 (40.0\%) & 10/15 (66.7\%) \\
+Urdu & 4/15 (26.7\%) & 5/15 (33.3\%) \\
+Tagalog & 4/15 (26.7\%) & 8/15 (53.3\%) \\
 \midrule
-\textbf{Overall} & \textbf{33.3\%} & \textbf{53.3\%} \\
+Overall & 20/60 (33.3\%) & 32/60 (53.3\%) \\
 \bottomrule
 \end{tabular}
-\caption{Query translation before embedding, 60-case dev-split preview.
-$+20$pp overall, McNemar exact $p=0.0018$ (13 cases flipped
-wrong$\to$correct, 1 flipped correct$\to$wrong).}
 \end{table}
 
-This has been implemented, not left as an isolated evaluation script:
-\texttt{ISCOClassifier} gained an additive, opt-in constructor parameter,
-\texttt{translate\_before\_retrieval} (default \texttt{False} --- zero
-behavioural change for every existing caller, the same discipline applied
-to every other addition in this codebase), with 7 new regression tests
-and the full 2,508-test suite green.
+Thirteen records change from incorrect to correct and one changes in the
+opposite direction ($p=0.00183$). This 20.0-point improvement motivates
+further testing. The full-partition translated evaluation did not complete;
+the result remains exploratory. Translation is an optional classifier
+setting and is not enabled in the live API's default configuration.
 
-\textbf{Honest status, stated plainly rather than overclaimed}: this is a
-\emph{dev-split preview}, not a heldout-confirmed result, per this
-project's own dev-selects/heldout-confirms discipline (every headline
-number in Section~\ref{sec:res-isco} above comes only from the 18,747-case
-heldout split). All 14,929 non-English heldout cases have already been
-translated and a merged, ready-to-run input file prepared; the final
-full-scale retrieval pass is currently blocked by a real, reproducible
-memory-exhaustion segmentation fault loading \texttt{multilingual-e5-large}
-on the development machine used for this thesis --- the same class of
-environment-level constraint already disclosed for the synthetic
-ISIC/ISCED-F benchmark's own blocked re-run. The 60-case result is
-reported as exactly what it is: a real, statistically significant,
-promising preview finding, pending full-scale confirmation.
+\section{Multi-Standard Classification and Coherence (RQ2)}
+\label{sec:res-isic-isced}
 
-\subsection{Cross-Standard Coordination and Multi-Step Query Planning: Two
-Further Confirmed-Null Results}
-\label{sec:results-coordination}
+\subsection{Synthetic ISIC and ISCED-F Benchmark}
 
-Every classifier evaluated above (Section~\ref{sec:res-isco}) retrieves
-independently: ISCO-08, ISIC~Rev.4, and ISCED are each classified from
-their own free-text field with no cross-talk between them, and the
-Semantic Relation Engine (Section~\ref{sec:arch-sre}) only ever
-\emph{scores} the three already-fixed results after the fact --- it never
-revises one classifier's output using another's evidence. Two further,
-additive, opt-in mechanisms were built and evaluated to test whether real
-cross-standard coordination could do better.
+% Source: eval/results/synthetic_isic_iscedf_benchmark/synthetic_eval_results_20260827T031325Z.csv
+The benchmark contains 307 ISIC class descriptions and 142 ISCED-F
+field descriptions generated from taxonomy-grounded prompts in six
+language varieties. Each reference label is the generating category,
+not independent expert coding of respondent text. The comparison measures
+industry or education-field category recovery, not ISCED attainment.
 
-\textbf{Mechanism 1 --- deterministic cross-standard coordination.} A
-new, pure-Python module reconsiders an already-uncertain ISCO primary
-result (fired only when \texttt{hitl\_required} is already \texttt{True})
-using the now-known ISIC section and ISCED level: if the primary is
-cross-standard-incompatible with both, and one of ISCO's own
-already-computed alternatives \emph{is} compatible, the alternative is
-promoted. A symmetric forward-direction mechanism lets an already-known
-ISCO code bias an ambiguous ISIC guess toward a compatible section. Both
-reuse the Semantic Relation Engine's own already-validated compatibility
-logic rather than a second hand-built crosswalk table, and both are
-wired behind a single opt-in flag, off by default.
-
-\textbf{Mechanism 2 --- multi-step query planning.} A generalisation of
-the single-shot corrective-retry pattern already evaluated in
-Section~\ref{sec:res-isco}: instead of one LLM-proposed reformulation, an
-ambiguous description is decomposed into up to two sub-descriptions, each
-re-retrieved independently, and the results reconciled by a disclosed,
-provisional highest-score-with-frequency-tiebreak rule. Applied to all
-three classifiers (ISCED's version, like its own corrective retry, is
-scoped to the FIELD dimension only --- attainment LEVEL stays
-deterministic by design).
-
-\textbf{Evaluation data.} Neither mechanism can be tested against WISCO:
-directly checking the full 18,747-row heldout export confirmed 0 rows
-carry any \texttt{gold\_isic}/\texttt{gold\_isced} value at all --- WISCO
-is occupation-only, with no paired industry/education text for the same
-respondent. A small, disclosed synthetic combined benchmark ($n=60$,
-English, real ISCO-08 codes each paired with an LLM-generated,
-definition-grounded (job title, industry, education) triple --- the same
-taxonomy-grounded paraphrase methodology already used and disclosed for
-the ISIC/ISCED-F benchmark in Section~\ref{sec:res-isic-isced}) was built
-to close this specific gap.
-
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
+\caption{Synthetic category recovery: legacy keyword/LLM pipeline versus
+enriched flat e5-large retrieval.}
+\label{tab:ch6-synthetic}
+\small\renewcommand{\arraystretch}{1.3}
 \begin{tabular}{lrrr}
 \toprule
-Mechanism & Baseline & With mechanism & McNemar $p$ \\
+\textbf{Standard} & \textbf{$n$} & \textbf{Legacy correct} & \textbf{Flat correct} \\
 \midrule
-Coordination (legacy profile) & 26.67\% & 26.67\% & $1.000$ \\
-Coordination (enriched + e5-large) & 48.33\% & 48.33\% & $1.000$ \\
-Query planning (ISCO) & 26.67\% & 28.33\% & $1.000$ \\
-\bottomrule
-\end{tabular}
-\caption{Cross-standard coordination and query planning, $n=60$ synthetic
-combined benchmark. Both rows of coordination are byte-identical, 0 of 60
-cases changed either direction; query planning's nominal $+1.66$pp comes
-from only 3 discordant cases out of 60 and is not distinguishable from
-noise. Query planning changed the ISIC/ISCED prediction in 0 of 60 cases
-for both classifiers.}
-\end{table}
-
-\textbf{Read plainly: neither mechanism moved accuracy at all.} The
-coordination result was deliberately re-run against this project's own
-strongest, best-tested retrieval configuration
-(enriched catalogue text + \texttt{multilingual-e5-large},
-Section~\ref{sec:res-isco}) specifically to rule out the possibility that
-a weak baseline was simply leaving no legitimate room for a fix to matter
---- the result held: still byte-identical, still zero cases changed
-either way. This extends the project's now-repeated finding that
-additional processing sophistication on top of retrieval does not move
-ISCO-08 accuracy (Section~\ref{sec:res-isco}'s six independent reranking
-and corrective-retry nulls) to a genuinely different mechanism class ---
-cross-standard coordination and multi-step decomposition, not just
-candidate reranking or single-shot reformulation --- bringing the total
-to eight independent confirmed-null results for this general hypothesis
-across this thesis's evaluation work.
-
-A real infrastructure bug was found and fixed while re-running the
-coordination check on the stronger profile: the evaluation process was
-idle long enough for the development machine to sleep, and on waking, the
-containerised vector database entered a state Docker's own shallow health
-check reported as healthy while its API returned empty replies --- 13 of
-60 cases silently received a documented, correct-in-isolation ``no
-candidates found'' fallback rather than a real classification, which
-looked identical to a genuine negative result in the output file until
-inspected directly. Restarting the affected container and re-running only
-the corrupted subset (after confirming, not assuming, that available
-memory had genuinely recovered from whatever triggered a segmentation
-fault on the first retry attempt) produced the corrected, complete result
-reported above. This is disclosed here for the same reason every other
-environment-level constraint in this thesis is disclosed rather than
-smoothed over: a null result is only informative if the pipeline that
-produced it is known to have actually run.
-
-\textbf{Honest scope}: $n=60$, English only, synthetic --- a real first
-signal for a question no existing dataset in this project could answer,
-not a heldout-grade confirmation. A third, more architecturally ambitious
-mechanism --- routing classification through a real CrewAI hierarchical
-delegation process, with a manager model deciding which classifier to
-invoke rather than a fixed call order --- was also implemented (the first
-use of CrewAI's hierarchical process anywhere in this codebase) but not
-yet evaluated at the time of writing; given the null results above, the
-open question it would answer is whether non-deterministic delegation can
-find anything the deterministic coordinator's conservative trigger
-condition missed, not whether coordination helps in general.
-
-% ------------------------------------------------------------
-\section{ISIC Rev.~4 / ISCED-F 2013 Classification}
-\label{sec:res-isic-isced}
-% ------------------------------------------------------------
-
-As established in Chapter~\ref{chap:evaluation}, no real, labelled dataset
-exists for ISIC/ISCED-F; the results below are from the disclosed,
-taxonomy-grounded synthetic benchmark, and answer ``does the method recover
-its own generating category'' --- not ``how would this perform on real
-respondents.''
-
-\begin{table}[htbp]
-\centering
-\caption{Legacy keyword/LLM pipeline vs.\ flat retrieval (enriched
-catalogue text + e5-large), synthetic benchmark, $n=449$.}
-\label{tab:ch6-synthetic}
-\small\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{lccc}
-\toprule
-& \textbf{Legacy keyword/LLM} & \textbf{Flat retrieval} & \textbf{McNemar $p$} \\
+ISIC Rev.~4 & 307 & 38 (12.38\%) & 245 (79.80\%) \\
+ISCED-F 2013 & 142 & 21 (14.79\%) & 127 (89.44\%) \\
 \midrule
-Overall ($n=449$) & 13.14\% & \textbf{82.85\%} & $\approx 5.5\times10^{-83}$ \\
+Combined & 449 & 59 (13.14\%) & 372 (82.85\%) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-A large, consistent gap: the legacy keyword pipeline is close to
-non-functional for the non-English languages (its hand-built keyword
-coverage is essentially English-only), while flat retrieval with
-multilingual embeddings stays in a broadly consistent, much higher band
-across all six language codes tested (see Chapter~\ref{chap:evaluation} for
-the earlier, smaller sample's exact per-language breakdown, which showed
-the same pattern: 79--88\% across every language versus 1--32\% for the
-legacy pipeline).
+Combined nominal Wilson intervals are [10.33\%, 16.58\%] and
+[79.09\%, 86.05\%]. There are 9 legacy-only and 322 flat-only successes
+($p=5.54\times10^{-83}$). The aggregate weights standards by sample size;
+it is not an equally weighted task average. Flat accuracy ranges from
+78.08\% in Tagalog to 88.46\% in English on these generated descriptions.
 
-\textbf{A genuine data-quality finding, disclosed rather than hidden}: this
-449-row result was computed \emph{before} an automated quality-check tool
-(built specifically after this result, to strengthen the evidence further)
-found that 2 of the 449 rows (0.45\%) contained a plain LLM safety-filter
-refusal stored as if it were valid respondent text --- a real defect in the
-generation pipeline, since fixed (the pipeline now detects and retries on
-refusal-pattern output), with the two affected rows individually
-regenerated and re-verified. The 82.85\%/13.14\% figures above therefore
-carry a known, small (0.45\%) contamination not excluded from the
-computation --- disclosed exactly rather than silently corrected after the
-fact, since re-computing on the corrected, larger dataset (below) was not
-completed successfully in this pass.
+The result is conditional on restricted catalogue coverage. Legacy tables
+contain 134 ISIC and 63 ISCED-F entries, including 13 and 2 entries without
+an official-source match. Enriched flat indexes exclude these and contain
+121 officially matched ISIC classes and 61 ISCED-F detailed fields,
+short of complete coverage~\cite{unsd2008isic,unesco2015iscedf}.
 
-\textbf{Coverage was subsequently expanded to 1,091 of the full 1,092-row
-target (99.9\%)}, with the refusal-pattern defect confirmed fixed at scale
-(zero refusal rows across the newly-generated portion) and an independent
-automated quality check passing 98.7\% of the full expanded set.
-\textbf{A fresh accuracy computation on this larger, fully-corrected dataset
-was attempted three times and did not complete}, crashing with a
-segmentation fault during embedding-model loading each time under
-confirmed low available system memory (as low as $\sim$150MB free on an
-8GB development machine, with a permanent, verified fix removing an
-unnecessary TensorFlow import applied in between attempts and confirmed to
-help, though not enough to fully resolve the crash). \textbf{This is stated
-here as a genuine, current infrastructure limitation, not resolved by
-further code changes in this pass} --- the 82.85\%/13.14\% figures above
-remain this thesis's last successfully computed, citable synthetic
-ISIC/ISCED-F result, with its known small contamination disclosed exactly
-as described.
+Two of the 449 descriptions were later identified as LLM refusal responses.
+The table retains the original evaluated data and was not recomputed after
+replacing those rows. Generation was subsequently expanded to 1,091
+records and refusal filtering revised, but no completed accuracy evaluation
+of that expanded corpus is available. Shared taxonomy definitions between
+generation and retrieval may make category recovery easier than coding
+spontaneous answers; independent expert-labelled data are necessary.
 
-\subsection{Gulf Arabic Dialect Normalisation}
-
-Using the Gulf-dialect portion of the synthetic benchmark (genuinely
-dialectal generated text, confirmed via real Khaleeji Arabic markers, e.g.\
-``\<إحنا>'' vs.\ MSA ``\<نحن>''), the hand-built 79-rule normalisation
-dictionary was tested for the first time against real dialectal content.
-
-\begin{table}[htbp]
-\centering
-\caption{Gulf-dialect normalisation A/B test, $n=61$.}
-\label{tab:ch6-gulf}
-\small\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{lc}
-\toprule
-\textbf{Metric} & \textbf{Result} \\
-\midrule
-Marker-dictionary detection rate & 13.11\% (8/61) \\
-Classification accuracy, without normalisation & 80.33\% (49/61) \\
-Classification accuracy, with normalisation & 80.33\% (49/61) \\
-McNemar comparison & $b=0, c=0$, $p=1$ (identical predictions) \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textbf{A real negative finding}: the 79-rule dictionary detects only a
-small share of genuinely dialectal text, and normalisation made zero
-measurable difference to downstream classification accuracy --- the
-multilingual e5-large embedding model already handles Gulf-dialect
-vocabulary without help from the hand-built normaliser, for this specific
-task. This extends a pattern seen throughout this project's evaluation work
-(LLM reranking, corrective retry): additional processing steps built on top
-of a strong retrieval model repeatedly failed to move accuracy. This is the
-first time this project had any genuinely dialectal data to test the
-normaliser against at all --- previously blocked by WISCO's Arabic data
-having zero dialectal content.
-
-% ------------------------------------------------------------
-\section{Semantic Relation Engine}
+\subsection{Semantic Relation Engine}
 \label{sec:res-sre}
-% ------------------------------------------------------------
 
-\textbf{This section replaces the original draft's 10 hand-crafted
-illustrative cases with real, verified results.} The crosswalk logic was
-expanded to a 61-case validation set with \textbf{zero mismatches}. HIGH
-severity correctly, verifiably escalates to the live HITL queue: verified
-three times against the real \texttt{/survey/sessions/\{id\}/message}
-endpoint, with \textbf{100\% of 15 HIGH-severity cases escalating and 0\% of
-46 non-HIGH cases escalating}, identically across all three runs. The
-sub-major-group strict rules (Health Professionals, ICT Professionals,
-Chief Executives) are confirmed present and functioning, but remain
-hand-built rather than sourced from an official correspondence table (see
-Chapter~\ref{chap:architecture}) --- disclosed as open work, not claimed as
-complete.
+% Sources: eval/results/legacy_thesis_ch6/sre_expanded_validation.json
+% and sre_hitl_enforcement_endpoint_verification.json
+The SRE was checked against 61 constructed cases: 20 expected coherent,
+12 LOW, 14 MODERATE, and 15 HIGH. All returned severities agree with the
+expected rule outcomes. Three endpoint runs repeat those same cases:
+all 15 HIGH cases escalate, and none of the 46 other cases escalates
+through this severity-based trigger. The repeated executions demonstrate
+repeatability of the rule and queue integration, not three independent
+validation samples.
 
-% ------------------------------------------------------------
-\section{Computational Efficiency}
-\label{sec:res-efficiency}
-% ------------------------------------------------------------
+Expected outcomes are constructed from the project's compatibility rules.
+Agreement supports implementation correctness, not sensitivity or
+specificity against independently adjudicated contradictions. The score
+is a heuristic compatibility index, not a calibrated probability of
+correctness. Hand-built occupation--industry and occupation--education
+constraints require expert assessment, particularly for atypical but
+legitimate employment and educational histories.
+
+\subsection{Coordination and Query Planning}
+\label{sec:results-coordination}
+
+% Sources: eval/results/synthetic_coordination_benchmark/eval_results{,_enriched_e5large_final}.csv
+% eval/results/synthetic_query_planning_eval/{isco,isic,isced}_results.csv
+A separate 60-case English synthetic benchmark supplies paired occupation,
+industry, and education inputs absent from WISCO. Deterministic coordination
+reconsiders uncertain occupation codes using cross-standard compatibility.
+Query planning decomposes descriptions into up to two subqueries and
+reconciles their retrieval results.
 
 \begin{table}[htbp]
 \centering
-\caption{Real, measured computational metrics (local development hardware
---- not a production/deployment environment).}
-\label{tab:ch6-efficiency}
-\small\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{lc}
+\caption{Occupation accuracy on 60 synthetic combined cases. Discordant
+counts refer to baseline-only and intervention-only successes.}
+\label{tab:ch6-coordination}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrcc}
 \toprule
-\textbf{Metric} & \textbf{Value} \\
+\textbf{Intervention} & \textbf{Baseline} & \textbf{Intervention} & \textbf{$(b,c)$} & \textbf{$p$} \\
 \midrule
-Hierarchical RAG latency (mean) & 133.9 ms \\
-Flat RAG latency (mean) & 31.1 ms \\
-Embedding compute (mean) & 19.1 ms \\
-Qdrant on-disk size (original catalogue) & $\sim$4.3 MB \\
-Qdrant process RSS & 94.9 MB \\
-Load test: concurrent users at 100\% success & 42 (fails at 50) \\
-Best-config (enriched+e5-large) retrieval-only, mean end-to-end latency & 208.1 ms \\
-Best-config peak RSS & 1822.9 MB max, 1243.3 MB mean \\
+Coordination, legacy & 16/60 & 16/60 & $(0,0)$ & 1.00 \\
+Coordination, enriched large & 29/60 & 29/60 & $(0,0)$ & 1.00 \\
+Query planning, legacy & 16/60 & 17/60 & $(1,2)$ & 1.00 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{Genuinely unmeasured, disclosed as such}: any Claude~3.5~Sonnet
-production cost/latency figure (blocked by zero usable API credit
-throughout evaluation) and any production/deployment-environment
-measurement --- every figure above is from a single local development
-machine.
+Coordination leaves all occupation predictions unchanged in both
+configurations. Query planning changes 21 occupation codes and adds one
+correct prediction overall (1.67 percentage points); industry and education
+predictions are unchanged. These small
+experiments do not establish equivalence, adequate power, or a general
+limit on coordination. An unchanged output may reflect conservative
+triggers or insufficient alternatives, rather than successful ambiguity
+resolution. A subsequently implemented manager-mediated delegation path
+has no corresponding comparative result in this evidence set.
 
-% ------------------------------------------------------------
-\section{Synthetic Pilot-Scale Operational Validation}
-\label{sec:res-synthetic-pilot}
-% ------------------------------------------------------------
+\section{Multilingual and Dialect Behaviour (RQ3)}
+\label{sec:res-multilingual}
 
-The randomised, ethics-approved pilot described in
-Section~\ref{sec:eval-pilot} was not conducted within this project's
-timeline --- no application was submitted to the institutional ethics
-committee, so no real-respondent data of any kind exists for this thesis.
-Rather than leave that gap entirely unaddressed, a deliberately narrower,
-explicitly synthetic, single-arm (AI only) operational validation was run
-at the same pilot scale ($n=30$). This section reports exactly what that
-validation can and cannot support; it is not presented as, and must not be
-read as, a substitute for the planned pilot.
+Table~\ref{tab:ch6-perlang} supports multilingual occupation-title retrieval,
+with substantial language differences. It does not evaluate mixed-language
+interviews, entity extraction, translation fidelity, or dialect detection
+against independently annotated conversational data.
 
-\textbf{Method.} Thirty synthetic respondent profiles were constructed by
-reusing 30 of 60 already-generated, quality-checked (job title, industry,
-education) triples grounded in real ISCO-08 official definitions (the same
-taxonomy-grounded LLM paraphrase methodology used for the ISIC/ISCED-F
-synthetic benchmark in Section~\ref{sec:res-isic-isced}), combined with
-schema-valid canonical answers for the remaining $\sim$35 non-free-text
-survey fields. Each profile was driven through the complete, live
-conversational system end-to-end via its real HTTP API --- not mocked,
-not replayed --- covering the full field-by-field interview, the
-validation/confirmation step, and session completion. Classification used
-this project's safe, default configuration (21.19\%-class ISCO-08
-accuracy; see Section~\ref{sec:res-validity} for why the better-tested
-configuration was not used here).
+\subsection{Gulf Arabic Normalisation}
+
+% Recorded A/B summary: CLAUDE.md's 449-case synthetic benchmark entry.
+% Raw predictions: synthetic_eval_results_20260827T031325Z.csv.
+The recorded experiment uses 61 generated Gulf Arabic descriptions.
+The marker dictionary identifies 8/61 (13.11\%), and unnormalised retrieval
+classifies 49/61 correctly (80.33\%). The A/B summary reports the same
+accuracy after normalisation with no discordant correctness outcomes.
+Per-case normalised predictions were not retained with the evaluated CSV,
+limiting independent reproduction of the paired comparison.
 
 \begin{table}[htbp]
 \centering
-\caption{Synthetic pilot-scale operational results ($n=30$, 100\% completion, English only).}
-\label{tab:ch6-synthetic-pilot}
-\small\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{lc}
+\caption{Recorded exploratory normalisation results ($n=61$). The
+normalised arm is an experiment summary, not a saved per-case artifact.}
+\label{tab:ch6-gulf}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lr}
 \toprule
-\textbf{Metric} & \textbf{Result} \\
+\textbf{Measure} & \textbf{Recorded result} \\
+\midrule
+Marker detections & 8/61 (13.11\%) \\
+Unnormalised classification successes & 49/61 (80.33\%) \\
+Normalised classification successes & 49/61 (80.33\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+No improvement was observed. Generated dialect labels are not independently
+adjudicated ground truth, and low marker coverage may mean that little
+input text is changed. This experiment cannot establish general dialect
+robustness or show that normalisation is unnecessary in other tasks.
+
+\section{Interview Feasibility and Computational Behaviour (RQ4)}
+\label{sec:res-efficiency}
+
+\subsection{Local Computational Measurements}
+
+% Latencies: canonical and enriched-large CSVs; memory: enriched-large manifest/CSV.
+The enriched-large manifest records Windows 10, Python 3.11.9, an Intel
+Family~6 Model~154 Stepping~4 processor with 12 logical processors, and
+7.71 GiB RAM; CUDA is reported unavailable. It records
+\texttt{sentence-transformers} 5.2.3, PyTorch 2.10.0,
+\texttt{transformers} 4.46.3, and \texttt{qdrant-client} 1.17.0.
+The canonical baseline artifacts lack a comparably complete execution
+hardware manifest. The three rows therefore describe their recorded runs;
+differences across run families are not an isolated comparison under
+verified identical hardware and software conditions.
+Appendix~\ref{app:reproducibility} records the saved configuration details
+and their provenance limits.
+
+\begin{table}[htbp]
+\centering
+\caption{Local retrieval-only latency. End-to-end timing covers occupation
+classification in the evaluator, excluding initialisation and conversational
+interaction. Runs are sequential rather than concurrent.}
+\label{tab:ch6-efficiency}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Configuration} & \textbf{Mean (ms)} & \textbf{Median (ms)} & \textbf{95th percentile (ms)} \\
+\midrule
+Title-only flat, e5-small & 31.11 & 30.08 & 42.70 \\
+Title-only hierarchical, e5-small & 133.86 & 137.38 & 182.61 \\
+Enriched flat, e5-large & 208.12 & 194.63 & 291.13 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The enriched-large run trades higher accuracy for increased compute and
+memory demand. Its highest sampled process RSS is 1,822.91 MiB; mean RSS
+across recorded case boundaries is 1,243.31 MiB. These snapshots do not
+capture allocation peaks that subside before a case finishes. A separate e5-small
+microbenchmark reports 19.08 ms mean embedding time over 120 calls,
+excluding import and loading. The Qdrant memory snapshot is 94,928,896
+bytes (90.53 MiB) across the database process, not a per-index measurement.
+
+The load-test artifact records 42/42 successful scripted request sequences.
+Final states are collecting, clarifying, or validating rather than completed
+interviews. The sequence-based success criterion does not establish a
+capacity of 42 simultaneously completed interviews. These measurements
+concern local development hardware; production throughput, deployment
+cost, and Claude-backed latency remain unmeasured.
+
+\subsection{Synthetic Operational Validation}
+\label{sec:res-synthetic-pilot}
+
+% Source: eval/results/synthetic_pilot_n30/live_results.csv
+The approval-dependent respondent pilot in Section~\ref{sec:eval-pilot}
+was not conducted. No institutional ethics submission, recruited
+participants, or pilot responses are recorded. A separate single-arm
+test drives 30 synthetic English profiles through the HTTP API.
+Occupation, industry, and education inputs reuse 30 cases from the combined
+benchmark; other fields use schema-valid scripted answers. This tests local
+conversation flow and completion, not human reading, response generation,
+or satisfaction.
+
+\begin{table}[htbp]
+\centering
+\caption{Synthetic operational results through the local API ($n=30$, English).}
+\label{tab:ch6-synthetic-pilot}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lr}
+\toprule
+\textbf{Measure} & \textbf{Observed result} \\
 \midrule
 Sessions completed & 30/30 (100\%) \\
-Mean completion time (system-side wall clock) & 111.6\,s \\
-Mean turns per session & 45.4 \\
-Sessions with $\geq$1 clarification turn & 30/30 (100\%) \\
-HIGH-severity cross-standard contradiction detected (SRE) & 18/30 (60.0\%) \\
-Sessions flagged incoherent overall (SRE) & 22/30 (73.3\%) \\
-Live-conversation exact-match ISCO-08 accuracy (default config) & 5/30 (16.7\%) \\
+Mean scripted processing time & 111.64 s \\
+Mean turns per session & 45.43 \\
+Sessions with at least one clarification turn & 30/30 (100\%) \\
+Sessions with a HIGH-severity SRE signal & 18/30 (60.0\%) \\
+Sessions marked incoherent by the SRE & 22/30 (73.3\%) \\
+Exact-match occupation codes assigned & 5/30 (16.67\%) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{What these numbers do and do not mean, stated plainly.}
-``Completion time'' here is scripted-driver processing wall-clock time ---
-it excludes any human reading, typing, or thinking time, and is therefore
-\emph{not} an estimate of a real respondent's completion time, which is
-precisely what the planned pilot's own completion-time outcome is designed
-to measure. The 100\% clarification-turn rate is likely partly an
-artefact of the canonical, machine-phrased answers used to drive the
-script (e.g.\ the literal string \texttt{under\_5000}) rather than a
-signal about real question difficulty. The 16.7\% live ISCO-08 accuracy
-is consistent with, not an independent confirmation of, the already-known
-21.19\% default-configuration baseline established on the full 18,747-case
-WISCO heldout (Section~\ref{sec:res-isco}) --- at $n=30$ this is within
-ordinary sampling variation around that rate, not a new result. The
-60\%/73.3\% contradiction rates are real, directly computed signals, but
-their magnitude is substantially driven by the live sessions' use of the
-lower-accuracy default classifier (so an incorrect ISCO code frequently
-and genuinely conflicts with the paired industry/education text) --- they
-should not be read as an estimate of how often a \emph{correctly}
-classified respondent's answers would be internally inconsistent.
+The live API uses the legacy hierarchical occupation profile and legacy
+industry and education pipelines. It does not use the official flat
+configuration achieving 21.19\% or the enriched-large configuration
+achieving 40.95\% on WISCO. Thus 5/30 cannot confirm either WISCO figure.
+Conversation extraction and cached-result behaviour also differ from
+classification of isolated benchmark inputs.
 
-\textbf{On classification accuracy specifically}: a second, offline
-measurement of this project's best-tested configuration
-(flat retrieval, the enriched catalogue, \texttt{multilingual-e5-large})
-against these same 30 cases was attempted, in a process deliberately
-isolated from both the live system and the results above. It was not
-forced through: the attempt correctly halted under a built-in safety
-check after measuring only 463\,MB of genuinely available memory on the
-development machine --- the same condition that had caused a reproducible
-process crash earlier the same day (Section~\ref{sec:res-validity}). The
-existing, full-scale 40.95\% WISCO heldout result
-(Section~\ref{sec:res-isco}) is cited in its place, which is the more
-statistically defensible number in any case: its 18,747-case sample gives
-a materially tighter confidence interval than a fresh $n=30$ draw would.
+Timing excludes human reading, typing, and decision time; report generation
+is outside the driver's recorded completion interval. Clarification
+frequency may reflect canonical answers as well as conversation logic.
+SRE flags concern the system's predictions, not independently verified
+contradictions in respondent answers: classification errors can create
+apparent incompatibility. Completion supports feasibility of the tested
+flows, not burden reduction, satisfaction, comparative cost-effectiveness,
+or field reliability. An isolated enriched-large evaluation of the same
+30 cases did not complete under insufficient memory; its WISCO result
+is not substituted for this unmeasured operational-profile result.
 
-\textbf{Honest scope.} This validation provides real, synthetic-data,
-single-arm operational evidence: the system reliably completes a full
-multi-field interview (100\%/30) in bounded processing time, and the
-cross-standard contradiction-detection mechanism fires on a real,
-computable signal. It provides \emph{no} evidence on respondent
-satisfaction, no AI-versus-traditional-interviewer comparison, and no
-respondent-realistic completion-time figure --- exactly the primary
-outcomes the planned pilot (Section~\ref{sec:eval-pilot}) was designed to
-measure, and exactly what remains open, unchanged by this validation.
-
-% ------------------------------------------------------------
-\section{Objective-by-Objective Status}
+\section{Research Questions and Objective Status}
 \label{sec:res-summary}
-% ------------------------------------------------------------
 
 \begin{table}[htbp]
 \centering
-\caption{Real status against each Chapter~1 objective --- replaces the
-original draft's all-checkmark table.}
+\caption{Evidence against the research questions and linked objectives.}
 \label{tab:ch6-objectives}
-\footnotesize\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{p{0.7cm}p{6.2cm}p{6.5cm}}
+\footnotesize\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{p{2.0cm}p{10.5cm}}
 \toprule
-\textbf{Obj.} & \textbf{What was targeted} & \textbf{Real status} \\
+\textbf{Question / objectives} & \textbf{Evidence and remaining scope} \\
 \midrule
-O1 & Multi-module CrewAI architecture; correct FSM behaviour &
-  Met: 13 agent-constructing modules; orchestration correctness verified
-  by a dedicated regression test suite \\
-O2 & Best-tested ISCO-08 configuration identified, reported honestly &
-  Met, with a real negative finding: hierarchical underperforms flat;
-  best result 40.95\% (flat, enriched, e5-large), not the originally
-  targeted 85\%+ \\
-O3/O4 & ISIC/ISCED-F classification, accuracy reported wherever data allows &
-  Partially met: real infrastructure at parity with ISCO-08; accuracy only
-  measurable via a disclosed synthetic benchmark (83\% vs.\ 13\% legacy);
-  no real-respondent evaluation exists \\
-O5 & Semantic Relation Engine, HITL escalation verified &
-  Met: 61-case validation, zero mismatches; HIGH escalation verified 3x,
-  100\%/0\% split exactly as designed; crosswalk tables remain hand-built
-  (open item) \\
-O6 & Multilingual support, dialect handling reported honestly &
-  Met, with a real negative finding: Gulf-dialect normalisation made no
-  measurable accuracy difference on the tested sample \\
-O7 & Person Register pre-fill; consistency rules &
-  Rules met (all 10 R01--R10 tested); real pre-fill question-reduction
-  magnitude not measured against real respondents \\
-O8 & Audit trail; reports; HITL queue; deployment &
-  Met: verified against the live system \\
---- & Randomised pilot study (real respondents) & \textbf{Not started.} Not
-  submitted for ethics approval as of this writing. No real-respondent
-  data exists. A separate, explicitly synthetic, single-arm $n=30$
-  operational validation was completed instead
-  (Section~\ref{sec:res-synthetic-pilot}) --- real evidence that the
-  system completes a full interview reliably, but no substitute for the
-  outcomes this row's own study would measure \\
+RQ1 / O2 & Tested flat retrieval exceeds the hierarchical configuration;
+the enriched configuration with the intended larger encoder reaches
+40.95\% on the reused WISCO partition, with that run's executed encoder
+unresolved. The served fragment-to-parent configuration reaches 38.83\%
+with a recorded serving identity. Independent confirmation and improved
+accuracy remain necessary. \\
+RQ2 / O3--O5 & Multi-standard coding and severity-triggered escalation
+are implemented. Synthetic recovery and constructed rule fixtures support
+restricted claims; independent coding and crosswalk validation remain absent. \\
+RQ3 / O6 & Retrieval is evaluated in five languages. Gulf normalisation
+has an exploratory generated-data result; code-switching and dialect
+behaviour require independent annotation and evaluation. \\
+RQ4 / O1, O7, O8 & Conversation, consistency rules, reports, and review
+flows have implementation tests and scripted evidence. Respondent burden,
+satisfaction, and comparative field performance remain unmeasured. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-% ------------------------------------------------------------
 \section{Threats to Validity}
 \label{sec:res-validity}
-% ------------------------------------------------------------
 
-\textbf{No real-respondent evaluation exists for any of the three
-classification standards' headline claims beyond WISCO.} ISCO-08's 40.95\%
-result is external and real (WISCO), but ISIC/ISCED-F's 82.85\%/13.14\%
-result is synthetic, measuring recovery of an LLM's own generating prompt,
-not real-respondent accuracy --- this is the single largest validity
-limitation in this thesis, stated plainly.
+\noindent\textbf{Construct validity.}
+Exact occupation match, generated taxonomy recovery, rule-fixture agreement,
+and scripted completion are different outcomes. None directly measures
+labour-force-estimate quality, human coding agreement, or respondent
+experience. SRE compatibility is heuristic plausibility, not factual
+verification or a calibrated error probability.
 
-\textbf{ISIC/ISCED-F catalogue coverage.} The live-indexed catalogue covers
-134 of 419 official ISIC Rev.~4 classes and 63 of approximately 80 ISCED-F
-detailed fields --- stated exactly, not as ``100+ of 238'' as an earlier
-internal draft of this thesis stated (which understated the true official
-class count for ISIC Rev.~4 as well as overstating coverage).
+\noindent\textbf{Internal and statistical validity.}
+Repeated test-partition inspection limits confirmation of selected
+configurations. Related multilingual records and taxonomy-derived texts
+introduce dependence unaccounted for in nominal intervals and tests.
+Exploratory comparisons lack a prespecified adjustment for multiple testing.
+Small nonsignificant experiments do not establish equivalence or absence
+of practically relevant effects; no study-specific power analysis or
+equivalence margin was specified.
 
-\textbf{The real, ethics-approved pilot study has not run.} Every claim in
-this thesis about respondent burden, cost reduction, or satisfaction
-versus a traditional interview is, at most, a target or a plan --- never a
-measured result. The synthetic $n=30$ operational validation
-(Section~\ref{sec:res-synthetic-pilot}) does not change this: it was
-explicitly scoped to measure only what synthetic data can honestly
-support, and respondent satisfaction and the traditional-interviewer
-comparison are not among those things.
+\noindent\textbf{External validity.}
+WISCO is an occupation reference rather than data collected in the
+conversational LFS. Synthetic generation shares definitions with retrieval,
+restricts coverage, and lacks independent expert adjudication. Its results
+do not establish performance on spontaneous, incomplete, ambiguous, or
+atypical descriptions. Operational validation is English-only, with no
+human participants or traditional-interview comparison.
 
-\textbf{Single-machine measurement, and a real, caught production-stability
-finding.} All computational-efficiency figures
-(Section~\ref{sec:res-efficiency}) are from one local development machine,
-not a production environment, and that machine's own memory constraints
-directly blocked a planned re-computation of the ISIC/ISCED-F synthetic
-result at full dataset coverage (Section~\ref{sec:res-isic-isced}) ---
-disclosed as a real limitation of this thesis's own evaluation
-infrastructure, not glossed over. The same constraint was found to be more
-serious than a slow evaluation re-run: switching the live survey system's
-classifiers to the best-tested configuration (flat retrieval, the
-enriched catalogue, \texttt{multilingual-e5-large}) reproduced a genuine
-process crash on this machine under real memory pressure --- a catchable
-error in some attempts, an uncatchable segmentation fault that terminated
-the entire server process in others. This was caught by live-testing the
-change against the running system before accepting it, not assumed safe
-because unit tests passed, and was reverted the same day: the live system
-runs its earlier, lower-accuracy default configuration, while the
-better-tested configuration remains valid and is used only in isolated,
-memory-checked offline evaluation runs (exactly how every headline
-accuracy figure in this chapter was actually produced).
+\noindent\textbf{Reproducibility and deployment validity.}
+Preserved CSVs, JSON summaries, and manifests support recomputation, but
+metadata must be interpreted with the executed configuration. The original
+enriched-large CSV names e5-small in its encoder metadata although the
+profile selects e5-large; profile mappings and build/run records document
+the intended encoder. The CSV and later manifest also contain different
+commit identifiers, and the CSV's recorded commit does not contain the
+complete enriched-large profile implementation. The executed working-tree
+state is therefore incompletely recorded; profile labels alone cannot
+establish an exact source reconstruction. The original artifacts are retained. Normalised Gulf
+predictions and several planned expanded evaluations lack completed per-case
+outputs. Local memory constraints prevented expanded evaluations and
+caused instability during an attempted API switch to e5-large. The
+best offline configuration therefore cannot be used as the served
+system's performance estimate; the served configuration is measured
+separately in Section~\ref{sec:res-parent-document}, on the same reused
+partition and subject to the same reuse limitation. Its own per-case
+predictions are not published, so its figures rest on a hashed summary
+rather than released records.

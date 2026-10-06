@@ -1,384 +1,325 @@
 % ============================================================
-%  CHAPTER 1 — INTRODUCTION
-%  Corrected 2026-08-28 against CLAUDE.md's verified project state.
-%  See Documentation/LaTeX/thesis/VERIFICATION_NOTES.md for the full
-%  list of what changed from chapter1_ORIGINAL_UNVERIFIED.tex and why.
+%  CHAPTER 1 --- INTRODUCTION
 % ============================================================
 \chapter{Introduction}
 \label{chap:intro}
 
-Governments worldwide depend on Labour Force Surveys (LFS) as their
-foundational source of workforce intelligence, supplying the indicators that
-drive minimum-wage legislation, unemployment insurance schemes, vocational
-training investments, and bilateral labour migration agreements.
-The underlying microdata flow into cross-national repositories operated by
-the ILO and the OECD, anchoring labour-market comparisons that shape
-policy~\cite{ilo2012isco_v1}.
-%% CITATION AUDIT NOTE (2026-08-29): zhang2025synthetic was originally
-%% attached here (and to the item-nonresponse and per-interview-cost
-%% claims below). Confirmed real via direct search, but its actual real
-%% content is a synthetic-survey-DATA-GENERATION methods comparison
-%% (CTGAN/TVAE/nonparametric methods for the NCHS Research and
-%% Development Survey) -- it does not support claims about ILO/OECD data
-%% scale, item nonresponse rates, or field-collection cost. Citing a real
-%% paper for a claim it doesn't actually support is its own kind of
-%% citation problem, distinct from (but related to) a fabricated
-%% citation -- removed from these three claims rather than left
-%% misattached. zhang2025synthetic is still cited correctly in
-%% Chapter~\ref{chap:evaluation} for its actual real topic.
+Labour Force Surveys (LFS) provide information on employment,
+unemployment, and labour underutilisation. Their value depends on the
+consistent application of statistical concepts and on the quality of the
+responses collected. The International Labour Organization (ILO)
+establishes the relevant conceptual framework through the International
+Conference of Labour Statisticians~\cite{ilo2013workstats}. Within that
+framework, classifying open descriptions of work is a measurement task:
+the wording supplied by a respondent must be interpreted in relation to a
+defined coding scheme.
 
-This thesis's system implements the \textbf{UAE} Labour Force Survey
-specifically, confirmed directly from \texttt{conversation\_manager.py}'s
-own module docstring and its UAE-specific fields (e.g.\ \texttt{emirate},
-\texttt{uae\_residence\_duration}). The UAE's multilingual context provides
-a particularly compelling motivation for this thesis: a resident population
-comprising many nationalities means Arabic, English, Urdu, Hindi, and
-Tagalog are all in daily commercial and domestic use.
-Traditional survey instruments force respondents into a single language per
-session, suppressing the natural code-switching behaviour that characterises
-multilingual communities and introducing systematic measurement error among
-linguistic minorities~\cite{hamed2025codeswitching}. (Citation confirmed
-real, Hamed et al., COLING 2025 -- see \texttt{bib.bib} for a title
-correction found during the citation audit.)
-Simultaneously, the LFS requires classification to three simultaneous
-international standards --- ISCO-08 for occupation, ISIC Rev.~4 for industry,
-and ISCED~2011 (with ISCED-F~2013 for field of study) for education --- a
-triple-classification burden this thesis's system integrates into a single
-pipeline.
+This thesis investigates a UAE-oriented conversational LFS prototype.
+The implemented questionnaire includes employment, education, demographic,
+and working-condition items, together with UAE-specific fields such as
+emirate and residence duration. The interface provides English, Arabic,
+Urdu, Hindi, and Tagalog, with additional processing for Gulf Arabic.
+The prototype integrates occupation coding to ISCO-08, industry coding to
+ISIC Rev.~4, and education coding to ISCED~2011 and ISCED-F~2013. These
+are the classification versions selected for this study; the prototype is
+not an authorised national survey instrument.
 
-% ------------------------------------------------------------
+The central problem is how to connect flexible language input with
+reproducible classification and questionnaire control. Conversational
+fluency alone does not establish correct coding, and successful software
+execution does not establish valid measurement of a population. The
+research therefore separates classification effectiveness, cross-standard
+checks, language robustness, and operational feasibility.
+
 \section{Motivation and Background}
 \label{sec:motivation}
-% ------------------------------------------------------------
 
-Contemporary LFS administration faces four interrelated operational challenges.
+\subsection{Occupation Coding as a Measurement Problem}
 
-\subsection{Data Completeness and Real-Time Consistency Enforcement}
+ISCO-08 groups jobs according to the tasks and duties performed. Its
+four-level structure contains 10 major groups, 43 sub-major groups,
+130 minor groups, and 436 unit groups~\cite{ilo2012isco_v1}.
+A description such as \emph{I repair equipment} may fit several unit groups
+unless the equipment, tasks, or work setting is specified. A classifier
+must therefore handle incomplete descriptions and distinguish related
+occupations at different levels of detail.
 
-Across major national programmes, a meaningful share of survey items are
-left unanswered (a widely-documented issue in official-statistics
-literature; no specific citation is attached to this general claim here,
-per the citation-audit note above -- see \texttt{VERIFICATION_NOTES.md}).
-Beyond missing values, this project's own \texttt{ValidationAgent}
-(`backend/agents/validation\_agent.py`) enforces ten deterministic
-cross-answer consistency rules (R01--R10), real and tested, with an
-optional LLM-backed semantic check as a second stage. Paper-based and
-conventional CAPI instruments cannot enforce rules of this kind in real
-time, requiring costly post-collection editing.
+Coding during an interview is an established research direction.
+Schierholz et al.~\cite{schierholz2016interview} investigated supervised
+candidate suggestions that respondents could select while an interview
+was in progress. More recently, SOCbot combines retrieved occupation
+candidates with LLM-based classification and dynamic follow-up
+questions~\cite{kochar2025socbot}. These precedents motivate a study of
+retrieval configurations and their integration into a broader survey;
+they preclude treating real-time occupation coding or conversational
+probing alone as a new contribution.
 
-\subsection{Triple-Standard Classification Complexity}
+\subsection{Related but Distinct Classification Targets}
 
-The ISCO-08 taxonomy provides 436 unit groups at the four-digit level,
-organised into 130 minor groups, 43 sub-major groups, and 10 major
-groups~\cite{ilo2012isco_v1,ilo2012isco_v2}. This project's own primary-source
-audit against the official ILO ISCO-08 structure (isco.ilo.org's official CSV
-export) confirmed this exact count for the system's catalogue after
-correcting 19 non-standard codes and 14 missing official codes found in an
-earlier, WISCO-only comparison, plus 6 further mislabelled codes a
-code-existence check alone could not catch.
-\textbf{The ``hamed2025isco'' citation this claim originally rested on could
-not be verified to exist}, despite an extensive, targeted search (multiple
-query variants for "Hamed... Automated ISCO-08... RAG... Journal of
-Official Statistics 2025" returned no matching paper) --- flagged here as a
-likely-fabricated citation, per this project's own citation policy, and
-removed rather than kept on the chance it is real but obscure. The
-inter-coder-agreement claim it supported is not restated.
+Occupation, industry, and education describe different aspects of a
+respondent's situation. ISCO-08 concerns work tasks; ISIC classifies the
+economic activity of the relevant establishment; ISCED describes education
+programmes and attainment, while ISCED-F describes fields of education
+and training~\cite{ilo2012isco_v1,unsd2008isic,unesco2012isced,unesco2015iscedf}.
+For example, a software developer can work in a hospital without the
+occupation and industry classifications being inconsistent. Similarly,
+formal qualifications are not a complete description of the skills
+acquired through experience.
 
-However, occupation coding in isolation is insufficient: correct LFS analysis
-requires simultaneous classification of the employing industry to ISIC Rev.~4
-(Section $\rightarrow$ Division $\rightarrow$ Group $\rightarrow$ 4-digit Class,
-e.g.\ J $\rightarrow$ 62 $\rightarrow$ 620 $\rightarrow$ 6201 ``Computer
-programming activities'') and the respondent's education to both ISCED~2011
-attainment level (0--8) and ISCED-F~2013 field of specialisation (Broad
-$\rightarrow$ Narrow $\rightarrow$ 4-digit Detailed, e.g.\ 06 $\rightarrow$
-061 $\rightarrow$ 0613 ``Software and applications development'').
-This thesis's system produces all three classifications within a single
-survey session.
+Integrating these targets creates an opportunity for review of unusual
+combinations, but it also creates a risk of rejecting legitimate cases.
+This thesis consequently treats its Semantic Relation Engine (SRE) as a
+heuristic screening mechanism. Its hand-built associations and severity
+rules identify cases for review; they are not an official correspondence
+table or proof that a respondent's answers are incorrect.
 
-\subsection{Multilingual and Arabic Dialect Complexity}
+\subsection{Multilingual Input and Arabic Dialect Variation}
 
-In this project's target multilingual context, respondents naturally
-interleave Arabic (MSA and Gulf dialect), English, Urdu, Hindi, and Tagalog
-within a single conversational turn.
-This project's \texttt{LanguageProcessor} implements Gulf-dialect
-normalisation via a real, hand-built 79-rule dictionary
-(\texttt{\_GULF\_NORMALISE} in \texttt{language\_processor.py}) --- not an
-external library. A genuine, if preliminary, finding from this project's own
-evaluation (see Chapter~\ref{chap:results}) is that this dictionary detects
-only a modest fraction of genuinely dialectal text, and that normalisation
-made no measurable difference to downstream classification accuracy on the
-sample tested --- reported honestly here as a real negative result, not
-smoothed over.
-%% The original draft's "~30 systematic dialect-to-MSA token replacements"
-%% and specific example pairs (shno/ma, brouh/adhhab) did not match the
-%% real 79-rule dictionary and have been removed; see the real dictionary
-%% in backend/agents/language_processor.py for actual examples if needed.
+Arabic language processing involves Modern Standard Arabic, regional
+varieties, and code-switching with other languages. Hamed et
+al.~\cite{hamed2025codeswitching} review the resulting resource and
+modelling challenges. In a survey, these challenges occur together with
+specialised occupation terminology and short answers. Translating the
+questionnaire is therefore only one part of providing language support:
+answer interpretation, routing, and classification must also preserve the
+meaning of each response.
 
-\subsection{Resource Intensity and Operational Cost}
+The prototype uses multilingual embeddings and a dictionary of Gulf
+Arabic normalisation rules. Its evaluation distinguishes the availability
+of language-specific interface text from measured performance on labelled
+examples. Neither multilingual model training nor a translated interface
+establishes equivalent accuracy across the five intended languages.
 
-Traditional field-collection models carry substantial per-interview cost
-(again, a general claim left uncited per the citation-audit note above ---
-zhang2025synthetic's real content does not support a specific cost
-figure).
-This project's Person Register pre-fill pattern --- using data from
-previous survey rounds stored in the \texttt{person\_register} database
-table to verify rather than re-collect confirmed fields --- is real,
-implemented, and stress-tested against statistically sampled synthetic
-records (\texttt{eval/synthetic\_person\_register\_stress\_test.py}); the
-specific magnitude of question-count reduction in real deployment has not
-yet been measured against real respondents and is not claimed here as a
-tested figure.
+\subsection{Questionnaire Control and Operational Feasibility}
 
-\subsection{Summary of Challenges}
+Computer-assisted personal interviewing (CAPI) already supports automated
+skip logic and validation. For example, World Bank Survey Solutions
+evaluates enabling and validation conditions and supports multilingual
+questionnaires~\cite{worldbank2016surveysolutionsvalidation,worldbank2026surveysolutionslanguages}.
+The proposed system extends these familiar controls with interpretation
+of conversational responses and classification during the same workflow.
+Its contribution is evaluated as an integration of components rather
+than as the invention of conditional routing or real-time validation.
+
+The prototype also reuses stored responses through a Person Register,
+records classification decisions, and provides human-in-the-loop (HITL)
+review. These mechanisms can be tested for functional correctness.
+Claims about reduced respondent burden, interview cost, or improved
+participation require a comparison with human respondents and an
+appropriate survey administration baseline. Such effects cannot be
+inferred from question counts or automated processing time alone.
 
 \begin{table}[htbp]
 \centering
-\caption{Operational challenges in traditional LFS administration.}
+\caption{Research problems and the evidence required to assess them.}
 \label{tab:ch1-challenges}
-\small\renewcommand{\arraystretch}{1.35}
-\resizebox{\textwidth}{!}{%
+\small\renewcommand{\arraystretch}{1.3}
 \begin{tabular}{>{\raggedright}p{3.0cm}
-                >{\raggedright}p{5.6cm}
-                >{\raggedright\arraybackslash}p{3.6cm}}
+                >{\raggedright}p{5.0cm}
+                >{\raggedright\arraybackslash}p{4.1cm}}
 \toprule
-\textbf{Challenge} &
-\textbf{Documented Impact} &
-\textbf{Evidence} \\
+\textbf{Problem} & \textbf{Design response} & \textbf{Required evidence} \\
 \midrule
-High operational cost & Field collection carries substantial per-interview
-  cost; constrains frequency and geographic coverage &
-  (general claim, no specific citation --- see the citation-audit note above) \\
-Data quality deficits & Item nonresponse and post-hoc consistency editing
-  are real, documented burdens on traditional CAPI/paper instruments &
-  (general claim, no specific citation --- see the citation-audit note above) \\
-Multi-standard coding & Occupation, industry, and education coding are
-  typically handled by separate systems or processes &
-  (no citation --- the original source for this row could not be verified
-  to exist; see the citation-audit note above) \\
-Multilingual complexity & Code-switching and regional dialect variation
-  are known challenges for automated language processing &
-  \cite{hamed2025codeswitching} \\
+Ambiguous occupation descriptions & Catalogue retrieval and optional
+  reranking & Heldout coding accuracy and error analysis \\
+Related classification targets & Separate classifiers and explicit
+  coherence rules & Coverage, detection errors, and review behaviour \\
+Language and dialect variation & Multilingual input processing and
+  language-specific answer handling & Per-language evaluation and
+  normalisation ablations \\
+Conversational survey administration & Controlled interview flow,
+  persistence, and HITL review & Functional checks and operational
+  measurements; human studies for burden and acceptability \\
 \bottomrule
 \end{tabular}
-}
 \end{table}
 
-% ------------------------------------------------------------
-\section{The AI Opportunity}
+\section{Research Approach}
 \label{sec:opportunity}
-% ------------------------------------------------------------
 
-Large language models, multilingual embedding models, RAG frameworks, and
-agentic orchestration together create an opportunity to address these
-challenges. Key components actually implemented in this thesis's system are:
+The system combines a finite-state conversation controller with directly
+invoked processing modules. CrewAI provides agent abstractions for some
+modules, while questionnaire transitions and module invocation remain
+under application control. The implementation does not use autonomous
+hierarchical delegation. This architecture makes the routing rules and
+the points at which classification and review occur inspectable.
 
-\begin{itemize}
-  \item \texttt{intfloat/multilingual-e5-small} (384-dim) as the
-  \textbf{production default} embedding model, with an additive
-  \texttt{intfloat/multilingual-e5-large} (1024-dim) profile built,
-  live-verified, and evaluated as measurably more accurate (see
-  Chapter~\ref{chap:results}) but not yet switched to production default ---
-  that decision is deliberately left open pending supervisor review, not
-  silently made.
+Retrieval is studied as a configurable classification component. A flat
+configuration searches the unit-group catalogue directly; a hierarchical
+configuration restricts successive searches using predicted parent
+groups. Catalogue enrichment and embedding size provide additional
+experimental factors. Multilingual E5 supplies model sizes with different
+resource requirements~\cite{wang2024multilinguale5}. The operational
+default and the best-performing benchmark configuration are kept distinct
+when interpreting the results.
 
-  \item \textbf{CrewAI orchestration}: 13 modules under
-  \texttt{backend/agents/} construct a \texttt{crewai.Agent}, all with
-  \texttt{allow\_delegation=False}. There is \textbf{no CrewAI hierarchical
-  delegation} anywhere in this codebase --- no \texttt{Process.hierarchical},
-  no manager agent --- a deliberate architectural choice, not a gap; each
-  agent is invoked directly by the calling code at a specific point in the
-  conversation flow.
+The evaluation uses three forms of evidence: external labelled occupation
+data, synthetic test cases, and software and operational checks. The
+external WISCO dataset supports occupation-classification comparisons
+\cite{wisco2023}; synthetic cases support narrower studies of classifiers,
+coherence rules, and conversation execution. These evidence sources
+address different questions and are not pooled as if they represented
+the same population or validation setting.
 
-  \item \textbf{Ollama (local)} as the primary tier for general tasks, with
-  an automatic, configuration-time fallback chain (Ollama~$\to$~Claude~$\to$
-  ~Gemini~$\to$~Groq~$\to$~OpenRouter) to the first provider actually
-  configured. \texttt{get\_llm\_strict()} --- used for anything the
-  evaluation harness measures --- never substitutes providers silently.
+\section{Research Questions}
+\label{sec:research-questions}
 
-  \item \textbf{A hand-built, deterministic ISCO$\leftrightarrow$ISIC and
-  ISCO$\leftrightarrow$ISCED crosswalk} for the Semantic Relation Engine.
-  This project searched the complete, official 433-page ISCO-08 Volume~I
-  document page-by-page for an ILO-published ISCO-08$\leftrightarrow$ISIC
-  correspondence table and confirmed \textbf{no such table exists} in that
-  document, nor in any other ILO source checked. The crosswalk tables are
-  therefore hand-built by necessity and disclosed as such throughout this
-  thesis, not presented as sourced from an official correspondence table.
-\end{itemize}
+\begin{enumerate}[label=\textbf{RQ\arabic*.}, leftmargin=3.1em]
+  \item \textbf{Retrieval effectiveness.} How do flat and hierarchical
+  retrieval, catalogue enrichment, and embedding choice affect ISCO-08
+  classification effectiveness on an external heldout benchmark?
 
-Deploying AI in official statistics imposes requirements absent from commercial
-chatbot guidelines: traceability of classification decisions; explicit
-disclosure of which method produced a given result (retrieval, keyword match,
-or LLM); calibrated confidence with deterministic human-in-the-loop (HITL)
-escalation; and audit logging.
+  \item \textbf{Classification integration and review.} How can occupation,
+  industry, and education coding be integrated with transparent
+  cross-standard screening, and what evidence supports the resulting
+  classifications and escalation rules?
 
-% ------------------------------------------------------------
+  \item \textbf{Language robustness.} What do the available language-specific
+  evaluations establish about multilingual and dialectal input, and does
+  dictionary-based Gulf Arabic normalisation improve classification on
+  the tested sample?
+
+  \item \textbf{Operational feasibility.} To what extent can the modular
+  conversation system execute its interview paths, validation, persistence,
+  and review workflow reliably, and which claims still require evaluation
+  with human respondents?
+\end{enumerate}
+
 \section{Research Objectives}
 \label{sec:objectives}
-% ------------------------------------------------------------
 
-The primary aim is to design, implement, and empirically evaluate a
-multilingual conversational agentic system for the Labour Force Survey that
-classifies respondents to ISCO-08, ISIC Rev.~4, and ISCED~2011/ISCED-F~2013,
-enforces deterministic consistency rules in real time, and cross-validates
-the classifications through a Semantic Relation Engine. Table~\ref{tab:ch1-objectives}
-states the objectives and their target metrics as originally set; whether
-each was met, partially met, or remains open is reported honestly in
-Chapter~\ref{chap:results} --- stating a target here is not a claim that it
-was achieved.
+The aim is to design and evaluate an integrated conversational survey
+prototype while establishing the limits of its evidence.
+Table~\ref{tab:ch1-objectives} operationalises the research questions.
+The measures describe how each objective is assessed, rather than
+postulated accuracy or cost targets. Chapter~\ref{chap:results} reports
+which assessments were completed and where evidence remains incomplete.
 
 \begin{table}[htbp]
 \centering
-\caption{Research objectives and target metrics.}
+\caption{Objectives, research questions, and assessment measures.}
 \label{tab:ch1-objectives}
-\small\renewcommand{\arraystretch}{1.35}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{>{\centering\bfseries}p{0.6cm}
-                >{\raggedright}p{7.2cm}
-                >{\raggedright\arraybackslash}p{5.2cm}}
+\small\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{>{\centering\bfseries}p{0.5cm}
+                >{\raggedright}p{5.1cm}
+                >{\raggedright\arraybackslash}p{6.3cm}}
 \toprule
-\textbf{ID} &
-\textbf{Objective} &
-\textbf{Target Metric} \\
+\textbf{ID} & \textbf{Objective} & \textbf{Assessment} \\
 \midrule
-O1 & 13-module CrewAI-agent architecture; conversation FSM covering the
-     full LFS questionnaire with conditional skip gates &
-     Correct skip-gate behaviour, verified by
-     \texttt{test\_orchestration\_correctness.py} \\
-O2 & Hierarchical and flat retrieval-augmented ISCO-08 classification against
-     an official, primary-source-verified 436-unit-group catalogue &
-     Best-tested configuration identified and reported honestly, whichever
-     it turns out to be \\
-O3 & ISIC Rev.~4 industry classification
-     (Section $\to$ Division $\to$ Group $\to$ 4-digit Class) &
-     Infrastructure parity with the ISCO-08 pipeline; accuracy reported
-     wherever real or synthetic evaluation data allows \\
-O4 & Dual ISCED: ISCED~2011 attainment (0--8) + ISCED-F~2013
-     field (Broad $\to$ Narrow $\to$ 4-digit Detailed) &
-     Same as O3 \\
-O5 & \textbf{Semantic Relation Engine}: ISCO$\leftrightarrow$ISIC$\leftrightarrow$ISCED
-     three-way crosswalk, hand-built and disclosed as such;
-     calibrated SemanticCoherence score; HITL on HIGH-severity violations &
-     Deterministic, auditable scoring; HIGH violations verifiably escalate
-     to the live HITL queue \\
-O6 & 5-language support (en/ar/ar-gulf/ur/hi/tl); code-switch and
-     Gulf-dialect handling &
-     Reported honestly, including the real, measured finding that dialect
-     normalisation did not improve classification accuracy on the tested
-     sample \\
-O7 & Person Register pre-fill; deterministic consistency rules (R01--R10);
-     authentication &
-     All 10 rules enforced and tested \\
-O8 & Audit trail; bilingual report generation; HITL supervisor queue;
-     Dockerised deployment &
-     Verified against the live system \\
+O1 & Implement a controlled conversational questionnaire (RQ4) &
+  Interview-path and transition correctness; response preservation;
+  completed and failed synthetic sessions \\
+O2 & Compare ISCO-08 retrieval configurations (RQ1) &
+  Exact unit-group and higher-level accuracy, uncertainty intervals,
+  paired configuration comparisons, and error analysis \\
+O3 & Implement ISIC Rev.~4 industry coding (RQ2) &
+  Catalogue coverage and class-level performance on the available
+  synthetic evaluation; explicit treatment of uncovered classes \\
+O4 & Implement education-attainment and field coding (RQ2) &
+  Separate evaluation of attainment level and detailed field;
+  catalogue coverage and synthetic-data limitations \\
+O5 & Implement auditable coherence screening and escalation (RQ2) &
+  Rule-level behaviour, available detection-error analysis, and
+  verification that HIGH-severity cases enter the review workflow \\
+O6 & Assess language and dialect handling (RQ3) &
+  Results by the languages represented in each dataset;
+  normalisation ablation; disclosure of missing native-speaker validation \\
+O7 & Integrate pre-fill and response validation (RQ4) &
+  Preservation and correction of stored fields; deterministic
+  consistency-rule checks on relevant paths \\
+O8 & Support traceable operation and reporting (RQ4) &
+  Stored method and review records, report generation, processing time,
+  resource constraints, and deployment checks \\
 \bottomrule
 \end{tabular}
-}
 \end{table}
 
-% ------------------------------------------------------------
 \section{Research Contributions}
 \label{sec:contributions}
-% ------------------------------------------------------------
 
-\noindent\textbf{C1 --- Semantic Relation Engine.}
-A deterministic three-way crosswalk between ISCO-08, ISIC Rev.~4, and
-ISCED~2011/ISCED-F~2013 that produces a calibrated SemanticCoherence score
-(0--1). The scoring formula and severity bands are given precisely in
-Chapter~\ref{chap:architecture}, sourced directly from the live
-\texttt{semantic\_relation.py} implementation rather than restated from
-memory. The crosswalk tables are hand-built, not sourced from an official
-ILO correspondence document (see Section~\ref{sec:opportunity}) --- this is
-disclosed as a limitation, addressed further in
-Chapter~\ref{chap:conclusion}.
+\noindent\textbf{C1 --- Comparative ISCO-08 retrieval evidence.}
+The study compares flat and hierarchical retrieval under documented
+configurations on an external benchmark. It also evaluates catalogue
+enrichment and embedding choice. Within the evaluated setting, flat
+retrieval outperforms the hierarchical configuration. This finding is
+task- and configuration-specific; it is not a general rejection of
+hierarchical information retrieval.
 
-\noindent\textbf{C2 --- Multilingual LFS conversation flow.}
-A conversation FSM implementing the LFS questionnaire's conditional
-employment-path logic across English, Arabic MSA, Gulf Arabic dialect,
-Urdu, Hindi, and Tagalog.
+\noindent\textbf{C2 --- Transparent cross-standard screening.}
+The SRE combines hand-built occupation--industry and
+occupation--education associations with explicit scoring and severity
+rules. It provides an inspectable mechanism for identifying cases for
+HITL review. Its scores are heuristic indicators, not empirically
+calibrated probabilities of correctness; expert validation and assessment
+of legitimate atypical cases remain necessary.
 
-\noindent\textbf{C3 --- Multiple, honestly-compared ISCO-08 retrieval
-configurations.} Both hierarchical and flat retrieval were implemented and
-evaluated end-to-end against a genuine external benchmark (WISCO); the
-published, statistically decisive result is that \textbf{flat retrieval
-outperforms hierarchical retrieval}, the opposite of what is often assumed
---- this negative finding is reported as a real contribution of the
-evaluation, not hidden. The best-tested configuration (flat retrieval,
-real official-text catalogue enrichment, \texttt{multilingual-e5-large})
-is documented in full in Chapter~\ref{chap:results}.
+\noindent\textbf{C3 --- An integrated conversational survey prototype.}
+The implementation connects questionnaire routing, multilingual input,
+multiple classification targets, deterministic validation, persistence,
+and review in one workflow. This is a system integration contribution.
+It does not establish that these individual techniques are new or that
+multi-agent orchestration itself improves accuracy.
 
-\noindent\textbf{C4 --- Simultaneous multi-standard classification.}
-A conversational survey system that classifies each respondent's occupation
-(ISCO-08), industry (ISIC Rev.~4), education attainment (ISCED~2011), and
-education field (ISCED-F~2013) within a single session, with cross-standard
-coherence validation.
+\noindent\textbf{C4 --- Evaluation and diagnostic artifacts.}
+The project provides configuration-specific benchmark results, synthetic
+evaluation cases, functional checks, and operational records. These
+artifacts expose coverage limitations and negative results, including the
+absence of a measured benefit from Gulf normalisation in the tested
+sample. They support inspection and subsequent replication without
+substituting synthetic evidence for respondent validation.
 
-\noindent\textbf{C5 --- A tested, Dockerised deployment.}
-A multi-service stack (FastAPI backend, Next.js~14 frontend, PostgreSQL~15,
-Qdrant, Redis, Ollama) with authentication, an 11-table PostgreSQL schema,
-audit logging, and bilingual report generation, backed by a real,
-repeatedly-run test suite (see Chapter~\ref{chap:evaluation} for the exact,
-current test count).
-
-% ------------------------------------------------------------
 \section{Scope and Limitations}
 \label{sec:scope}
-% ------------------------------------------------------------
 
-The empirical validation is scoped to the LFS in a multilingual context
-where English, Arabic (MSA and Gulf dialect), Urdu, Hindi, and Tagalog are
-all in regular use.
+The scope is a text-based research prototype with UAE-oriented fields,
+not a representative national LFS or an approved replacement for an
+official collection system. Sampling design, population weighting, and
+estimation of national labour-market indicators are outside the study.
+The implemented questionnaire paths and rules require further review
+before claims of full compliance with official survey standards can be
+made.
 
-The Person Register integration uses data from previous, real survey
-sessions stored in the system's own database, plus a separate,
-statistically-sampled synthetic dataset used specifically to stress-test
-pre-fill logic (\texttt{eval/synthetic\_person\_register\_stress\_test.py}).
-Live integration with any national identity authority register is outside
-this project's scope.
+External occupation evidence comes from WISCO and does not represent
+the intended UAE respondent population or natural conversational responses
+in the five interface languages.
+ISIC and ISCED-F evaluation relies on taxonomy-grounded synthetic data,
+and their indexed catalogues have incomplete coverage. Coverage also
+varies by catalogue profile because non-standard legacy entries are
+excluded from enriched collections. Chapter~\ref{chap:architecture}
+reports the relevant inventories, and Chapter~\ref{chap:evaluation}
+specifies the denominators and applicability of each evaluation.
 
-The ISIC Rev.~4 classifier's live-indexed catalogue currently covers 134 of
-419 official 4-digit classes, and the ISCED-F~2013 classifier covers 63 of
-approximately 80 detailed fields; both figures are stated exactly, not
-approximated, and full coverage of the remaining classes was not completed
-in this project. No labelled, real-respondent evaluation dataset exists for
-either ISIC or ISCED-F --- WISCO, the benchmark behind this thesis's ISCO-08
-results, is occupation-only. A taxonomy-grounded synthetic benchmark was
-built as a documented, disclosed partial substitute (see
-Chapter~\ref{chap:evaluation}); it is explicitly not equivalent to
-real-respondent validation.
+The Person Register reuses records from this application's database.
+Integration with a national identity or administrative register is
+outside the scope. Functional checks of pre-fill do not measure
+respondents' willingness to confirm stored answers or the resulting
+measurement error. Similarly, classification confidence thresholds and
+SRE severity rules have not been established as calibrated measures of
+risk on representative respondent data.
 
-\textbf{The randomised pilot study (n=30) had not been submitted for ethics
-approval as of the writing of this thesis.} No pilot data exists. Any
-discussion of the pilot in this thesis (Chapter~\ref{chap:evaluation})
-describes the planned protocol, not completed work or results.
+A separate synthetic operational run includes 30 scripted English
+interviews. It measures system execution and processing time, not human
+completion time, satisfaction, or participation. The planned randomised
+study with human respondents was not conducted. Accordingly, this thesis
+does not establish reductions in respondent burden or collection cost,
+non-inferiority to interviewer administration, or population-level
+fairness. Ethics approval, recruitment, native-speaker review, independent
+coding, and an appropriately justified analysis plan are prerequisites
+for those assessments.
 
-% ------------------------------------------------------------
 \section{Thesis Organisation}
 \label{sec:organisation}
-% ------------------------------------------------------------
 
-\noindent\textbf{Chapter~\ref{chap:relatedwork}} surveys related research areas and
-positions the Semantic Relation Engine within prior literature on automated
-occupation coding, RAG, multilingual NLP, and AI in official statistics.
-
-\noindent\textbf{Chapter~\ref{chap:architecture}} presents the CrewAI-based
-architecture, the conversation FSM, the ISCO-08 retrieval pipelines (both
-hierarchical and flat), the ISIC Rev.~4 and ISCED classifiers, and the
-Semantic Relation Engine, sourced directly from the live implementation.
-
-\noindent\textbf{Chapter~\ref{chap:implementation}} describes the Docker
-deployment, the PostgreSQL schema, Qdrant vector collections, Arabic dialect
-normalisation, the deterministic consistency rules, and the bilingual
-Next.js frontend.
-
-\noindent\textbf{Chapter~\ref{chap:evaluation}} specifies the evaluation
-methodology actually used: the WISCO external ISCO-08 benchmark, the
-synthetic ISIC/ISCED-F benchmark and its documented limitations, and the
-planned (not yet executed) pilot study protocol.
-
-\noindent\textbf{Chapter~\ref{chap:results}} reports the real, measured
-results against each objective, stating plainly which were met, which were
-partially met, and which remain open.
-
-\noindent\textbf{Chapter~\ref{chap:conclusion}} synthesises contributions,
-limitations, and future research directions.
+Chapter~\ref{chap:relatedwork} reviews occupation coding, retrieval,
+multilingual processing, and survey-system integration, then maps the
+research gaps to the questions above.
+Chapter~\ref{chap:architecture} presents the system architecture,
+questionnaire controller, classifiers, and coherence rules.
+Chapter~\ref{chap:implementation} describes the implementation and
+functional checks.
+Chapter~\ref{chap:evaluation} specifies the datasets, comparisons,
+statistical methods, and the proposed human-study protocol.
+Chapter~\ref{chap:results} reports the measured outcomes and their validity
+limits.
+Chapter~\ref{chap:conclusion} discusses the contributions, remaining gaps,
+and directions for further research.

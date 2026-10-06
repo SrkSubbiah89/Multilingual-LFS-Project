@@ -1,173 +1,123 @@
-% ============================================================
-%  System Architecture Diagram — corrected 2026-08-28
-%  Rebuilt against verified facts: 13 real agent-constructing modules
-%  (not 10), no CrewAI hierarchical process (removed -- none exists in
-%  this codebase), real LLM tiers (GENERAL/CRITICAL, not GPT-4o/Llama
-%  3.1 70B, neither of which is used anywhere in this project), and
-%  storage limited to what is actually verified (PostgreSQL, Qdrant,
-%  Redis -- no MinIO/S3 claimed without verification).
-% ============================================================
+% Architecture diagram: live path and experimental components.
 \begin{figure}[p]
 \centering
+\begin{singlespace}
+\resizebox{0.87\textwidth}{!}{%
+\begin{tikzpicture}[
+  every node/.style={outer sep=0pt,font=\sffamily\footnotesize},
+  wide/.style={draw,align=center,text width=12.7cm,
+               minimum width=13.1cm,inner sep=2mm,minimum height=0.9cm},
+  cell/.style={draw,align=center,text width=3.7cm,
+               minimum width=4.1cm,inner sep=2mm,minimum height=1.2cm},
+  half/.style={draw,align=center,text width=5.7cm,
+               minimum width=6.1cm,inner sep=2mm,minimum height=1.0cm},
+  link/.style={->,thick}
+]
 
-\tikzset{
-  titlebar/.style={
-    draw=black, fill=black, text=white,
-    minimum width=14.10cm, minimum height=0.65cm,
-    align=center, font=\sffamily\bfseries\footnotesize,
-    inner sep=0pt
-  },
-  fullbar/.style={
-    draw=black, fill=white,
-    minimum width=14.10cm, minimum height=0.80cm,
-    align=center, font=\sffamily\scriptsize,
-    inner sep=3pt
-  },
-  shadebar/.style={
-    draw=black, fill=gray!15,
-    minimum width=14.10cm, minimum height=0.60cm,
-    align=center, font=\sffamily\bfseries\scriptsize,
-    inner sep=0pt
-  },
-  agentcell/.style={
-    draw=black, fill=white,
-    minimum width=4.55cm, minimum height=1.55cm,
-    align=center, inner sep=4pt,
-    font=\sffamily\scriptsize
-  },
-  dbcell/.style={
-    draw=black, fill=gray!10,
-    minimum width=4.55cm, minimum height=1.05cm,
-    align=center, inner sep=4pt,
-    font=\sffamily\scriptsize
-  },
+\node[wide,fill=black,text=white,minimum height=0.65cm,
+      anchor=north] (title) at (0,0)
+  {\textbf{MULTILINGUAL CONVERSATIONAL LFS PROTOTYPE}};
+
+\node[wide,below=4mm of title] (ui)
+  {\textbf{Next.js interface}\\
+   Login \quad Chat \quad Bilingual report \quad Human-review dashboard};
+
+\node[wide,fill=gray!12,below=5mm of ui] (api)
+  {\textbf{FastAPI: authentication and survey routes}\\
+   JWT, session ownership, responses, message handling, reports, HITL endpoints};
+
+\node[wide,below=5mm of api] (flow)
+  {\textbf{Direct orchestration in the live survey route}\\
+   Language and entity processing; ConversationManager state and field ordering};
+
+\node[cell,below=5mm of flow] (ind)
+  {\textbf{ISICClassifier}\\
+   Economic activity\\
+   Legacy and selectable retrieval methods};
+
+\node[cell,anchor=north,xshift=-4.5cm] (occ) at (ind.north)
+  {\textbf{ISCOClassifier}\\
+   Occupation retrieval and optional reranking\\
+   Live default: legacy, hierarchical};
+
+\node[cell,anchor=north,xshift=4.5cm] (edu) at (ind.north)
+  {\textbf{ISCEDClassifier}\\
+   Education level and field\\
+   Legacy and selectable retrieval methods};
+
+\node[fit=(occ)(ind)(edu),inner sep=0pt] (classificationrow) {};
+
+\node[wide,fill=gray!12,below=5mm of classificationrow] (quality)
+  {\textbf{Consistency and quality assessment}\\
+   SemanticRelationEngine: ISCO--ISIC section--ISCED level\\
+   ValidationAgent \quad HITLQualityManager \quad Review queue};
+
+\node[half,anchor=north,yshift=-5mm,xshift=-3.5cm]
+  (report) at (quality.south)
+  {\textbf{Completed-session output}\\
+   ReportGenerator, cached EN/AR report\\
+   Classification and coherence enrichment};
+
+\node[half,anchor=north,xshift=7cm] (support) at (report.north)
+  {\textbf{Session support and helpers}\\
+   ContextMemory, AuditLogger, emotional support\\
+   Nationality classification and prefill};
+
+\node[fit=(report)(support),inner sep=0pt] (supportrow) {};
+
+\node[wide,below=5mm of supportrow] (llm)
+  {\textbf{Configurable model routing}\\
+   GENERAL: local Ollama, then configured cloud fallbacks\\
+   CRITICAL: configured Claude model; strict pins available for experiments};
+
+\node[cell,fill=gray!10,below=5mm of llm] (qdrant)
+  {\textbf{Qdrant}\\
+   Profile-specific collections\\
+   Small/large, title/enriched options};
+
+\node[cell,fill=gray!10,anchor=north,xshift=-4.5cm] (pg) at (qdrant.north)
+  {\textbf{PostgreSQL}\\
+   Eleven declared tables\\
+   Survey, review, report, audit records};
+
+\node[cell,fill=gray!10,anchor=north,xshift=4.5cm] (redis) at (qdrant.north)
+  {\textbf{Redis}\\
+   Session context and shared limits\\
+   Context storage may degrade on failure};
+
+\node[fit=(pg)(qdrant)(redis),inner sep=0pt] (storagerow) {};
+
+\node[wide,dashed,fill=gray!5,below=5mm of storagerow,
+      minimum height=1.25cm] (experimental)
+  {\textbf{Optional and experimental components}\\
+   QueryPlanner and cross-standard coordination require explicit options.\\
+   HierarchicalClassificationCrew implements manager delegation separately from
+   the live route; RAGExpert is a reusable helper.};
+
+\draw[link] (ui.south) -- (api.north);
+\draw[link] (api.south) -- (flow.north);
+\path (flow.south) -- (classificationrow.north)
+  coordinate[midway] (classbranch);
+\draw[link] (flow.south) -- (classbranch) -| (occ.north);
+\draw[link] (flow.south) -- (ind.north);
+\draw[link] (flow.south) -- (classbranch) -| (edu.north);
+\path (classificationrow.south) -- (quality.north)
+  coordinate[midway] (classmerge);
+\draw[thick] (occ.south) |- (classmerge);
+\draw[thick] (ind.south) -- (classmerge);
+\draw[thick] (edu.south) |- (classmerge);
+\draw[link] (classmerge) -- (quality.north);
+\path (quality.south) -- (supportrow.north)
+  coordinate[midway] (supportbranch);
+\draw[link] (quality.south) -- (supportbranch) -| (report.north);
+\draw[link] (quality.south) -- (supportbranch) -| (support.north);
+
+\end{tikzpicture}%
 }
-
-\begin{tikzpicture}[every node/.style={outer sep=0pt}]
-
-\def\xL{2.275}
-\def\xM{7.050}
-\def\xR{11.825}
-
-%% Title
-\node[titlebar, anchor=north west] at (0, 0)
-  {CONVERSATIONAL AGENTIC SYSTEM FOR LFS (13 AGENT-CONSTRUCTING MODULES)};
-
-%% UI Layer
-\node[fullbar, anchor=north west] at (0, -0.65cm)
-  {\textbf{USER INTERFACE LAYER}\\[-2pt]
-   {\tiny Next.js~14 --- 4 pages: /, /chat, /report, /supervisor\_review (all confirmed live)}};
-
-%% API layer -- no orchestrator agent, no hierarchical process
-\node[shadebar, anchor=north west] at (0, -1.45cm)
-  {FASTAPI API LAYER (backend/api/survey\_routes.py) --- 20 routes; DIRECT invocation, NO orchestrator agent, NO CrewAI hierarchical process};
-
-%% Specialist agents header
-\node[shadebar, anchor=north west] at (0, -2.05cm)
-  {13 AGENT-CONSTRUCTING MODULES (backend/agents/), each allow\_delegation=False};
-
-%% Row 1: 3 modules
-\node[agentcell, anchor=north west] at (0, -2.65cm)
-  {\textbf{language\_processor}\\[2pt]
-   Language detect, Gulf-dialect\\normalisation (79-rule dict), NER\\[2pt]
-   {\tiny TaskType.GENERAL}};
-
-\node[agentcell, anchor=north west] at (4.775cm, -2.65cm)
-  {\textbf{conversation\_manager}\\[2pt]
-   Conversation flow,\\field ordering, skip gates\\[2pt]
-   {\tiny TaskType.GENERAL}};
-
-\node[agentcell, anchor=north west] at (9.55cm, -2.65cm)
-  {\textbf{isco\_classifier}\\[2pt]
-   ISCO-08: hierarchical AND\\flat retrieval (flat = best-tested)\\[2pt]
-   {\tiny GENERAL/CRITICAL}};
-
-%% Row 2: 3 modules
-\node[agentcell, anchor=north west] at (0, -4.20cm)
-  {\textbf{isic\_classifier}\\[2pt]
-   ISIC Rev.4: keyword/LLM\\legacy + hierarchical/flat retrieval\\[2pt]
-   {\tiny GENERAL/CRITICAL}};
-
-\node[agentcell, anchor=north west] at (4.775cm, -4.20cm)
-  {\textbf{isced\_classifier}\\[2pt]
-   ISCED level + ISCED-F field,\\same retrieval parity as ISIC\\[2pt]
-   {\tiny GENERAL/CRITICAL}};
-
-\node[agentcell, anchor=north west] at (9.55cm, -4.20cm)
-  {\textbf{semantic\_relation}\\[2pt]
-   Semantic Relation Engine:\\hand-built crosswalk, not ILO-sourced\\[2pt]
-   {\tiny Deterministic + optional LLM}};
-
-%% Row 3: 3 modules
-\node[agentcell, anchor=north west] at (0, -5.75cm)
-  {\textbf{validation\_agent}\\[2pt]
-   Rules R01--R10\\(hours/status consistency)\\[2pt]
-   {\tiny TaskType.GENERAL}};
-
-\node[agentcell, anchor=north west] at (4.775cm, -5.75cm)
-  {\textbf{hitl\_quality\_manager}\\[2pt]
-   Quality scoring, escalation,\\independent thresholds\\[2pt]
-   {\tiny TaskType.GENERAL}};
-
-\node[agentcell, anchor=north west] at (9.55cm, -5.75cm)
-  {\textbf{report\_generator}\\[2pt]
-   Employment report,\\ISIC/ISCED/SRE enrichment\\[2pt]
-   {\tiny GENERAL/CRITICAL}};
-
-%% Row 4: 3 modules
-\node[agentcell, anchor=north west] at (0, -7.30cm)
-  {\textbf{emotional\_intelligence}\\[2pt]
-   Engagement / abandonment\\risk signal\\[2pt]
-   {\tiny TaskType.GENERAL}};
-
-\node[agentcell, anchor=north west] at (4.775cm, -7.30cm)
-  {\textbf{audit\_logger}\\[2pt]
-   Audit-trail logging\\[2pt]
-   {\tiny Deterministic}};
-
-\node[agentcell, anchor=north west] at (9.55cm, -7.30cm)
-  {\textbf{context\_memory}\\[2pt]
-   Session context\\management\\[2pt]
-   {\tiny See Ch.3 verify-against-code note}};
-
-%% Row 5: 1 module + note
-\node[agentcell, anchor=north west] at (0, -8.85cm)
-  {\textbf{rag\_expert}\\[2pt]
-   Multi-classification\\RAG helper\\[2pt]
-   {\tiny See Ch.3 verify-against-code note}};
-
-\node[fullbar, anchor=north west, minimum height=1.55cm, align=left] at (4.775cm, -8.85cm)
-  {\tiny \textbf{Real, used, NOT agent-constructing:}\\
-   nationality\_classifier.py, person\_register.py (deterministic\\
-   pre-fill), isco\_reranker\_strict.py, classifier\_methods.py,\\
-   method\_registry.py. No survey\_orchestrator.py exists.};
-
-%% LLM tiers -- real
-\node[shadebar, anchor=north west] at (0, -10.40cm)
-  {LLM ROUTING (backend/llm/llm\_client.py) --- TaskType.GENERAL and TaskType.CRITICAL only};
-
-\node[fullbar, anchor=north west] at (0, -11.00cm)
-  {\textbf{GENERAL:} Ollama/Llama~3.2 $\to$ (fallback) Claude~3.5~Sonnet $\to$ Gemini $\to$ Groq $\to$ OpenRouter
-   \quad\textbar\quad
-   \textbf{CRITICAL:} Claude~3.5~Sonnet only, NO fallback (blocked by zero usable credit throughout evaluation)};
-
-%% Storage row -- verified only
-\node[dbcell, anchor=north west] at (0, -11.80cm)
-  {\textbf{Vector DB}\\[3pt]
-   {\small Qdrant --- 43 live collections}};
-
-\node[dbcell, anchor=north west] at (4.775cm, -11.80cm)
-  {\textbf{Relational DB}\\[3pt]
-   {\small PostgreSQL 15 --- 11 tables}};
-
-\node[dbcell, anchor=north west] at (9.55cm, -11.80cm)
-  {\textbf{Cache}\\[3pt]
-   {\small Redis}};
-
-\end{tikzpicture}
-
-\caption{System architecture, corrected against the live implementation:
-13 real agent-constructing modules, direct API-layer orchestration (no
-CrewAI hierarchical process), and the real two-tier LLM routing design.}
+\end{singlespace}
+\caption[System architecture and principal data paths.]{Implemented component
+boundaries and principal data paths. The live API uses direct orchestration;
+experimental CrewAI delegation is separate. Connections represent logical
+dependencies. Chapter~\ref{chap:implementation} describes operational limitations.}
 \label{fig:system-architecture}
 \end{figure}

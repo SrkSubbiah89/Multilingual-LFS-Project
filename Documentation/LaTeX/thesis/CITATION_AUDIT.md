@@ -1,95 +1,54 @@
-# Citation Audit — `bib.bib`
+# Citation and claim audit — 3 October 2026
 
-Full audit performed 2026-08-29 via direct web search (`WebSearch` tool),
-one citation at a time, checking author names, exact title, venue, year,
-and (where given) arXiv ID against what the search actually returns.
-Every correction below is also noted inline in `bib.bib` itself, next to
-the entry it applies to — this file is the consolidated summary.
+The active bibliography contains **23 cited references**, checked against publisher, author, repository, or standards-body records. This audit supersedes CITATION_AUDIT_2026-08-29_ARCHIVE.md, which contains erroneous identities and claims. The archive is historical; the preceding bibliography is in bib_ORIGINAL_UNVERIFIED.bib.
 
-**Why this was necessary**: this project's own `CLAUDE.md` already
-documents finding fabricated citations once before (a claimed 2026 IEEE
-Access paper, a claimed "Digital Dubai synthetic LFS pilot" study — neither
-ever existed). The thesis draft's `bib.bib` had ~40 entries with the same
-generic "surname+year+topic" shape that made those earlier fabrications
-plausible-looking, so none of it was trusted without checking.
+Identity verification is distinct from proving this thesis's findings. Related-work descriptions were checked against the relevant primary sources. Preprints, documentation, and the WISCO dataset are identified by their publication type.
 
-## Could not be matched to any real paper — removed from every citation
+## Material corrections
 
-These three were searched extensively (multiple query variants: author
-names, exact title, claimed venue, and combinations) and no matching real
-paper was found. Commented out in `bib.bib` with the full search trail
-noted there; no `\cite{}` to any of these remains anywhere in the
-corrected chapters.
-
-| Key | Claimed | What was actually found |
-|---|---|---|
-| `bach2025rag` | Bach, Küchenhoff, Schierholz — "RAG for Occupation Coding: Evaluation on German Labour Force Data", *Journal of Official Statistics* 41(2), 2025 | Real Schierholz papers on German occupation coding exist (2016–2020, pre-LLM, non-RAG) — nothing matching this specific claim |
-| `hamed2025isco` | Hamed et al. — "Automated ISCO-08 Occupation Coding Using RAG for Multilingual Survey Data", *Journal of Official Statistics*, 2025 | Injy Hamed is a real Arabic-NLP researcher (confirmed via a different, real paper — see `hamed2025codeswitching` below) but nothing under her name matches this ISCO-08/RAG claim |
-| `liu2025agenteval` | Liu et al. — "A Comprehensive Survey of LLM Agent Evaluation", ACM SIGKDD (KDD) 2025 | Closest real match: "A Survey on Evaluation of LLM-based Agents" (arXiv:2503.16416, 2026) — no confirmed "Liu" author, different venue/year; not used as a substitute |
-
-## Real papers, cited with a real error — corrected in `bib.bib`
-
-| Key | What was wrong | Corrected to |
-|---|---|---|
-| `chaita2025ragsurvey` | Author "Chaita, L." doesn't exist | Real sole author: Chaitanya Sharma (`Sharma, C.`) — "Chaita" appears to be the first name "Chaitanya" misread as a surname |
-| `mao2025multilingual` | First author "Mao, R." wrong | Real first author: Kaiyu Huang (`Huang, K.`) |
-| `liu2025mllmsurvey` | First author "Liu, L." wrong | Real first author: Libo Qin (`Qin, L.`) |
-| `anon2024cswnli` | Falsely marked `{Anonymous}`; wrong year (2024) | Real named authors (Abdaljalil, Serpedin, Qaraqe, Kurban); real year 2025; title corrected to include "Synthetic" |
-| `anon2025llm4jobs` | Falsely marked `{Anonymous}` | Real authors: Li, N., Kang, B., De Bie, T. |
-| `eyolfson2026mas` | Wrong title entirely (real title has nothing to do with "CrewAI, LangChain, and AutoGen" in its title) | Real title: "A Large-Scale Study on the Development and Issues of Multi-Agent AI Systems" — confirmed same paper via matching statistics (4,700+ issues, 40.8% perfective commits) |
-| `liu2025agenticai` | Author "Liu, Y." wrong — no Liu in the real author list | Real authors: Mohamad Abou Ali, Fadi Dornaika |
-| `serenari2025lopsided` | Title used the framework's internal name ("LOPSIDED: ...") as if it were the paper's actual title; author initial wrong | Real title: "Semantically-Aware LLM Agent to Enhance Privacy in Conversational AI Services"; real first author Jayden Serenari |
-| `gupta2025civ` | Wrong title (same paper, confirmed via matching stats: 0% attack success, 93.1% token similarity) | Real title: "Can AI Keep a Secret? Contextual Integrity Verification: A Provable Security Architecture for LLMs" |
-| `chen2025srl` | Author initial "Z." wrong; title wording differs | Real first author: Huiyao Chen (`Chen, H.`); real title: "A Systematic Survey of Semantic Role Labeling in the Era of Pretrained Language Models" |
-| `zhou2025llmdata` | Title doesn't match the real paper at this arXiv ID | Real title: "A Survey of LLM × DATA" |
-| `zhang2025synthetic` | Author initial "Y." wrong; title/subtitle differs | Real authors: Zhang, G., He, Y., Oganian, A., Cai, B.; real title uses "the Research and Development Survey... A Comparison Study", published in *Vital and Health Statistics*, Series 2, No. 212 |
-| `hamed2025codeswitching` | Title wrongly merged with a *different* real paper's title ("Beyond Monolingual Assumptions..." belongs to `multiauth2026cswnlp`, not this one) | Real title: "A Survey of Code-switched Arabic NLP: Progress, Challenges, and Future Directions", COLING 2025, pp. 4561–4585; full real author list confirmed (Hamed, Sabty, Abdennadher, Vu, Solorio, Habash) |
-| `crewai2024` | Note field stated "Version~0.60" | Corrected to 1.9.3 — this exact error is also already documented and corrected in this project's own `CLAUDE.md` |
-
-## Unresolved, not fabricated — flagged rather than guessed
-
-| Key | Issue |
+| Previous problem | Current treatment |
 |---|---|
-| `reimann2025conveval` | The claimed arXiv ID (2505.08253) belongs to a confirmed *different* real paper (Miller & Tang, "Evaluating LLM Metrics Through Real-World Capabilities"). A real "Reimann et al." source describing a coherence/accuracy/clarity/relevance/efficiency framework may exist — referenced secondhand, dated 2023, in at least one other paper found during this audit — but was not independently located at a specific venue. Commented out in `bib.bib` rather than cited with a wrong ID. |
-| `eyolfson2026mas` author | The real title was found and corrected (above), but the specific author "Eyolfson, J." was not independently confirmed against the real paper's actual author list in this pass — kept provisionally, flagged for a follow-up check. |
+| SOCbot's identity/year and false claim that it lacks RAG | Cite Patrick Sturgis, Thomas S. Robinson, Laura Fung, and Caroline Roberts, **2026**, using the published title and DOI. It combines retrieval with dynamic probes. The historical internal key is retained to avoid breaking citations. |
+| Incorrect IEA attribution and method descriptions | Cite Daniel Duckworth and Julian Fraillon, April 2024; describe the actual occupation-coding work. |
+| ISCO Volume II labelled as group definitions | Use Volume I for structure, definitions, and correspondence to ISCO-88; remove the inaccurate duplicate. |
+| Missing sources for ISIC, ISCED-F, labour-force definitions, WISCO, E5 and statistics | Add official standards, primary dataset/model sources, and statistical-method papers. |
+| CAPI described as unable to validate or offer multilingual questionnaires | Correct using World Bank Survey Solutions documentation. |
+| Bibliographic notes containing project comparisons and unverified limitations | Remove these assertions from bibliography notes. |
+| Stump entry pointing to an unrelated arXiv record | Remove from active related work; do not treat the unrelated paper as evidence for the former claim. |
+| Other off-topic or uncited entries | Remove from the active bibliography; removal does not imply the source does not exist. |
 
-## Real "wrong claim attached" issue — not a citation-existence problem
+## Retained primary sources
 
-`zhang2025synthetic` is a real paper (corrected above), but its actual
-content is a synthetic-survey-**data-generation methods** comparison
-(parametric vs. nonparametric approaches for one specific NCHS survey) —
-it does **not** support general claims about ILO/OECD global labour
-statistics scale, item-nonresponse rates, or field-collection cost, which
-an earlier draft of Chapter 1 had attached it to. Those claims were
-de-cited (left as general, unsourced statements) rather than kept
-misattributed to a real paper that doesn't actually say them. This is
-flagged separately because it's a different failure mode from a fabricated
-citation: a real source, attached to a claim it doesn't support.
+| Key | Verified identity / primary record |
+|---|---|
+| ilo2012isco_v1 | International Labour Office (2012), ISCO-08 Volume I. [ILO publication](https://www.ilo.org/publications/international-standard-classification-occupations-2008-isco-08-structure). |
+| ilo2013workstats | ILO (2013), resolution concerning statistics of work, employment and labour underutilization. [ILO resolution](https://www.ilo.org/resource/resolution-concerning-statistics-work-employment-and-labour-0). |
+| unsd2008isic | UN Statistics Division (2008), ISIC Revision 4. [Official publication](https://unstats.un.org/unsd/classifications/Econ/Download/In%20Text/ISIC_Rev_4_publication_English.pdf). |
+| unesco2012isced | UNESCO UIS (2012), ISCED 2011. [Official publication](https://uis.unesco.org/sites/default/files/documents/international-standard-classification-of-education-isced-2011-en.pdf). |
+| unesco2015iscedf | UNESCO UIS (2015), ISCED-F 2013 detailed field descriptions. [Official publication](https://www.uis.unesco.org/sites/default/files/medias/fichiers/2025/04/international-standard-classification-of-education-fields-of-education-and-training-2013-detailed-field-descriptions-2015-en.pdf). |
+| schierholz2016interview | Schierholz, Gensicke and Tschersich (2016), Occupation Coding During the Interview, IAB Discussion Paper 17/2016. [IAB paper](https://doku.iab.de/discussionpapers/2016/dp1716.pdf). |
+| kochar2025socbot | Sturgis, Robinson, Fung and Roberts (2026), SOCbot: Using Large Language Models to Dynamically Measure and Classify Occupations in Surveys. [Published article](https://journals.sagepub.com/doi/10.1177/00491241261461516). |
+| anon2025llm4jobs | Nan Li, Bo Kang and Tijl De Bie (2025), LLM4Jobs, Knowledge-Based Systems 316, 113302. [Publisher DOI](https://doi.org/10.1016/j.knosys.2025.113302). The internal key does not imply anonymous authorship. |
+| iea2024occupationcoding | Duckworth and Fraillon (2024), Improving Parental Occupation Coding Procedures with AI. [IEA report](https://www.iea.nl/sites/default/files/2024-09/Improving-Parental-Occupation-Coding-Procedures-AI.pdf). |
+| wisco2023 | Kea Tijdens (2023), WISCO multilingual occupational-title dataset. [Dataset record](https://zenodo.org/records/8262593). |
+| worldbank2016surveysolutionsvalidation | World Bank, Survey Solutions general component properties. [Documentation](https://docs.mysurvey.solutions/questionnaire-designer/general-component-properties/). |
+| worldbank2026surveysolutionslanguages | World Bank, Survey Solutions multilingual questionnaires; publication date unspecified, accessed 3 October 2026. [Documentation](https://docs.mysurvey.solutions/questionnaire-designer/toolbar/multilingual-questionnaires/). |
+| lewis2020rag | Lewis et al. (2020), Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks, NeurIPS 33. [Proceedings](https://proceedings.neurips.cc/paper/2020/hash/6b493230205f780e1bc26945df7481e5-Abstract.html). |
+| wang2024multilinguale5 | Wang, Yang, Huang, Yang, Majumder and Wei (2024), Multilingual E5 Text Embeddings: A Technical Report. [Primary preprint](https://arxiv.org/abs/2402.05672). |
+| gao2024ragsurvey | Gao et al., Retrieval-Augmented Generation for Large Language Models: A Survey, arXiv 2312.10997, cited revision 2024. [Primary preprint](https://arxiv.org/abs/2312.10997). |
+| arag2026hierarchical | Du et al. (2026), A-RAG: Scaling Agentic Retrieval-Augmented Generation via Hierarchical Retrieval Interfaces. [Primary preprint](https://arxiv.org/abs/2602.03442). |
+| guo2024multiagent | Guo et al. (2024), Large Language Model Based Multi-agents: A Survey of Progress and Challenges, IJCAI-24, 8048–8057. [Proceedings](https://www.ijcai.org/proceedings/2024/890). |
+| crewai2024 | CrewAI documentation, accessed 3 October 2026; application pin 1.9.3. [Official documentation](https://docs.crewai.com/). Historical key does not assert a 2024 publication date. |
+| hamed2025codeswitching | Hamed, Sabty, Abdennadher, Vu, Solorio and Habash (2025), A Survey of Code-switched Arabic NLP, COLING, 4561–4585. [ACL Anthology](https://aclanthology.org/2025.coling-main.307/). |
+| wilson1927 | Edwin B. Wilson (1927), JASA 22(158), 209–212. [Publisher record](https://doi.org/10.1080/01621459.1927.10502953). |
+| mcnemar1947 | Quinn McNemar (1947), Psychometrika 12(2), 153–157. [Publisher record](https://link.springer.com/article/10.1007/BF02295996). |
+| wasserstein2016 | Ronald L. Wasserstein and Nicole A. Lazar (2016), ASA statement, The American Statistician 70(2), 129–133. [Publisher record](https://doi.org/10.1080/00031305.2016.1154108). |
+| cawley2010 | Gavin C. Cawley and Nicola L. C. Talbot (2010), JMLR 11(70), 2079–2107. [Journal record](https://www.jmlr.org/papers/v11/cawley10a.html). |
 
-## Confirmed accurate as originally cited (no changes needed)
+## Claim boundaries
 
-`oloumi2026onet`, `santana2026ethics`, `teeselink2026automation`,
-`kochar2025socbot` (note: the bib key implies an author "Kochar" who
-doesn't exist in the real author list — Sturgis, Robinson, Fung, Roberts —
-but the entry's actual `author` field is correct; only the BibTeX *key
-name* is misleading, not the content), `rony2025socclassifier` (minor: bib
-lists "Rony, S. and others", real second author is Jack Patman),
-`iea2024occupationcoding`, `arag2026hierarchical`, `singh2025agentic`,
-`nguyen2025marag`, `multiauth2025ragreview`, `gupta2024ragevo`,
-`multiauth2026cswnlp`, `alzubaidi2025arabic`, `multiauth2025mlprompt`,
-`tran2025multiagent` (minor: real first name Khanh-Tung, not initial
-"M."), `guo2024multiagent`, `khanna2025knowledge`, `stump2025embedding`
-(minor title wording, corrected anyway), `huang2025ragrl`,
-`zhang2025hallucination` (minor: "on" not "of" in title, corrected
-anyway), `zhao2024explainability`, `gao2024ragsurvey`, `yoo2025cscl`
-(minor title wording), `ilo2012isco_v1`, `ilo2012isco_v2`,
-`unesco2012isced`, `anthropic2024claude`.
+The thesis makes an engineering integration contribution and reports recorded experiments. It does not claim to be the first conversational occupation coder, the first use of RAG for coding, or the first multilingual survey software. No systematic search proving global absence of prior work was conducted.
 
-## What this audit does not cover
+Occupation–industry–attainment plausibility tables are project-authored rules; classification-standard references do not make them an official crosswalk. The coherence score is not empirically calibrated. Human-study, language, fairness, privacy, and deployment claims require their own evidence.
 
-Every citation's *existence and basic accuracy* was checked. This audit
-did **not** re-verify every specific numeric claim each cited paper is
-used to support in the corrected chapters (e.g. whether "Bach et al.
-reaches ~80% top-1 accuracy" — for the *real* papers that report specific
-numbers, those numbers were spot-checked where flagged in the chapter text
-but not exhaustively re-derived for every citation).
+verify_thesis.py checks that active citations resolve and bibliography keys are unique. Resolving a key alone is not scholarly verification.
