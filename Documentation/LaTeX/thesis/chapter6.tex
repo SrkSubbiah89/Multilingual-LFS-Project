@@ -316,10 +316,60 @@ Overall & 20/60 (33.3\%) & 32/60 (53.3\%) \\
 \end{table}
 
 Thirteen records change from incorrect to correct and one changes in the
-opposite direction ($p=0.00183$). This 20.0-point improvement motivates
+opposite direction ($p=0.00183$). This 20.0-point improvement motivated
 further testing. The full-partition translated evaluation did not complete;
-the result remains exploratory. Translation is an optional classifier
+that result remains exploratory. Translation is an optional classifier
 setting and is not enabled in the live API's default configuration.
+
+That further test was then carried out against the served
+fragment-to-parent configuration (Section~\ref{sec:res-parent-document}),
+on a larger sample and a different retrieval method. Its design was
+recorded before the run: development cases only, 400 records stratified as
+100 per non-English language with a fixed seed, both arms scoring the
+identical records with the identical classifier so that only the text
+reaching the encoder differs, and no production change on any outcome.
+
+\begin{table}[htbp]
+\centering
+\caption{Query translation against the served configuration, 400
+development records. $b$ and $c$ are the paired discordant counts
+(original-only and translation-only correct); $p$ is the nominal exact
+two-sided McNemar probability.}
+\label{tab:ch6-translation-served}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrrrrr}
+\toprule
+\textbf{Language} & \textbf{$n$} & \textbf{Original} & \textbf{Translated}
+& \textbf{$\Delta$} & \textbf{$b$ / $c$} & \textbf{$p$} \\
+\midrule
+Arabic  & 100 & 32 & 43 & $+11$ & 12 / 23 & 0.089 \\
+Hindi   & 100 & 37 & 36 & $-1$  & 15 / 14 & 1.000 \\
+Tagalog & 100 & 23 & 21 & $-2$  & 12 / 10 & 0.832 \\
+Urdu    & 100 & 34 & 28 & $-6$  & 11 / 5  & 0.210 \\
+\midrule
+Overall & 400 & 126 (31.50\%) & 128 (32.00\%) & $+0.50$ pp & 50 / 52 & 0.921 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{The 20.0-point exploratory result did not replicate.} In aggregate
+the translated arm is indistinguishable from the original
+($+0.50$ percentage points, $p=0.921$), so no translation gain is claimed
+for this configuration and the setting remains disabled.
+
+The per-language columns, however, show why the aggregate is flat: Arabic
+gains 11 records while Urdu loses 6 and Hindi and Tagalog are unchanged
+within noise, so the languages cancel. Arabic is the only arm approaching
+conventional significance ($p=0.089$ on 35 discordant pairs) and it moves
+in the direction the earlier sample predicted, but it does not reach it and
+is not reported as an improvement. The methodological point is that an
+intervention can be selective by language and still average to zero;
+reporting only a pooled figure would have concealed the entire effect.
+The original arm's 31.50\% is consistent with this configuration's recorded
+per-language accuracy for these four languages, so the sample is not
+anomalous --- it excludes English, which is this configuration's strongest
+language. Per-case outputs are retained locally but not published, since
+they embed benchmark text and gold labels.
 
 \section{Multi-Standard Classification and Coherence (RQ2)}
 \label{sec:res-isic-isced}

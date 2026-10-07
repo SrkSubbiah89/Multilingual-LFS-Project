@@ -1,0 +1,77 @@
+{
+  "created_at_utc": "2026-10-07T03:47:27.884636+00:00",
+  "design": {
+    "experiment": "Query translation before fragment-to-parent retrieval",
+    "status": "development_preview_not_a_promotion",
+    "split": "development",
+    "heldout_accessed": false,
+    "sample": "100 cases per language, stratified over ['ar', 'hi', 'tl', 'ur'], seed 42",
+    "arms": [
+      "control: respondent text unchanged",
+      "candidate: text translated to English"
+    ],
+    "metric": "top-1 exact four-digit ISCO-08 match, paired on identical cases",
+    "test": "exact two-sided McNemar on discordant pairs",
+    "production_change_on_any_outcome": false,
+    "declared_before_running": true
+  },
+  "source_cases_sha256": "b959656e793734c36e422a1300a73a136d9afb3a95435032f1c5ac63255e6f2c",
+  "translated_cases_sha256": "faa68a19b6ac2c258e764070b87d4ac4ade330187a755c7d5efda29423ad5992",
+  "n": 400,
+  "control_correct": 126,
+  "candidate_correct": 128,
+  "control_accuracy_percent": 31.5,
+  "candidate_accuracy_percent": 32.0,
+  "difference_percentage_points": 0.5,
+  "paired": {
+    "both_correct": 76,
+    "control_only_correct": 50,
+    "candidate_only_correct": 52,
+    "neither_correct": 222
+  },
+  "exact_mcnemar_two_sided_p": 0.921191049253872,
+  "by_language": {
+    "ar": {
+      "n": 100,
+      "control_correct": 32,
+      "candidate_correct": 43,
+      "difference_correct": 11,
+      "control_only_correct": 12,
+      "candidate_only_correct": 23,
+      "exact_mcnemar_two_sided_p": 0.0895310789346695
+    },
+    "hi": {
+      "n": 100,
+      "control_correct": 37,
+      "candidate_correct": 36,
+      "difference_correct": -1,
+      "control_only_correct": 15,
+      "candidate_only_correct": 14,
+      "exact_mcnemar_two_sided_p": 1.0
+    },
+    "tl": {
+      "n": 100,
+      "control_correct": 23,
+      "candidate_correct": 21,
+      "difference_correct": -2,
+      "control_only_correct": 12,
+      "candidate_only_correct": 10,
+      "exact_mcnemar_two_sided_p": 0.8318119049072266
+    },
+    "ur": {
+      "n": 100,
+      "control_correct": 34,
+      "candidate_correct": 28,
+      "difference_correct": -6,
+      "control_only_correct": 11,
+      "candidate_only_correct": 5,
+      "exact_mcnemar_two_sided_p": 0.210113525390625
+    }
+  },
+  "interpretation_limits": [
+    "Development split only; no heldout evidence and no promotion.",
+    "Reused WISCO occupation titles, not Labour Force Survey field data.",
+    "Multilingual variants share source-title groups; the paired test does not account for that clustering.",
+    "Translation quality itself was not independently assessed."
+  ]
+}

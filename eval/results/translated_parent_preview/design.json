@@ -1,0 +1,15 @@
+{
+  "experiment": "Query translation before fragment-to-parent retrieval",
+  "status": "development_preview_not_a_promotion",
+  "split": "development",
+  "heldout_accessed": false,
+  "sample": "100 cases per language, stratified over ['ar', 'hi', 'tl', 'ur'], seed 42",
+  "arms": [
+    "control: respondent text unchanged",
+    "candidate: text translated to English"
+  ],
+  "metric": "top-1 exact four-digit ISCO-08 match, paired on identical cases",
+  "test": "exact two-sided McNemar on discordant pairs",
+  "production_change_on_any_outcome": false,
+  "declared_before_running": true
+}

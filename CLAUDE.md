@@ -2882,14 +2882,56 @@ the actual committed evidence directly, not by trusting the prior text.
   and the translation is recorded in the trace. The legacy classifier still
   has the original behaviour on its own path; worth revisiting there.
 
-  **No accuracy claim is attached to this, and none may be made without a
-  run.** Evaluating it is not a one-flag job: `eval/compare_parent_document_
-  isco.py` scores from *cached* query embeddings, so a real comparison needs
-  translate → re-cache embeddings of the translated queries → compare,
-  dev-selected and heldout-confirmed with a gate declared in advance, as the
-  catalogue-alignment experiment did. Free memory was 247 MB when this was
-  written, well under the ~1 GB that has repeatedly segfaulted embedding
-  loads here, so nothing was run rather than crashed into.
+  **Measured 2026-10-07 — the 10th null, and the per-language detail is the
+  interesting part.** `eval/compare_translated_parent_isco.py` (new; two
+  phases so the translation model's memory is released before the encoder
+  loads, plus a `summarize` subcommand that rebuilds the report from the
+  retained per-case file without re-running retrieval). Design was written
+  to `design.json` *before* any result existed: development split only (the
+  script refuses heldout), 400 cases stratified 100 each over ar/hi/tl/ur,
+  seed 42, both arms scoring identical cases with the identical classifier,
+  paired exact McNemar, **no production change on any outcome**.
+
+  | | n | control | translated | Δ | b | c | p |
+  |---|---:|---:|---:|---:|---:|---:|---:|
+  | **Overall** | 400 | 126 (31.50%) | 128 (32.00%) | +0.50pp | 50 | 52 | **0.921** |
+  | ar | 100 | 32 | 43 | **+11** | 12 | 23 | 0.089 |
+  | hi | 100 | 37 | 36 | −1 | 15 | 14 | 1.000 |
+  | tl | 100 | 23 | 21 | −2 | 12 | 10 | 0.832 |
+  | ur | 100 | 34 | 28 | **−6** | 11 | 5 | 0.210 |
+
+  **Read honestly**: the aggregate is a clean null (p=0.92) — this is the
+  **10th independent confirmed-null result** for "add more sophistication on
+  top of retrieval," and it lands exactly where this project's own base rate
+  predicted. Nothing here justifies enabling the flag.
+
+  **But the aggregate hides a real divergence, which is the finding worth
+  keeping**: Arabic gained 11 cases while Urdu lost 6 and Hindi/Tagalog sat
+  flat, so the languages cancelled. Arabic is the only arm that even
+  approaches significance (p=0.089, 35 discordant pairs) and it moves in the
+  predicted direction, directionally replicating the 2026-09-10 60-case
+  finding (Arabic was the biggest gainer there too) on a larger, independent
+  sample and a *different retrieval method*. It is **not** significant at
+  0.05 and must not be reported as a gain. A genuinely informative design
+  lesson: a per-language-selective intervention can average to zero, so
+  recording only totals would have hidden the whole effect — the script now
+  stores paired quadrants per language for that reason.
+
+  **Sanity check that passed**: the control arm's 31.50% on this
+  non-English-only sample is consistent with the served configuration's
+  known per-language heldout profile (ar 27.94, hi 40.18, tl 29.85, ur
+  31.60) — the sample is not anomalous, it is just the four hard languages
+  without English's 63.91% lifting the mean.
+
+  **Data governance caught while committing this**: `eval/local_benchmarks/`
+  is gitignored, so WISCO's verbatim text is deliberately absent from the
+  repo. `translated_cases.csv` embeds that text and `per_case.csv` carries
+  gold labels, so both are now explicitly ignored — only `design.json` and
+  `results.json` (aggregates, no case text) are committed, matching this
+  project's existing "raw per-case outputs stay local" convention. A future
+  heldout-scale run should also write incrementally: this script writes its
+  CSV only after all calls finish, and a session teardown mid-run came close
+  to discarding an hour of translation.
 
 ## Do not
 

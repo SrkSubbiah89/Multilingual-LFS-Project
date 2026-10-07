@@ -33,6 +33,14 @@ logs/
 # Local backend/frontend run logs written by start.bat and manual launches
 *_local.log
 
+# Per-case experiment outputs that embed benchmark text or gold labels.
+# eval/local_benchmarks/ is ignored above, so derived files carrying its
+# verbatim input_text or gold codes must not re-enter the repo through a
+# results directory. Aggregate reports (design.json, results.json) carry no
+# case text and are committed.
+eval/results/translated_parent_preview/translated_cases.csv
+eval/results/translated_parent_preview/per_case.csv
+
 # Large local installers/binaries -- never belong in git history
 # (Software/OllamaSetup.exe, 1.2GB, was accidentally committed and had to be
 # stripped from history on 2026-08-05 to unblock pushing to GitHub, which
