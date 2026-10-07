@@ -2106,6 +2106,31 @@ to the entry above, as expected — both changes were documentation/comment
 text, no runtime behaviour touched. Same 1 deselected slow test
 throughout.
 
+**2026-10-07 — FREEZE POINT. The full documented command, both suites, for
+the first time in weeks**: `pytest backend/tests eval/ -q` →
+**3,464 passed, 1 deselected, 0 failed**, 1091.74s. The arithmetic checks
+out exactly against the two halves measured separately the same day
+(`backend/tests` 2,341 + `eval/` 1,123 = 3,464), so this is the complete
+suite and not a partial collection.
+
+**This run also closed a real gap in how this project had been verifying
+itself.** Every entry from 2026-09-19 onward ran `backend/tests` only —
+originally for a sound low-RAM reason, but the restriction then persisted
+unexamined, so `eval/`'s 1,123 tests went unrun for roughly three weeks
+across a substantial amount of change. They passed when finally run, but
+that was luck rather than evidence. **Run the full documented command, not
+just `backend/tests`, before trusting a green result.**
+
+Also fixed in this pass: 9 tests in `test_llm_client_fallback_chain.py`
+had been failing on any developer machine since the local-only inference
+work landed. `get_llm()` short-circuits to `_get_local_only_llm()` before
+the cloud fallback chain, and the real `.env` sets `LFS_LOCAL_ONLY=true`,
+so the mocked `get_llm_strict` was returned by the local-only path and the
+asserted model string never matched. The file already had an autouse
+fixture for exactly this hazard (clearing `LLM_FALLBACK_EXCLUDE`); it just
+predated the newer variable. No production change — local-only mode is
+intended and keeps its own coverage in `test_llm_client_local_only.py`.
+
 ## Citation policy — unchanged, still correct
 
 Do not add a citation (paper, dataset, standard) unless independently
