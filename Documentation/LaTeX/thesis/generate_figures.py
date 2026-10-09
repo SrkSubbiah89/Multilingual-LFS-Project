@@ -5,7 +5,9 @@ Run from any directory with Python 3.11 and matplotlib 3.10.1::
     py -3.11 Documentation/LaTeX/thesis/generate_figures.py
 
 The default run checks each source CSV, recomputes exact four-digit accuracy,
-and verifies identical case IDs and gold labels across the five configurations.
+and verifies identical case IDs and gold labels across the five per-case runs.
+The served configuration publishes no per-case file and is verified for
+internal consistency against its aggregate audit record instead.
 Use --verify-only to check the data without plotting. A document-only checkout
 can use --skip-source-check to plot the pinned, previously verified summary.
 The source CSVs are read only; no model, database, or network service is used.
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,6 +33,13 @@ class Configuration:
     encoder: str
     correct: int
     source: str
+    # True when the count comes from a preserved aggregate audit record rather
+    # than a per-case CSV. The served fragment-to-parent configuration does not
+    # publish per-case predictions, so it cannot be checked for case-ID
+    # identity against the others; it is verified for internal consistency
+    # instead and drawn hatched so the two evidence classes stay visibly
+    # distinct in the figure.
+    summary: bool = False
 
 
 CONFIGURATIONS = (
@@ -60,6 +70,13 @@ CONFIGURATIONS = (
         "eval/results/raw_runs/enriched_catalogue_heldout_20260824/20260824T113739Z_flat.csv",
     ),
     Configuration(
+        "Fragment-to-parent / served",
+        "E5-small",
+        7_279,
+        "Documentation/RAG_ACCURACY_AUDIT_2026-10-06_HISTORY_FINAL_RESULTS.json",
+        summary=True,
+    ),
+    Configuration(
         "Enriched / flat",
         "E5-large",
         7_676,
@@ -68,11 +85,62 @@ CONFIGURATIONS = (
 )
 
 
+def _verify_summary_source(configuration: "Configuration", path: Path) -> None:
+    """Check an aggregate audit record for internal consistency.
+
+    Case-ID identity cannot be checked for a configuration that publishes no
+    per-case predictions, so this asserts what the record itself can prove:
+    the paired quadrants must reconstruct both arms' totals and the full
+    population, the per-language counts must sum to the reported total, and
+    the plotted count must equal the recorded one.
+    """
+    if not path.is_file():
+        raise ValueError(
+            f"Audit record is missing: {path}\n"
+            "Restore the recorded evaluation artifacts, or explicitly use "
+            "--skip-source-check for a document-only checkout."
+        )
+    record = json.loads(path.read_text(encoding="utf-8"))
+    served = record["methods"]["parent_document_rag"]
+    dense = record["methods"]["historical_enriched_dense_small"]
+    quadrants = record["paired_comparisons"]["current_dense_to_parent"]
+
+    population = (
+        quadrants["both_correct"] + quadrants["reference_only_correct"]
+        + quadrants["candidate_only_correct"] + quadrants["both_wrong"]
+    )
+    if population != N_RECORDS or served["n"] != N_RECORDS:
+        raise ValueError(f"{path}: population is not {N_RECORDS}")
+    if quadrants["both_correct"] + quadrants["candidate_only_correct"] != served["top1_correct"]:
+        raise ValueError(f"{path}: quadrants do not reconstruct the served total")
+    if quadrants["both_correct"] + quadrants["reference_only_correct"] != dense["top1_correct"]:
+        raise ValueError(f"{path}: quadrants do not reconstruct the baseline total")
+    by_language = sum(
+        block["parent_document_rag"]["top1_correct"] for block in record["per_language"].values()
+    )
+    if by_language != served["top1_correct"]:
+        raise ValueError(f"{path}: per-language counts do not sum to the reported total")
+    if served["top1_correct"] != configuration.correct:
+        raise ValueError(
+            f"{path}: expected {configuration.correct} exact matches, "
+            f"found {served['top1_correct']}"
+        )
+    accuracy = 100 * served["top1_correct"] / N_RECORDS
+    print(
+        f"Verified {configuration.label}, {configuration.encoder}: "
+        f"{served['top1_correct']:,}/{N_RECORDS:,} = {accuracy:.2f}% "
+        "(aggregate audit record; internal consistency only)"
+    )
+
+
 def verify_sources() -> None:
     """Recompute counts and check that every run used the same labelled records."""
     reference_gold: dict[str, str] | None = None
     for configuration in CONFIGURATIONS:
         path = REPO_ROOT / configuration.source
+        if configuration.summary:
+            _verify_summary_source(configuration, path)
+            continue
         if not path.is_file():
             raise ValueError(
                 f"Source CSV is missing: {path}\n"
@@ -147,7 +215,12 @@ def draw_accuracy_figure() -> None:
         accuracies,
         height=0.58,
         color=[palette[item.encoder] for item in CONFIGURATIONS],
-        edgecolor="none",
+        # Hatch the bar whose count comes from an aggregate audit record
+        # rather than released per-case predictions, so the figure does not
+        # present two evidence classes as one.
+        hatch=["//" if item.summary else "" for item in CONFIGURATIONS],
+        edgecolor="white",
+        linewidth=0,
     )
     ax.set_yticks(
         positions,
@@ -185,10 +258,18 @@ def draw_accuracy_figure() -> None:
         color="#222222",
     )
     fig.legend(
-        handles=[Patch(facecolor=palette[name], label=name) for name in palette],
+        handles=[Patch(facecolor=palette[name], label=name) for name in palette]
+        + [
+            Patch(
+                facecolor="#FFFFFF",
+                edgecolor="#555555",
+                hatch="//",
+                label="aggregate record",
+            )
+        ],
         loc="upper right",
         bbox_to_anchor=(0.98, 0.99),
-        ncol=2,
+        ncol=3,
         frameon=False,
         fontsize=8,
         handlelength=1.2,
@@ -197,7 +278,7 @@ def draw_accuracy_figure() -> None:
     fig.text(
         0.04,
         0.105,
-        "Same partition reused across all five configurations; no LLM reranking.",
+        "Same partition reused across all six configurations; no LLM reranking.",
         ha="left",
         va="bottom",
         fontsize=8,
