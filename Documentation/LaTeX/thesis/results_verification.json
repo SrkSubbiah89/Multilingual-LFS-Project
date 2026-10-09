@@ -384,6 +384,128 @@
         }
       }
     },
+    "by_language": {
+      "ar": {
+        "legacy": {
+          "n": 71,
+          "correct": 12,
+          "accuracy_percent": 16.901408450704224,
+          "nominal_wilson_95_percent": [
+            9.941454752428264,
+            27.259127998633492
+          ]
+        },
+        "flat": {
+          "n": 71,
+          "correct": 59,
+          "accuracy_percent": 83.09859154929578,
+          "nominal_wilson_95_percent": [
+            72.74087200136651,
+            90.05854524757174
+          ]
+        }
+      },
+      "ar-gulf": {
+        "legacy": {
+          "n": 61,
+          "correct": 12,
+          "accuracy_percent": 19.672131147540984,
+          "nominal_wilson_95_percent": [
+            11.627802231427168,
+            31.309940575507543
+          ]
+        },
+        "flat": {
+          "n": 61,
+          "correct": 49,
+          "accuracy_percent": 80.32786885245902,
+          "nominal_wilson_95_percent": [
+            68.69005942449246,
+            88.37219776857282
+          ]
+        }
+      },
+      "en": {
+        "legacy": {
+          "n": 78,
+          "correct": 24,
+          "accuracy_percent": 30.76923076923077,
+          "nominal_wilson_95_percent": [
+            21.631928555607345,
+            41.711833356400135
+          ]
+        },
+        "flat": {
+          "n": 78,
+          "correct": 69,
+          "accuracy_percent": 88.46153846153847,
+          "nominal_wilson_95_percent": [
+            79.50298680151838,
+            93.80948937446666
+          ]
+        }
+      },
+      "hi": {
+        "legacy": {
+          "n": 88,
+          "correct": 1,
+          "accuracy_percent": 1.1363636363636365,
+          "nominal_wilson_95_percent": [
+            0.20087853177044696,
+            6.159493892298563
+          ]
+        },
+        "flat": {
+          "n": 88,
+          "correct": 73,
+          "accuracy_percent": 82.95454545454545,
+          "nominal_wilson_95_percent": [
+            73.76312908544665,
+            89.38917788436729
+          ]
+        }
+      },
+      "tl": {
+        "legacy": {
+          "n": 73,
+          "correct": 7,
+          "accuracy_percent": 9.58904109589041,
+          "nominal_wilson_95_percent": [
+            4.722895459680575,
+            18.495636690166183
+          ]
+        },
+        "flat": {
+          "n": 73,
+          "correct": 57,
+          "accuracy_percent": 78.08219178082192,
+          "nominal_wilson_95_percent": [
+            67.3227338877521,
+            86.03387936404931
+          ]
+        }
+      },
+      "ur": {
+        "legacy": {
+          "n": 78,
+          "correct": 3,
+          "accuracy_percent": 3.8461538461538463,
+          "nominal_wilson_95_percent": [
+            1.3165825413161052,
+            10.70844604750183
+          ]
+        },
+        "flat": {
+          "n": 78,
+          "correct": 65,
+          "accuracy_percent": 83.33333333333333,
+          "nominal_wilson_95_percent": [
+            73.54442476924203,
+            89.99305458327835
+          ]
+        }
+      }
+    },
     "refusal_case_ids": [
       "SYN-ISIC-9609-hi-1",
       "SYN-ISIC-9609-tl-1"

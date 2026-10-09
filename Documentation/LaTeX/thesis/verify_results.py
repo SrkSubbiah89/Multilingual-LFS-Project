@@ -228,6 +228,13 @@ def audit() -> dict:
         "by_standard": {standard: {"legacy": accuracy([row for row in synthetic if row["standard"] == standard], "gold_code", "pred_legacy"),
                                    "flat": accuracy([row for row in synthetic if row["standard"] == standard], "gold_code", "pred_flat")}
                         for standard in ("isic", "iscedf")},
+        # Added 2026-10-09: Chapter 6 cites the per-language range of flat
+        # accuracy on this benchmark, which nothing in this report previously
+        # substantiated. Languages are read from the data rather than hardcoded
+        # so a regenerated benchmark cannot silently drop one.
+        "by_language": {language: {"legacy": accuracy([row for row in synthetic if row["language"] == language], "gold_code", "pred_legacy"),
+                                   "flat": accuracy([row for row in synthetic if row["language"] == language], "gold_code", "pred_flat")}
+                        for language in sorted({row["language"] for row in synthetic})},
         "refusal_case_ids": [row["case_id"] for row in load_csv(quality_path) if row.get("refusal_pattern") == "True"]}
     assert (len(synthetic), report["synthetic_original_449"]["legacy"]["correct"],
             report["synthetic_original_449"]["flat"]["correct"], b, c) == (449, 59, 372, 9, 322)
