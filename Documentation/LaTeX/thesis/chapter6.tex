@@ -252,6 +252,19 @@ unresolved. It is therefore recorded as a non-adopted research candidate
 rather than a result. All figures use the same reused partition and remain offline
 reference measurements, not Labour Force Survey field validation.
 
+Because the figures above are re-derived from a preserved summary rather
+than released per-case records, the live application was also exercised
+directly to confirm that it serves this method and not another. The running
+API's diagnostic occupation route reported the fragment-to-parent method
+identifier for every query, and returned the expected unit groups for a
+short spread of unambiguous titles --- software engineer to 2512, nurse to
+2221, taxi driver to 8322, primary school teacher to 2341, accountant to
+2411, and the Arabic rendering of ``software engineer'' to 2514 --- at
+126--851\,ms per query. \textbf{This is a configuration check on six easy
+titles, not an accuracy measurement}: it establishes that the deployed path
+is the configuration reported here, and says nothing about accuracy beyond
+the 38.83\% figure.
+
 \subsection{LLM Reranking and Corrective Retrieval}
 
 % Sources: eval/local_runs/e5large_{vs_e5small,with_groq_reranker}_dev500_20260824/results.csv
@@ -664,6 +677,25 @@ and scripted completion are different outcomes. None directly measures
 labour-force-estimate quality, human coding agreement, or respondent
 experience. SRE compatibility is heuristic plausibility, not factual
 verification or a calibrated error probability.
+
+\noindent\textbf{Data-capture validity.}
+Answer extraction is opportunistic: a message is scanned for several
+fields, not only the one just asked. This reduces the number of questions a
+respondent must answer, but it also means a field can be populated from an
+incidental keyword in an answer to a different question. A direct check
+against the running system illustrated both halves. Replying to the
+education question with an occupation sentence set the industry field from
+the word ``software'' alone, and stored the sentence itself as the
+education answer, which the education classifier then coded to an unrelated
+level and field. The state machine correctly rejected the answer and
+repeated the question, and a valid reply overwrote both the stored value
+and its classification, so a completed interview is not left with the
+spurious entry. The residual exposure is an interview abandoned at that
+point, where the retained value and its derived code would be the rejected
+text. No respondent data is affected, because no interviews with
+participants have been conducted; this is a measurement-design property to
+resolve before any are, and it is of the same kind as the numeric-answer
+restriction already applied to wage capture.
 
 \noindent\textbf{Internal and statistical validity.}
 Repeated test-partition inspection limits confirmation of selected
