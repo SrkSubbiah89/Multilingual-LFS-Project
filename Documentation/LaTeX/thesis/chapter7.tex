@@ -28,6 +28,22 @@ retrieval, which reaches 38.83\% (7,279 correct) on the same partition and
 improves on its same-encoder dense baseline by 6.28 percentage points
 (Section~\ref{sec:res-parent-document}).
 
+Reading only the exact-match figure understates what the retrieval
+achieves and overstates how usable it is, in two opposite directions. The
+same predictions place 63.59\% of records in the correct major group while
+coding 40.95\% to the exact unit group, and 38.4\% of the unit-group
+failures sit inside the correct major group, so much of the measured error
+is a correct reading of the occupation at a coarser granularity rather
+than a failure to recognise it
+(Section~\ref{sec:res-error-structure}). Against that, the confidence
+score separates correct from incorrect predictions by about two
+hundredths, so it cannot be used to decide which classifications need
+human attention. For an assisted-coding tool the practical consequence is
+that the system is more useful than 40.95\% suggests and less
+self-aware than any single accuracy figure implies: it frequently knows
+the occupational family, and it cannot currently tell the reviewer when it
+does not.
+
 For RQ2, multi-standard coding and deterministic compatibility checks are
 implemented. On 449 taxonomy-grounded synthetic descriptions, enriched
 flat retrieval recovers 82.85\% of generating categories compared with
@@ -89,6 +105,15 @@ establish respondent benefit.
 \noindent\textbf{L1 --- No participant validation.}
 Burden, satisfaction, accessibility, and comparative interview outcomes
 remain unmeasured. Scripted synthetic sessions cannot resolve them.
+
+\noindent\textbf{L1b --- Uncalibrated confidence.}
+Retrieval similarity does not distinguish correct from incorrect
+predictions to any useful degree: mean confidence differs by roughly two
+hundredths between them
+(Section~\ref{sec:res-error-structure}). Every classification therefore
+carries a human-review requirement, and no selective-review policy,
+workload estimate, or automation rate can be derived from these scores
+until they are calibrated against labelled decisions.
 
 \noindent\textbf{L2 --- Reused benchmark and dependent observations.}
 Later configurations were informed by results on the same WISCO partition.
@@ -163,7 +188,22 @@ Assess compatibility with domain experts and independently labelled
 combinations. Measure false-positive review burden and missed contradictions,
 including legitimate atypical cases. Calibrate scores or candidate gaps
 on separate data and select review thresholds from validated error and
-workload trade-offs; raw cosine similarity is not a probability.
+workload trade-offs; raw cosine similarity is not a probability. The
+measured two-hundredth separation between correct and incorrect
+predictions sets the baseline any such calibration must beat, and suggests
+that a usable review signal will have to come from evidence the current
+score does not encode --- candidate-gap structure, cross-standard
+agreement, or the hierarchy level at which the prediction stabilises ---
+rather than from rescaling the similarity itself.
+
+\noindent\textbf{F4b --- Coarse-grained coding as a reportable output.}
+Because major-group accuracy exceeds exact-code accuracy by more than
+twenty percentage points, evaluate whether a deliberately coarser
+assignment, with the unit group offered only when supported, is more
+useful to a statistical office than a single exact code of uncertain
+quality. This requires agreement from the statistical authority on what
+granularity is acceptable for which estimates, and measurement of coder
+effort under each option.
 
 \noindent\textbf{F5 --- Controlled intervention studies.}
 Evaluate translation, reranking, corrective retrieval, and coordination

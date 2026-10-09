@@ -1,0 +1,195 @@
+{
+  "label": "Enriched / flat, intended E5-large (40.95%)",
+  "source": "eval\\results\\raw_runs\\enriched_e5large_heldout_20260824\\20260824T123941Z_flat.csv",
+  "n": 18747,
+  "accuracy_by_level": {
+    "1digit": {
+      "name": "major group",
+      "correct": 11922,
+      "accuracy_percent": 63.594175068010884
+    },
+    "2digit": {
+      "name": "sub-major group",
+      "correct": 10068,
+      "accuracy_percent": 53.704592734837576
+    },
+    "3digit": {
+      "name": "minor group",
+      "correct": 8919,
+      "accuracy_percent": 47.57561209793567
+    },
+    "4digit": {
+      "name": "unit group",
+      "correct": 7676,
+      "accuracy_percent": 40.94521790153091
+    }
+  },
+  "four_digit_failures": {
+    "n": 11071,
+    "no_prediction_returned": 0,
+    "right_major_group_wrong_unit": 4246,
+    "right_minor_group_wrong_unit": 1243,
+    "right_major_group_percent_of_failures": 38.35245235299431,
+    "right_minor_group_percent_of_failures": 11.227531388311805
+  },
+  "by_language": {
+    "ar": {
+      "n": 3762,
+      "exact_correct": 1421,
+      "exact_percent": 37.772461456671984,
+      "major_group_correct": 2281,
+      "major_group_percent": 60.63264221158958,
+      "near_miss_share_of_failures_percent": 36.736437419906025
+    },
+    "en": {
+      "n": 3818,
+      "exact_correct": 2173,
+      "exact_percent": 56.91461498166579,
+      "major_group_correct": 2904,
+      "major_group_percent": 76.06076479832373,
+      "near_miss_share_of_failures_percent": 44.43768996960486
+    },
+    "hi": {
+      "n": 3793,
+      "exact_correct": 1551,
+      "exact_percent": 40.89111521223306,
+      "major_group_correct": 2389,
+      "major_group_percent": 62.98444503031901,
+      "near_miss_share_of_failures_percent": 37.377341659232826
+    },
+    "tl": {
+      "n": 3766,
+      "exact_correct": 1249,
+      "exact_percent": 33.165161975570896,
+      "major_group_correct": 2199,
+      "major_group_percent": 58.39086563993627,
+      "near_miss_share_of_failures_percent": 37.74334525228446
+    },
+    "ur": {
+      "n": 3608,
+      "exact_correct": 1282,
+      "exact_percent": 35.532150776053214,
+      "major_group_correct": 2149,
+      "major_group_percent": 59.56208425720621,
+      "near_miss_share_of_failures_percent": 37.274290627687016
+    }
+  },
+  "most_missed_gold_codes": [
+    {
+      "gold": "2310",
+      "missed": 229,
+      "percent_of_all_failures": 2.06846716647096
+    },
+    {
+      "gold": "8160",
+      "missed": 171,
+      "percent_of_all_failures": 1.544575919067835
+    },
+    {
+      "gold": "2212",
+      "missed": 153,
+      "percent_of_all_failures": 1.3819889802185892
+    },
+    {
+      "gold": "6112",
+      "missed": 128,
+      "percent_of_all_failures": 1.1561737873724145
+    },
+    {
+      "gold": "9333",
+      "missed": 111,
+      "percent_of_all_failures": 1.0026194562370156
+    },
+    {
+      "gold": "7223",
+      "missed": 105,
+      "percent_of_all_failures": 0.9484238099539337
+    },
+    {
+      "gold": "6113",
+      "missed": 99,
+      "percent_of_all_failures": 0.8942281636708518
+    },
+    {
+      "gold": "7233",
+      "missed": 98,
+      "percent_of_all_failures": 0.8851955559570048
+    },
+    {
+      "gold": "5221",
+      "missed": 86,
+      "percent_of_all_failures": 0.776804263390841
+    },
+    {
+      "gold": "6121",
+      "missed": 83,
+      "percent_of_all_failures": 0.7497064402493
+    }
+  ],
+  "most_common_confusions": [
+    {
+      "gold": "6112",
+      "predicted": "9211",
+      "count": 59,
+      "same_major_group": false
+    },
+    {
+      "gold": "6111",
+      "predicted": "9211",
+      "count": 50,
+      "same_major_group": false
+    },
+    {
+      "gold": "2310",
+      "predicted": "2330",
+      "count": 28,
+      "same_major_group": true
+    },
+    {
+      "gold": "2310",
+      "predicted": "2131",
+      "count": 27,
+      "same_major_group": true
+    },
+    {
+      "gold": "8160",
+      "predicted": "8181",
+      "count": 27,
+      "same_major_group": true
+    },
+    {
+      "gold": "7223",
+      "predicted": "3135",
+      "count": 26,
+      "same_major_group": false
+    },
+    {
+      "gold": "2320",
+      "predicted": "2359",
+      "count": 25,
+      "same_major_group": true
+    },
+    {
+      "gold": "2212",
+      "predicted": "3259",
+      "count": 24,
+      "same_major_group": false
+    },
+    {
+      "gold": "2310",
+      "predicted": "2642",
+      "count": 24,
+      "same_major_group": true
+    },
+    {
+      "gold": "2221",
+      "predicted": "5329",
+      "count": 23,
+      "same_major_group": false
+    }
+  ],
+  "confidence_separation": {
+    "mean_confidence_correct": 0.8078149426784778,
+    "mean_confidence_incorrect": 0.7855528768855559
+  }
+}

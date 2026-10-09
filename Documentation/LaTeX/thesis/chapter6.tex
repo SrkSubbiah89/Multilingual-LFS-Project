@@ -389,6 +389,86 @@ anomalous --- it excludes English, which is this configuration's strongest
 language. Per-case outputs are retained locally but not published, since
 they embed benchmark text and gold labels.
 
+\subsection{Error Structure}
+\label{sec:res-error-structure}
+
+Exact four-digit accuracy reports how often a configuration is completely
+right and says nothing about the shape of the remaining error. Because
+ISCO-08 is hierarchical, a prediction can miss the unit group while still
+identifying the correct occupational family, and that distinction matters
+for a coding assistant: a near miss is a candidate for human adjudication,
+whereas a prediction in an unrelated major group is a failure to recognise
+the occupation at all. Table~\ref{tab:ch6-error-levels} recomputes both
+enriched configurations at every level of the classification from their
+preserved per-case predictions.
+
+\begin{table}[htbp]
+\centering
+\caption{Accuracy at each ISCO-08 hierarchy level on the same 18,747
+records. Each row is the same prediction evaluated against a shorter prefix
+of the gold code.}
+\label{tab:ch6-error-levels}
+\small\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrrr}
+\toprule
+& \multicolumn{2}{c}{\textbf{Enriched, e5-small}} & \multicolumn{2}{c}{\textbf{Enriched, intended e5-large}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+\textbf{Level} & \textbf{Correct} & \textbf{Accuracy} & \textbf{Correct} & \textbf{Accuracy} \\
+\midrule
+Major group (1 digit)     & 10,399 & 55.47\% & 11,922 & 63.59\% \\
+Sub-major group (2 digit) &  8,319 & 44.38\% & 10,068 & 53.70\% \\
+Minor group (3 digit)     &  7,143 & 38.10\% &  8,919 & 47.58\% \\
+Unit group (4 digit)      &  6,102 & 32.55\% &  7,676 & 40.95\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The gap between the first and last rows is the substantive finding. The
+better configuration places 63.59\% of records in the correct major group
+while coding only 40.95\% to the exact unit group, so a substantial part of
+what the exact-match figure counts as failure is a correct reading of the
+occupation at a coarser granularity. Expressed over the 11,071 unit-group
+failures directly: 4,246 of them (38.4\%) are in the correct major group,
+and 1,243 (11.2\%) reach the correct minor group and miss only the final
+digit. The weaker configuration shows the same structure less strongly
+(34.0\% of its failures in the correct major group), so enrichment and the
+intended larger encoder improve the classification at every level rather
+than only at the exact-match threshold. No record received an empty
+prediction in either configuration.
+
+The residual error is structured rather than diffuse. The single
+most-missed gold code is 2310 (university and higher education teachers) at
+229 records, 2.1\% of all failures, and its most frequent substitutions are
+other teaching and professional codes. The most frequent single confusion
+is gold 6112 predicted as 9211 on 59 records, which pairs a skilled
+agricultural occupation with an elementary agricultural labouring code ---
+a distinction that rests on the respondent's role rather than the subject
+matter of the work, and which short title text may not carry at all. Such
+pairs suggest that part of the remaining error reflects genuine
+underdetermination in a title-only benchmark rather than retrieval failure,
+which is a limitation of the evaluation material as much as of the method.
+
+\textbf{The confidence score does not separate correct from incorrect
+predictions.} Mean confidence is 0.808 on correct records and 0.786 on
+incorrect ones for the better configuration, and 0.829 against 0.802 for
+the weaker one. A gap of roughly two hundredths cannot support a
+confidence-based routing threshold, which is the empirical content of the
+statement elsewhere in this thesis that these scores are uncalibrated
+heuristics and that human review is required for every classification.
+Establishing a usable review threshold would require calibration against
+labelled decisions, which has not been done.
+
+Per language, the near-miss share of failures is nearly constant across the
+four non-English languages at 36.7--37.7\%, while English reaches 44.4\%.
+English therefore leads not only on exact accuracy (56.91\% against
+33.17--40.89\%) but also in how close its failures fall, which is
+consistent with the English-sourced catalogue text discussed in
+Section~\ref{sec:results-translation}.
+
+These figures are recomputed by \path{eval/analyze_isco_error_structure.py}
+from the same preserved predictions used elsewhere in this chapter; it
+loads no model and selects no configuration.
+
 \section{Multi-Standard Classification and Coherence (RQ2)}
 \label{sec:res-isic-isced}
 
