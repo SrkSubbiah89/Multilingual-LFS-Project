@@ -412,7 +412,13 @@ fix already applied earlier to the identical pattern in
 `backend/api/survey_routes.py`'s `semantic_coherence_out` (that fix did
 not get propagated to this second, separate occurrence at the time).
 
-## API (20 routes, from the live OpenAPI spec)
+## API (23 route-methods over 20 paths, from the live OpenAPI spec)
+
+**Corrected 2026-10-09** by diffing this table against a live
+`GET /openapi.json` during a full end-to-end system run. Three routes were
+live but missing here — added below. Nothing documented was missing from
+the live spec, so this was pure documentation drift from the 2026-10-05
+work, not a regression.
 
 ```
 POST   /auth/request-otp
@@ -435,7 +441,15 @@ POST   /survey/hitl/review
 GET    /health
 GET    /debug/isco/{job_title}
 GET    /ready
+GET    /
+GET    /survey/sessions/{session_id}/conversation
+PATCH  /survey/sessions/{session_id}/language
 ```
+
+The last three were added by the 2026-10-05 fixes: `/conversation` restores
+history so a browser reload does not abandon an interview, and the
+`language` PATCH changes language and re-renders the current prompt without
+being mistaken for an answer (review findings 20 and 19 respectively).
 
 Login flow tested end-to-end 2026-08-12: `POST /auth/request-otp
 {"email": ...}` → dev-mode response includes `dev_otp` directly → `POST
@@ -2957,6 +2971,82 @@ the actual committed evidence directly, not by trusting the prior text.
   heldout-scale run should also write incrementally: this script writes its
   CSV only after all calls finish, and a session teardown mid-run came close
   to discarding an hour of translation.
+
+- **Full end-to-end system run, 2026-10-09** — not `start.bat` itself (it
+  opens interactive windows and calls `pause`), but each of its 11 steps
+  verified equivalently. Infrastructure was already healthy (Postgres,
+  Redis, Qdrant containers up 4 days; Ollama responding in ~0.24s).
+
+  **What worked.** Backend came up healthy (`redis/qdrant/ollama` all ok,
+  `fast_mode=false`, so the full pipeline). All 20 paths / 23 route-methods
+  served. Real OTP auth flow end-to-end: `request-otp` → `dev_otp` →
+  `verify-otp` → JWT → session created (201). A real conversation advanced
+  the FSM correctly and ISIC classified correctly from free text
+  ("technology" → section J, division 62 Computer programming). All five
+  frontend pages (`/`, `/chat`, `/report`, `/supervisor_review`,
+  `/questionnaire`) returned 200 with real content and zero compile errors.
+
+  **The served ISCO classifier is genuinely good, and this is the clearest
+  evidence of it yet** — `/debug/isco/{job_title}` returned
+  `method=isco_parent_document_rag` (confirming the fragment-to-parent
+  config is what actually runs) with 5/5 correct on a quick spread,
+  including Arabic: software engineer→2512 Software Developers (0.89),
+  nurse→2221 Nursing Professionals (0.87), taxi driver→8322 Car/Taxi/Van
+  Drivers (0.89), primary school teacher→2341 Primary School Teachers
+  (0.91), مهندس برمجيات→2514 Applications Programmers (0.87),
+  accountant→2411 Accountants (0.91). Latency 126–851ms. **This is a
+  handful of easy titles, not an accuracy measurement** — the real number
+  remains 38.83%; do not cite these six as evidence of anything more.
+
+  **A real transient failure, reproduced then explained.** The first
+  session-creation attempt failed with
+  `LFS_LOCAL_ONLY=true requires configured Ollama model ... but it is not
+  reachable`, even though Ollama answered `/api/tags` in 0.24s moments
+  later. Cause: `_ollama_is_running()` uses a 2s probe and caches a
+  *failure* for 30s (`_OLLAMA_DOWN_COOLDOWN`), and local-only mode has no
+  fallback by design — so one momentary stall under memory pressure
+  hard-fails every LLM call for the next 30 seconds. Retried clean (201 in
+  11.5s). **Not a code defect**: the fail-closed contract is deliberate and
+  documented. It is a real robustness characteristic of running this stack
+  on a machine with ~365MB free, worth knowing before a live demo.
+
+  **Severe memory pressure is the dominant operational finding.** Backend
+  took ~76s to become ready; individual `/message` turns took 165–190s
+  against the documented ~2s-per-turn expectation. Nothing failed, but a
+  demo on this machine in this state would look broken. Free several GB
+  first.
+
+- **A real, reproduced data-integrity question that is a DESIGN DECISION,
+  not a bug to fix unilaterally — 2026-10-09, needs Sivarama/Dr. Mali.**
+  Answering the *education* question with "I work as a software engineer"
+  silently populated **two fields that were never asked**:
+  `industry='technology'` (from `_extract_fields`'s `sector_map`, which
+  fires on the substring "software" in *any* message while employed —
+  `conversation_manager.py` ~L3952), and `education_level` set to the
+  verbatim job sentence, which was then sent to the ISCED classifier and
+  produced a nonsense result (level 3 "Upper secondary", broad field 09
+  "Health"). The FSM then *correctly* re-asked the education question, and
+  answering "Diploma" properly overwrote it (`education_level='diploma'`,
+  ISCED re-ran to level 4), so **final data is correct** and nothing is
+  permanently corrupted.
+
+  **Why this is not being changed here.** Opportunistic industry extraction
+  is intentional, designed behaviour with 6 dedicated passing tests
+  (`TestExtractFieldsIndustry` in `test_conversation_manager.py`: "I work
+  in a hospital"→healthcare, etc.) whose purpose is reducing respondent
+  burden. Those tests all feed genuine industry statements; the failure
+  mode above is different — a keyword firing on an *occupation* sentence at
+  a moment when industry was not the question. Gating it the way wages were
+  gated (CODE_FIXES finding 3: "a number becomes a wage only on the wage
+  question") is the obvious candidate fix and has clear in-project
+  precedent, but it would change documented conversational behaviour and
+  break those 6 tests, so it is a scope/design call rather than a defect
+  repair — and it arrived at the freeze point.
+
+  **The residual risk, stated plainly**: if a respondent abandons the
+  interview immediately after an invalid answer, the stored value and its
+  derived classification are the junk text until overwritten. For official
+  statistics that is the same class of concern the wage fix addressed.
 
 ## Do not
 
