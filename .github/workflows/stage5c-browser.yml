@@ -1,21 +1,21 @@
-# Stage 5C browser validation on a GitHub-hosted runner.
-# Pushing this file does not start the job. workflow_dispatch works only after
-# this file is on the default branch, and the confirmation input must match.
+# One-time Stage 5C browser validation on a GitHub-hosted runner.
+# A push starts this job only on ci/stage5c-isolated-browser, and only when
+# this workflow file changes. The execution guard then requires that commit
+# to have exactly one parent, the reviewed application revision.
 name: Stage 5C browser
 
 on:
-  workflow_dispatch:
-    inputs:
-      confirmation:
-        description: Type RUN-STAGE5C-CI. A branch push does not start this workflow.
-        required: true
-        type: string
+  push:
+    branches:
+      - ci/stage5c-isolated-browser
+    paths:
+      - .github/workflows/stage5c-browser.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: stage5c-browser
+  group: ci-stage5c-isolated-browser
   cancel-in-progress: false
 
 jobs:
@@ -41,18 +41,41 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 2
 
-      - name: Require the execution confirmation
+      - name: Require the isolated push guard
         env:
-          STAGE5C_CONFIRMATION: ${{ github.event.inputs.confirmation }}
+          REVIEWED_PARENT: 60ad9f39b034a280c02595c2b0b77c2d3fcd29a8
         run: |
           set -euo pipefail
           set +x
-          if [ "$STAGE5C_CONFIRMATION" != "RUN-STAGE5C-CI" ]; then
-            echo "BLOCKED: confirmation was not accepted"
+          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
+            echo "BLOCKED: event was not accepted"
             exit 1
           fi
-          echo "CONFIRMATION_OK"
+          if [ "$GITHUB_REF" != "refs/heads/ci/stage5c-isolated-browser" ]; then
+            echo "BLOCKED: ref was not accepted"
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "BLOCKED: checkout did not match the push"
+            exit 1
+          fi
+          if git rev-parse --verify --quiet HEAD^2 >/dev/null; then
+            echo "BLOCKED: parent commit was not accepted"
+            exit 1
+          fi
+          parent=$(git rev-parse --verify HEAD^)
+          if [ "$parent" != "$REVIEWED_PARENT" ]; then
+            echo "BLOCKED: parent commit was not accepted"
+            exit 1
+          fi
+          changed=$(git diff --name-only "$REVIEWED_PARENT" HEAD)
+          if [ "$changed" != ".github/workflows/stage5c-browser.yml" ]; then
+            echo "BLOCKED: changed files were not accepted"
+            exit 1
+          fi
+          echo "EXECUTION_GUARD_OK"
 
       - name: Run the browser policy unit tests
         run: |
