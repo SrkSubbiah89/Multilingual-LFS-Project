@@ -91,6 +91,16 @@ def test_redis_probe_failure_returns_503_and_closes_client(client, required_serv
     storage.close.assert_called_once()
 
 
+def test_ready_does_not_consult_qdrant_or_ollama(client, required_services, monkeypatch):
+    import urllib.request
+
+    opened = MagicMock(side_effect=AssertionError("optional services are not readiness"))
+    monkeypatch.setattr(urllib.request, "urlopen", opened)
+
+    assert client.get("/ready").status_code == 200
+    opened.assert_not_called()
+
+
 def test_unacknowledged_redis_ping_is_not_ready(client, required_services):
     _, storage, _, _ = required_services
     storage.ping.return_value = False
@@ -135,7 +145,10 @@ def test_health_uses_configured_qdrant_address_and_closes_probes(
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json()["services"] == {"redis": "ok", "qdrant": "ok", "ollama": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["required"] == {"database": "ok", "redis": "ok"}
+    assert body["diagnostics"] == {"qdrant": "ok", "ollama": "ok"}
     assert open_url.call_args_list[0].args[0] == expected_url
     assert open_url.call_args_list[1].args[0] == "http://ollama:11434/api/tags"
     assert all(call.kwargs["timeout"] == 2 for call in open_url.call_args_list)
@@ -147,12 +160,34 @@ def test_health_uses_configured_qdrant_address_and_closes_probes(
 def test_health_stays_diagnostic_when_services_fail(client, required_services, monkeypatch):
     import urllib.request
 
-    _, storage, _, _ = required_services
+    database, storage, _, _ = required_services
+    database.execute.side_effect = RuntimeError("test database unavailable")
     storage.ping.side_effect = redis.ConnectionError("test storage unavailable")
     monkeypatch.setattr(urllib.request, "urlopen", MagicMock(side_effect=TimeoutError("test timeout")))
 
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert all(value.startswith("error:") for value in response.json()["services"].values())
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert all(value.startswith("error:") for value in body["required"].values())
+    assert all(value.startswith("error:") for value in body["diagnostics"].values())
+    assert "Traceback" not in response.text
     storage.close.assert_called_once()
+
+
+def test_optional_service_failures_do_not_change_required_readiness(
+    client, required_services, monkeypatch,
+):
+    import urllib.request
+
+    monkeypatch.setattr(urllib.request, "urlopen", MagicMock(side_effect=TimeoutError("test timeout")))
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["required"] == {"database": "ok", "redis": "ok"}
+    assert body["status"] == "ok"
+    assert all(value.startswith("error:") for value in body["diagnostics"].values())
+    assert client.get("/ready").status_code == 200

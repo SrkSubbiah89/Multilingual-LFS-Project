@@ -14,6 +14,11 @@ no network/DB dependency) rather than mocking it, with isco/isic/isced
 combinations already validated in eval/sre_expanded_validation.py to
 produce known severities -- this tests real engine behavior end-to-end
 through the actual API endpoint, not a mocked stand-in.
+
+Industry and education are stored as active SQL answers before the turn.
+A cache-only copy is not authoritative: restored context is replaced by
+active revisions before classification. The 2026-10-15 before-log records
+the earlier cache-only fixture failure.
 """
 
 from __future__ import annotations
@@ -44,7 +49,8 @@ def db(engine):
     session.close()
 
 
-def _make_client(db, isco_code, isic_section, isced_level, job_title="Assembler", low_isco_confidence=False):
+def _make_client(db, isco_code, isic_section, isced_level, job_title="Assembler", low_isco_confidence=False,
+                 cache_industry=True, cache_education=True):
     """Builds a TestClient wired so a message triggers ISCO + ISIC + ISCED
     classification with the given codes, feeding the REAL
     SemanticRelationEngine with exactly this combination."""
@@ -73,8 +79,10 @@ def _make_client(db, isco_code, isic_section, isced_level, job_title="Assembler"
         # already collected -- required so isic_result/isced_result are
         # non-None and Stage 4e's SemanticRelationEngine.analyse() actually
         # receives real isic_section/isced_level values instead of None.
-        ctx.collected_data["industry"] = "placeholder industry"
-        ctx.collected_data["education_level"] = "bachelor"
+        if cache_industry:
+            ctx.collected_data["industry"] = "placeholder industry"
+        if cache_education:
+            ctx.collected_data["education_level"] = "bachelor"
         # job_title is deliberately NOT pre-set here: survey_routes.py runs
         # in _FAST_MODE in this test env, which skips NER entirely (see
         # `skip_ner` in _send_message_impl), so the NER JOB_TITLE-entity path
@@ -179,7 +187,7 @@ def _make_client(db, isco_code, isic_section, isced_level, job_title="Assembler"
     return TestClient(app), patchers
 
 
-def _create_session_and_send(client, msg="I assemble electronic components"):
+def _create_session_and_send(client, msg="I assemble electronic components", sql_before=None, before_send=None):
     from backend.database.models import User, SurveySession
     from backend.database.connection import get_db
 
@@ -198,6 +206,17 @@ def _create_session_and_send(client, msg="I assemble electronic components"):
     db.add(session)
     db.commit()
     db.refresh(session)
+    if sql_before:
+        from backend.database.response_revisions import save_response_revision
+        for question_id, answer, isco_code, confidence in sql_before:
+            save_response_revision(
+                db, session.id, question_id, answer,
+                isco_code=isco_code, confidence_score=confidence,
+            )
+        db.commit()
+    if before_send:
+        before_send(db, session)
+        db.commit()
 
     resp = client.post(
         f"/survey/sessions/{session.id}/message",
@@ -211,9 +230,15 @@ class TestSREHITLEnforcement:
     def test_high_severity_creates_real_hitl_queue_entry(self, db):
         """82 Assembler + ISIC Q (major-8 doesn't include Q) -- confirmed
         HIGH severity in eval/sre_expanded_validation.py."""
-        client, patchers = _make_client(db, isco_code="8211", isic_section="Q", isced_level=3)
+        client, patchers = _make_client(
+            db, isco_code="8211", isic_section="Q", isced_level=3,
+            cache_industry=False, cache_education=False,
+        )
         try:
-            resp, session_id, db2 = _create_session_and_send(client)
+            resp, session_id, db2 = _create_session_and_send(client, sql_before=[
+                ("industry", "placeholder industry", None, None),
+                ("education_level", "bachelor", None, None),
+            ])
             assert resp.status_code == 200
 
             from backend.database.models import HITLQueue
@@ -230,9 +255,15 @@ class TestSREHITLEnforcement:
     def test_coherent_case_creates_no_sre_escalation(self, db):
         """82 Assembler + ISIC C + ISCED 3 -- confirmed COHERENT in
         eval/sre_expanded_validation.py."""
-        client, patchers = _make_client(db, isco_code="8211", isic_section="C", isced_level=3)
+        client, patchers = _make_client(
+            db, isco_code="8211", isic_section="C", isced_level=3,
+            cache_industry=False, cache_education=False,
+        )
         try:
-            resp, session_id, db2 = _create_session_and_send(client)
+            resp, session_id, db2 = _create_session_and_send(client, sql_before=[
+                ("industry", "placeholder industry", None, None),
+                ("education_level", "bachelor", None, None),
+            ])
             assert resp.status_code == 200
 
             from backend.database.models import HITLQueue
@@ -246,9 +277,15 @@ class TestSREHITLEnforcement:
     def test_moderate_severity_creates_no_sre_escalation(self, db):
         """22 Health Professional + ISIC J -- confirmed MODERATE severity
         (not HIGH) in eval/sre_expanded_validation.py."""
-        client, patchers = _make_client(db, isco_code="2211", isic_section="J", isced_level=7)
+        client, patchers = _make_client(
+            db, isco_code="2211", isic_section="J", isced_level=7,
+            cache_industry=False, cache_education=False,
+        )
         try:
-            resp, session_id, db2 = _create_session_and_send(client, msg="I am a doctor")
+            resp, session_id, db2 = _create_session_and_send(client, msg="I am a doctor", sql_before=[
+                ("industry", "placeholder industry", None, None),
+                ("education_level", "bachelor", None, None),
+            ])
             assert resp.status_code == 200
 
             from backend.database.models import HITLQueue
@@ -265,9 +302,13 @@ class TestSREHITLEnforcement:
         second HITLQueue entry for the same turn."""
         client, patchers = _make_client(
             db, isco_code="8211", isic_section="Q", isced_level=3, low_isco_confidence=True,
+            cache_industry=False, cache_education=False,
         )
         try:
-            resp, session_id, db2 = _create_session_and_send(client)
+            resp, session_id, db2 = _create_session_and_send(client, sql_before=[
+                ("industry", "placeholder industry", None, None),
+                ("education_level", "bachelor", None, None),
+            ])
             assert resp.status_code == 200
 
             from backend.database.models import HITLQueue

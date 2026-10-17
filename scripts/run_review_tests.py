@@ -23,8 +23,40 @@ os.environ.update({
     "ENABLE_SURVEY_CLASSIFICATION_CREW": "false",
     "LFS_LOCAL_ONLY": "false",
 })
+# An inherited cloud or laptop Qdrant setting must not replace the host/port
+# client the unit tests mock, and must not redirect deadline tests away from
+# their local fixture server.
+os.environ.pop("QDRANT_URL", None)
+os.environ.pop("QDRANT_API_KEY", None)
 import dotenv
-dotenv.load_dotenv = lambda *args, **kwargs: False
+from dotenv import load_dotenv as _real_load_dotenv
+
+# Refuse the project .env so a request-path reload cannot retarget the suite at
+# the development database. A test that points find_dotenv at its own file
+# still loads that file; nothing else is accepted.
+_PROJECT_ENV = (Path(__file__).resolve().parents[1] / ".env").resolve()
+
+
+def isolated_load_dotenv(*args, **kwargs):
+    explicit = kwargs.get("dotenv_path", args[0] if args else None)
+    if explicit:
+        candidate = Path(str(explicit))
+    else:
+        from dotenv.main import find_dotenv
+        found = find_dotenv(usecwd=kwargs.get("usecwd", False))
+        if not found:
+            return False
+        candidate = Path(found)
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return False
+    if resolved == _PROJECT_ENV:
+        return False
+    return _real_load_dotenv(*args, **kwargs)
+
+
+dotenv.load_dotenv = isolated_load_dotenv
 
 import socket
 _connect = socket.socket.connect
@@ -32,7 +64,7 @@ _connect = socket.socket.connect
 
 def isolated_connect(sock, address):
     # Permit ephemeral local mock servers; deny production ports and remote hosts.
-    if isinstance(address, tuple) and (address[0] not in ("127.0.0.1", "localhost", "::1") or address[1] in (5432, 6379, 6333, 6334, 11434)):
+    if isinstance(address, tuple) and (address[0] not in ("127.0.0.1", "localhost", "::1") or address[1] in (5432, 6379, 6333, 6334, 11434, 15432, 16379, 25432, 26379, 8000, 18000)):
         raise ConnectionRefusedError("External service access disabled in review tests")
     return _connect(sock, address)
 
@@ -70,7 +102,12 @@ from unittest.mock import MagicMock
 
 class ReviewIsolation:
     @pytest.fixture(autouse=True)
-    def isolated_route_memory(self, monkeypatch):
+    def isolated_route_memory(self, monkeypatch, request):
+        # This module already isolates Redis and provider initialization itself.
+        # Replacing its production memory object would invalidate outage tests.
+        if "isolated_unit_services" in request.fixturenames:
+            yield
+            return
         from backend.api import survey_routes
         from backend.agents.context_memory import ContextMemory
 

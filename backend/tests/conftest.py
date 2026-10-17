@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -34,6 +36,31 @@ def reset_rate_limiter():
     _clear_all()
     yield
     _clear_all()
+
+
+@pytest.fixture(autouse=True)
+def stub_context_memory_llm(monkeypatch, request):
+    """Keep unit tests off a live local LLM when constructing ContextMemory.
+
+    Explicit integration tests keep real provider and Agent collaborators.
+    Unit tests can override these stubs to exercise provider failures against
+    the production ContextMemory implementation. Resetting the route singleton
+    prevents one unit test's initialized memory from leaking into another.
+    """
+    if request.node.get_closest_marker("integration") is not None:
+        yield
+        return
+
+    import backend.api.survey_routes as routes
+
+    monkeypatch.setattr(
+        "backend.agents.context_memory.get_llm",
+        MagicMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr("backend.agents.context_memory.Agent", MagicMock())
+    monkeypatch.setattr(routes, "_context_memory", None, raising=False)
+    yield
+    routes._context_memory = None
 
 
 @pytest.fixture()

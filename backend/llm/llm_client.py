@@ -37,12 +37,15 @@ ANTHROPIC_API_KEY Required for TaskType.CRITICAL; also used as GENERAL fallback
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
+import socket
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from enum import Enum
 from typing import Optional
 
@@ -96,34 +99,123 @@ _OLLAMA_DOWN_COOLDOWN = 30
 _ollama_cache: tuple[bool, float] = (False, 0.0)
 
 
+class OllamaUnavailableError(RuntimeError):
+    """Temporary Ollama transport/service failure; safe to degrade or retry."""
+
+    def __init__(self, message: str, *, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class OllamaHealthCheckError(RuntimeError):
+    """Non-retryable HTTP request/authentication/endpoint failure."""
+
+    def __init__(self, status_code: int):
+        super().__init__(
+            f"Ollama /api/tags returned HTTP {status_code}; "
+            "check request, authentication and endpoint configuration."
+        )
+        self.status_code = status_code
+
+
+# Pair the retained typed failure with its cache timestamp, so callers that
+# reset _ollama_cache cannot accidentally reuse a previous failure's status.
+_ollama_failure: tuple[float, OllamaUnavailableError] | None = None
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _is_ollama_transport_outage(error: OSError) -> bool:
+    reason = error.reason if isinstance(error, urllib.error.URLError) else error
+    if isinstance(reason, (ConnectionError, TimeoutError)):
+        return True
+    if isinstance(reason, socket.gaierror):
+        return reason.errno == socket.EAI_AGAIN
+    return type(reason) is OSError and reason.errno in {
+        errno.ECONNREFUSED, errno.ECONNRESET, errno.ECONNABORTED,
+        errno.ETIMEDOUT, errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ENETDOWN,
+    }
+
+
+@contextmanager
+def _ollama_tags_response():
+    """Apply one policy to health probes and pinned-model verification.
+
+    HTTP 408/429/5xx and known transport failures use the existing fixed
+    30-second cooldown (not Retry-After). All other HTTP errors, including
+    400/401/403/404, propagate uncached: retrying cannot fix an invalid request,
+    credentials or /api/tags endpoint. TLS validation, permission and unknown
+    transport errors also propagate. No response body or URL is logged here.
+    """
+    global _ollama_cache, _ollama_failure
+    try:
+        with urllib.request.urlopen(
+            f"{_OLLAMA_BASE_URL}/api/tags", timeout=_OLLAMA_HEALTH_TIMEOUT,
+        ) as response:
+            yield response
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (408, 429) and not 500 <= exc.code < 600:
+            _ollama_cache, _ollama_failure = (False, 0.0), None
+            raise OllamaHealthCheckError(exc.code) from exc
+        failure = OllamaUnavailableError(
+            f"Ollama /api/tags temporarily unavailable (HTTP {exc.code}).",
+            status_code=exc.code,
+        )
+        checked_at = time.monotonic()
+        _ollama_cache = (False, checked_at)
+        _ollama_failure = (checked_at, failure)
+        raise failure from exc
+    except OSError as exc:
+        if not _is_ollama_transport_outage(exc):
+            _ollama_cache, _ollama_failure = (False, 0.0), None
+            raise
+        failure = OllamaUnavailableError("Ollama transport temporarily unavailable.")
+        checked_at = time.monotonic()
+        _ollama_cache = (False, checked_at)
+        _ollama_failure = (checked_at, failure)
+        raise failure from exc
+
+
+def _cached_ollama_outage(message: str) -> OllamaUnavailableError:
+    retained = (
+        _ollama_failure[1]
+        if _ollama_failure is not None and _ollama_failure[0] == _ollama_cache[1]
+        else None
+    )
+    if retained is not None and retained.status_code is not None:
+        message += f" Health check returned HTTP {retained.status_code}."
+    error = OllamaUnavailableError(
+        message, status_code=retained.status_code if retained else None,
+    )
+    error.__cause__ = retained
+    return error
+
 
 def _ollama_is_running() -> bool:
     """
     Return True if the Ollama server responds to a quick health-check.
 
-    Result is cached for _OLLAMA_DOWN_COOLDOWN seconds after a *failure* so
+    Only temporary outages are cached for _OLLAMA_DOWN_COOLDOWN seconds so
     that a flapping or absent Ollama doesn't open a new socket on every call.
+    Non-retryable HTTP and configuration/programming errors propagate.
     A successful check is re-verified on the next call (no stale "up" cache).
     """
-    global _ollama_cache
+    global _ollama_cache, _ollama_failure
     cached_result, checked_at = _ollama_cache
 
     # If last check was a failure and the cooldown hasn't expired, skip probe
-    if not cached_result and (time.monotonic() - checked_at) < _OLLAMA_DOWN_COOLDOWN:
+    if (not cached_result and checked_at > 0
+            and (time.monotonic() - checked_at) < _OLLAMA_DOWN_COOLDOWN):
         return False
 
     try:
-        with urllib.request.urlopen(
-            f"{_OLLAMA_BASE_URL}/api/tags",
-            timeout=_OLLAMA_HEALTH_TIMEOUT,
-        ):
+        with _ollama_tags_response():
             _ollama_cache = (True, time.monotonic())
+            _ollama_failure = None
             return True
-    except (urllib.error.URLError, OSError, TimeoutError):
-        _ollama_cache = (False, time.monotonic())
+    except OllamaUnavailableError:
         return False
 
 
@@ -213,10 +305,13 @@ def _get_general_llm_with_fallback(temp: float, trace: Optional[dict]) -> LLM:
             failure_reasons[provider] = "excluded via LLM_FALLBACK_EXCLUDE"
             continue
         attempted.append(provider)
+        # Permanent health/configuration failures must escape the existing
+        # cloud-permitted fallback handler, just as they do in local-only mode.
+        ollama_running = _ollama_is_running() if provider == "ollama" else False
         try:
             if provider == "ollama":
-                if not _ollama_is_running():
-                    raise RuntimeError(f"Ollama not reachable at {_OLLAMA_BASE_URL}")
+                if not ollama_running:
+                    raise _cached_ollama_outage(f"Ollama not reachable at {_OLLAMA_BASE_URL}")
                 llm = LLM(
                     model=MODEL_GENERAL, temperature=temp,
                     base_url=_OLLAMA_BASE_URL, timeout=_OLLAMA_INFERENCE_TIMEOUT,
@@ -392,18 +487,18 @@ def get_llm_strict(model: str, temperature: float) -> LLM:
     """
     if model.startswith("ollama/"):
         if not _ollama_is_running():
-            raise RuntimeError(
+            raise _cached_ollama_outage(
                 f"Pinned reranker model {model!r} requires Ollama at "
                 f"{_OLLAMA_BASE_URL}, but it is not reachable. Aborting "
                 "rather than silently substituting a different model."
             )
         ollama_model_name = model.split("/", 1)[1]
         try:
-            with urllib.request.urlopen(
-                f"{_OLLAMA_BASE_URL}/api/tags", timeout=_OLLAMA_HEALTH_TIMEOUT
-            ) as resp:
+            with _ollama_tags_response() as resp:
                 tags = json.loads(resp.read())
             pulled = {m.get("name", "") for m in tags.get("models", [])}
+        except (OllamaUnavailableError, OllamaHealthCheckError):
+            raise
         except Exception as exc:
             raise RuntimeError(
                 f"Could not verify pinned reranker model {model!r} is pulled "

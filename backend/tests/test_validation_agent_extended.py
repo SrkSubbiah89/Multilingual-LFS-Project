@@ -72,6 +72,27 @@ class TestR01BoundaryValues:
         result = agent.validate(data)
         assert not result.is_valid
 
+    def test_unemployed_record_without_industry_is_valid(self, agent):
+        result = agent.validate(valid_unemployed_data())
+        industry_errors = [
+            v for v in result.rule_violations
+            if v.rule_id == "R01" and v.field == "industry"
+        ]
+        assert industry_errors == []
+        assert result.is_valid
+
+    def test_outside_labour_force_without_industry_is_valid(self, agent):
+        result = agent.validate({
+            "employment_status": "not_in_labour_force",
+            "outside_lf_reason": "student",
+        })
+        industry_errors = [
+            v for v in result.rule_violations
+            if v.rule_id == "R01" and v.field == "industry"
+        ]
+        assert industry_errors == []
+        assert result.is_valid
+
     def test_missing_education_level_passes(self, agent):
         # education_level is NOT in _ALWAYS_REQUIRED or _EMPLOYMENT_REQUIRED
         data = valid_employed_data()
@@ -92,9 +113,9 @@ class TestR03BoundaryValues:
         ("169",  False),   # over maximum
         ("200",  False),   # clearly over
         ("-1",   False),   # negative
-        ("0.5",  False),   # normalises to 0 via int(float()) → fails R03
-        ("167.5",True),    # normalises to 167 → within range
-        ("168.1",True),    # normalises to 168 → exactly _HOURS_MAX → passes
+        ("0.5",  False),   # fractional value below the minimum
+        ("167.5",True),    # fractional value within range
+        ("168.1",False),   # preserve fraction: exceeds _HOURS_MAX
     ])
     def test_hours_boundary(self, agent, hours, should_pass):
         data = valid_employed_data(hours_per_week=hours)
@@ -136,9 +157,8 @@ class TestR05R06UnemployedBoundary:
         assert len(r06) == 0
 
     def test_unemployed_with_hours_fails(self, agent):
-        # "0.5" normalises to "0" via int(float()) → R06 checks float > 0 → 0 not > 0 → no R06
-        # Use "1" to reliably trigger R06
-        data = valid_unemployed_data(hours_per_week="1")
+        # Fractional positive hours must also trigger the existing contradiction.
+        data = valid_unemployed_data(hours_per_week="0.5")
         result = agent.validate(data)
         r06 = [v for v in result.rule_violations if v.rule_id == "R06"]
         assert len(r06) > 0

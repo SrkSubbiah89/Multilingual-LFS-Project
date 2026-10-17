@@ -18,7 +18,7 @@ def invalidate_reports(db, session_id):
     ).update({SurveyReportRecord.invalidated_at: datetime.utcnow()}, synchronize_session="fetch")
 
 
-def retire_response(db, row):
+def retire_response(db, row, *, reason=None):
     row.deleted_at = datetime.utcnow()
     for item in db.query(HITLQueue).filter(
         HITLQueue.response_id == row.id, HITLQueue.status == "pending",
@@ -26,7 +26,7 @@ def retire_response(db, row):
         if item.status != "pending":
             continue
         item.status = "rejected"
-        item.reviewer_notes = "Classification superseded by a newer answer revision."
+        item.reviewer_notes = reason or "Classification superseded by a newer answer revision."
         item.reviewed_at = row.deleted_at
 
 

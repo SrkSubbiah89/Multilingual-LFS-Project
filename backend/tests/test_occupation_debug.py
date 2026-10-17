@@ -9,6 +9,7 @@ from backend.api import survey_routes
 
 @pytest.fixture
 def observed_classifier(monkeypatch):
+    monkeypatch.setenv("LFS_ENABLE_ISCO_DEBUG", "true")
     calls = []
 
     class Classifier:

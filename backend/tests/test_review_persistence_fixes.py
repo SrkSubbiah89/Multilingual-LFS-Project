@@ -244,6 +244,10 @@ def test_api_refinement_and_title_correction_persist_the_returned_code(db, user,
     for field in fields[:fields.index("job_duties")]:
         collected.setdefault(field, "provided")
     collected["job_title"] = "Engineer"
+    # These are previously accepted answers, not provisional cache-only values.
+    for field, value in collected.items():
+        if field != "job_title":
+            save_response_revision(db, session.id, field, value)
     original = save_response_revision(db, session.id, "job_title", "Engineer", isco_code="2512", confidence_score=0.9)
     db.commit()
     state = ConversationState.VALIDATING if change == "job_title" else ConversationState.COLLECTING_INFO
@@ -285,17 +289,28 @@ def test_unflushed_queue_is_retired_with_its_revision(db, user):
 
 
 def test_raw_response_writes_version_answers_and_invalidate_completed_reports(db, user, isolated_routes):
+    """Open corrections retain revision/invalidation behavior; completion freezes answers."""
     session = make_session(db, user)
     first = routes.submit_response(session.id, routes.ResponseSubmitBody(question_id="job_title", answer="Engineer", isco_code="2512", confidence_score=0.4), db, user)
     second = routes.submit_response(session.id, routes.ResponseSubmitBody(question_id="job_title", answer="Doctor", isco_code="2221", confidence_score=0.8), db, user)
     assert first.deleted_at is not None
     assert len(active_responses(db, session.id)) == 1
     report = make_report(db, session)
-    session.status = "completed"
-    db.commit()
     corrected = routes.update_response(session.id, second.id, routes.ResponseSubmitBody(question_id="job_title", answer="Director", isco_code="1213", confidence_score=0.95), db, user)
     assert corrected.supersedes_id == second.id
     assert report.invalidated_at is not None
+    assert db.query(QualityReview).filter_by(session_id=session.id).count() == 1
+    assert routes._contexts[session.id].collected_data["job_title"] == "Director"
+    session.status = "completed"
+    db.commit()
+    report = make_report(db, session)
+    previous_count = db.query(SurveyResponse).filter_by(session_id=session.id).count()
+    with pytest.raises(HTTPException) as error:
+        routes.update_response(session.id, corrected.id, routes.ResponseSubmitBody(question_id="job_title", answer="Doctor"), db, user)
+    assert error.value.status_code == 409
+    assert db.query(SurveyResponse).filter_by(session_id=session.id).count() == previous_count
+    assert corrected.deleted_at is None and corrected.answer == "Director"
+    assert report.invalidated_at is None
     assert db.query(QualityReview).filter_by(session_id=session.id).count() == 1
     assert routes._contexts[session.id].collected_data["job_title"] == "Director"
 
@@ -364,6 +379,9 @@ def test_coordinator_promotion_saves_code_and_replaces_unflushed_queue(db, user,
     fields = manager._get_field_order(collected)
     for field in fields[:fields.index("job_title")]:
         collected.setdefault(field, "provided")
+    for field, value in collected.items():
+        save_response_revision(db, session.id, field, value)
+    db.commit()
     routes._save_context(ConversationContext(session_id=session.id, state=ConversationState.COLLECTING_INFO, collected_data=collected))
     classification = SimpleNamespace(primary=SimpleNamespace(code="2512", title_en="Engineer", title_ar="", confidence=0.4),
         method="flat", hitl_required=True, stage_confidences={}, hierarchy_path=[], alternatives=[], reasoning="initial")

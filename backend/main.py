@@ -168,7 +168,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
-    expose_headers=["X-Request-ID"],
+    # X-Total-Count/X-Limit/X-Offset carry the review queue's pagination state.
+    # Without them listed here the browser receives the headers but refuses to
+    # let page JavaScript read them, so the supervisor pager would silently see
+    # no total and could never show "more behind this page".
+    expose_headers=["X-Request-ID", "X-Total-Count", "X-Limit", "X-Offset"],
 )
 
 
@@ -260,54 +264,89 @@ def root():
     }
 
 
-@app.get("/health", tags=["health"])
-def health_check():
-    """
-    Returns service-level health for Redis, Qdrant, and Ollama in addition to
-    the basic status flag.  Each sub-service reports "ok" or an error string.
-    The overall HTTP status is always 200 — callers check individual fields.
-    """
-    import urllib.request
-    import urllib.error
+def _probe_label(exc: Exception) -> str:
+    """Name the failure class without returning the exception text."""
+    return "error: " + type(exc).__name__
 
-    services: dict[str, str] = {}
 
-    # Redis
+def _probe_database() -> str:
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        return "ok"
+    except Exception as exc:
+        return _probe_label(exc)
+
+
+def _probe_redis() -> str:
     try:
         _check_redis_connection()
-        services["redis"] = "ok"
-    except Exception as _e:
-        services["redis"] = f"error: {_e}"
+        return "ok"
+    except Exception as exc:
+        return _probe_label(exc)
 
-    # Qdrant
+
+def _probe_optional(url: str) -> str:
+    import urllib.request
+
     try:
-        _qdrant_url = os.getenv("QDRANT_URL") or (
-            f"http://{os.getenv('QDRANT_HOST', 'localhost')}:{os.getenv('QDRANT_PORT', '6333')}"
-        )
-        with urllib.request.urlopen(f"{_qdrant_url.rstrip('/')}/healthz", timeout=2) as req:
-            services["qdrant"] = "ok" if req.status == 200 else f"status {req.status}"
-    except Exception as _e:
-        services["qdrant"] = f"error: {_e}"
+        with urllib.request.urlopen(url, timeout=2) as response:
+            return "ok" if response.status == 200 else f"status {response.status}"
+    except Exception as exc:
+        return _probe_label(exc)
 
-    # Ollama
-    try:
-        _ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        with urllib.request.urlopen(f"{_ollama_url.rstrip('/')}/api/tags", timeout=2) as req:
-            services["ollama"] = "ok" if req.status == 200 else f"status {req.status}"
-    except Exception as _e:
-        services["ollama"] = f"error: {_e}"
 
+@app.get("/health", tags=["health"])
+def health_check():
+    """Distinguish required storage from optional model services.
+
+    HTTP 200 means the API process answered. ``status`` is ``ok`` only when
+    PostgreSQL and Redis answered. Qdrant and Ollama stay under
+    ``diagnostics`` and never change that decision. ``/ready`` remains the
+    traffic gate for the two required services.
+    """
+    database = _probe_database()
+    redis_state = _probe_redis()
+    qdrant_url = os.getenv("QDRANT_URL") or (
+        f"http://{os.getenv('QDRANT_HOST', 'localhost')}:{os.getenv('QDRANT_PORT', '6333')}"
+    )
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    required = {"database": database, "redis": redis_state}
+    diagnostics = {
+        "qdrant": _probe_optional(f"{qdrant_url.rstrip('/')}/healthz"),
+        "ollama": _probe_optional(f"{ollama_url.rstrip('/')}/api/tags"),
+    }
     return {
-        "status": "ok",
+        "status": "ok" if all(value == "ok" for value in required.values()) else "degraded",
         "fast_mode": _ROUTE_FAST_MODE,
         "lfs_fast_mode_env": os.getenv("LFS_FAST_MODE"),
-        "services": services,
+        "required": required,
+        "diagnostics": diagnostics,
     }
 
 
+_DEBUG_CLIENTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _isco_debug_permitted(request: Request) -> bool:
+    """Local diagnostic only. The flag is off unless a test runner sets it."""
+    if os.getenv("LFS_ENABLE_ISCO_DEBUG", "").strip().lower() != "true":
+        return False
+    host = request.client.host if request.client else ""
+    return host in _DEBUG_CLIENTS
+
+
 @app.get("/debug/isco/{job_title}", tags=["debug"])
-def debug_isco(job_title: str, duties: str = "", language: str = "", include_trace: bool = False):
-    import time, traceback
+def debug_isco(
+    request: Request,
+    job_title: str,
+    duties: str = "",
+    language: str = "",
+    include_trace: bool = False,
+):
+    if not _isco_debug_permitted(request):
+        raise HTTPException(status_code=404, detail="Not found")
+    import time
     try:
         from backend.api.survey_routes import _get_isco_classifier
         from backend.agents.occupation_inputs import classify_occupation_input
@@ -322,8 +361,8 @@ def debug_isco(job_title: str, duties: str = "", language: str = "", include_tra
         if include_trace:
             result["trace"] = trace
         return result
-    except Exception as exc:
-        return {"error": str(exc), "traceback": traceback.format_exc()}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Occupation diagnostic failed")
 
 
 def _check_redis_connection():

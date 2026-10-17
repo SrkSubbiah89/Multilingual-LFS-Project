@@ -141,9 +141,24 @@ class TestR01RequiredFields:
         fields = [r.field for r in v]
         assert "employment_status" in fields
 
-    def test_missing_industry_is_error(self, ag):
-        v = ag._r01_required_fields({"employment_status": "unemployed"})
+    def test_employed_missing_industry_is_error(self, ag):
+        data = {
+            "employment_status": "employed",
+            "job_title": "engineer",
+            "hours_per_week": "40",
+            "employment_type": "full_time",
+        }
+        v = ag._r01_required_fields(data)
         assert any(r.field == "industry" for r in v)
+
+    def test_unemployed_without_current_industry_is_not_r01(self, ag):
+        # The unemployed path never asks current industry.
+        v = ag._r01_required_fields({"employment_status": "unemployed"})
+        assert not any(r.field == "industry" for r in v)
+
+    def test_outside_labour_force_without_current_industry_is_not_r01(self, ag):
+        v = ag._r01_required_fields({"employment_status": "not_in_labour_force"})
+        assert not any(r.field == "industry" for r in v)
 
     def test_employed_missing_job_title_is_error(self, ag):
         data = {
@@ -163,6 +178,29 @@ class TestR01RequiredFields:
     def test_all_fields_present_no_violations(self, ag):
         v = ag._r01_required_fields(ag._normalise(_VALID_EMPLOYED))
         assert v == []
+
+    def test_mandatory_rule_errors_skip_warnings_and_agent_init(self, monkeypatch):
+        def _forbid_llm(*_args, **_kwargs):
+            raise AssertionError("mandatory rule check must not construct an LLM")
+
+        monkeypatch.setattr("backend.agents.validation_agent.get_llm", _forbid_llm)
+        from backend.agents.validation_agent import mandatory_rule_errors
+
+        errors = mandatory_rule_errors({
+            "employment_status": "employed",
+            "industry": "education",
+            "job_title": "teacher",
+            "hours_per_week": "15",
+            "employment_type": "full_time",
+        })
+        assert errors == []
+        blocked = mandatory_rule_errors({
+            "employment_status": "employed",
+            "job_title": "teacher",
+            "hours_per_week": "40",
+            "employment_type": "full_time",
+        })
+        assert [item.field for item in blocked] == ["industry"]
 
     def test_empty_field_value_triggers_error(self, ag):
         data = {"employment_status": "", "industry": "tech"}

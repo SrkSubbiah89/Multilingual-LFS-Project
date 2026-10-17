@@ -1,4 +1,3 @@
-import os
 import re
 from typing import Optional
 
@@ -11,6 +10,7 @@ from backend.database.models import User
 from backend.auth.email_otp import (
     _DEV_MODE,
     check_rate_limit,
+    expose_dev_otp,
     generate_and_send_otp,
     generate_and_send_sms_otp,
     verify_otp,
@@ -57,7 +57,7 @@ class TokenResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
-    dev_otp: Optional[str] = None  # only populated when APP_ENV=development
+    dev_otp: Optional[str] = None  # isolated runtime and a synthetic recipient only
 
 
 # ---------------------------------------------------------------------------
@@ -127,10 +127,9 @@ def request_otp(body: OTPRequestBody, request: Request, db: Session = Depends(ge
             detail="Failed to send OTP email. Please try again later.",
         )
 
-    is_dev = os.getenv("APP_ENV", "development").lower() == "development"
     return {
         "message": "OTP sent. Please check your email.",
-        "dev_otp": code if is_dev else None,
+        "dev_otp": code if expose_dev_otp(body.email) else None,
     }
 
 
@@ -219,8 +218,7 @@ def request_sms_otp(body: SMSOTPRequestBody, request: Request, db: Session = Dep
             detail="Failed to send SMS OTP. Please check the number and try again.",
         )
 
-    is_dev = os.getenv("APP_ENV", "development").lower() == "development"
-    return {"message": "OTP sent via SMS.", "dev_otp": code if is_dev else None}
+    return {"message": "OTP sent via SMS.", "dev_otp": code if expose_dev_otp(user.email or "") else None}
 
 
 @router.post(

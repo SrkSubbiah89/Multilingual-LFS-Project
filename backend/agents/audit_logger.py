@@ -34,7 +34,7 @@ Usage
 -----
 from backend.agents.audit_logger import AuditLogger, EventType, AccessType
 
-al = AuditLogger()
+al = AuditLogger()  # database logging only; the report model loads on generate_report()
 
 al.log_interaction(
     event_type=EventType.SESSION_STARTED,
@@ -263,25 +263,33 @@ class AuditLogger:
     ) -> None:
         self._sf             = session_factory or SessionLocal
         self._retention_days = retention_days
-        self._llm            = get_llm(TaskType.CRITICAL)   # Claude 3.5 Sonnet
+        # Ordinary audit rows do not need a model. The report agent is built
+        # on the first generate_report() call.
+        self._llm            = None
+        self._agent          = None
 
-        self._agent = Agent(
-            role="GDPR Audit Compliance Analyst",
-            goal=(
-                "Produce accurate, bilingual (English and Arabic) compliance "
-                "reports from LFS survey audit statistics, enabling data-governance "
-                "stakeholders to assess system health and regulatory adherence."
-            ),
-            backstory=(
-                "You are a Data Protection Officer at a national statistics office. "
-                "You review audit logs daily, assess GDPR compliance, and draft "
-                "concise reports in both English and Arabic for senior management "
-                "and regulatory bodies."
-            ),
-            llm=self._llm,
-            verbose=False,
-            allow_delegation=False,
-        )
+    def _ensure_report_agent(self) -> Agent:
+        """Build the bilingual compliance reporter once, on first use."""
+        if self._agent is None:
+            self._llm = get_llm(TaskType.CRITICAL)
+            self._agent = Agent(
+                role="GDPR Audit Compliance Analyst",
+                goal=(
+                    "Produce accurate, bilingual (English and Arabic) compliance "
+                    "reports from LFS survey audit statistics, enabling data-governance "
+                    "stakeholders to assess system health and regulatory adherence."
+                ),
+                backstory=(
+                    "You are a Data Protection Officer at a national statistics office. "
+                    "You review audit logs daily, assess GDPR compliance, and draft "
+                    "concise reports in both English and Arabic for senior management "
+                    "and regulatory bodies."
+                ),
+                llm=self._llm,
+                verbose=False,
+                allow_delegation=False,
+            )
+        return self._agent
 
     # ------------------------------------------------------------------
     # Public API — logging
@@ -681,6 +689,7 @@ class AuditLogger:
             or "  (none)"
         )
 
+        agent = self._ensure_report_agent()
         task = Task(
             description=(
                 f"{_REPORT_INSTRUCTIONS}\n\n"
@@ -692,10 +701,10 @@ class AuditLogger:
                 f"Agent-decision breakdown:\n{agents_block}"
             ),
             expected_output='JSON: {"report_en": "<string>", "report_ar": "<string>"}',
-            agent=self._agent,
+            agent=agent,
         )
 
-        crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
+        crew = Crew(agents=[agent], tasks=[task], verbose=False)
         raw  = str(crew.kickoff()).strip()
         return self._parse_report_response(raw, stats)
 
@@ -820,8 +829,9 @@ def get_audit_logger() -> AuditLogger:
     """
     Return the module-level ``AuditLogger`` singleton.
 
-    Creates the instance on the first call (connects to PostgreSQL, loads the
-    LLM client).  Subsequent calls return the cached instance.
+    Creates the instance on the first call. Database logging does not load a
+    model. ``generate_report`` loads the compliance-report model on first use.
+    Subsequent calls return the cached instance.
     """
     global _instance
     if _instance is None:

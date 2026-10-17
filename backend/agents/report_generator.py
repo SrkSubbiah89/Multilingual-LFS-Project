@@ -53,6 +53,8 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.agents.survey_option_aliases import OPTION_VALUE_ALIASES
+
 from backend.database.connection import SessionLocal
 from backend.database.models import (
     HITLQueue,
@@ -181,13 +183,22 @@ You are an expert Labour Force Survey (LFS) data analyst generating the
 official final report for one respondent's completed survey session.
 This survey follows ILO ICLS-19 standards.
 
+Use the employment status to select the reporting path. Describe current
+employment, hours and wages only for employed respondents. For unemployed
+respondents describe job search, availability and any explicitly recorded
+previous occupation. For respondents outside the labour force describe the
+reason and any explicitly recorded previous occupation. Keep current and
+previous occupation evidence distinct. If source fields conflict with the
+status, identify the inconsistency rather than inventing an applicable job or
+silently discarding that evidence. Do not infer a path for an unknown status.
+
 Employment profile collected:
   Employment status   : {employment_status}
   Education level     : {education_level}
   Field of study      : {field_of_study}
   Employment nature   : {employment_nature}
   Employment sector   : {employment_sector}
-  Job title           : {job_title}
+  Current job title   : {job_title}
   Industry / sector   : {industry}
   ISCO-08 code        : {isco_code}
   ISCO confidence     : {isco_confidence}
@@ -387,7 +398,7 @@ class ReportGenerator:
             # Return cached report unless regeneration is requested
             if not regenerate:
                 existing = self._load_existing(db, session_id)
-                if existing:
+                if existing and not self._needs_employment_rerouting(existing):
                     return self._record_to_report(existing, session)
 
             # Load all session data
@@ -609,9 +620,30 @@ class ReportGenerator:
         return (
             db.query(SurveyReportRecord)
             .filter(SurveyReportRecord.session_id == session_id, SurveyReportRecord.invalidated_at.is_(None))
-            .order_by(SurveyReportRecord.generated_at.desc())
+            .order_by(SurveyReportRecord.generated_at.desc(), SurveyReportRecord.id.desc())
             .first()
         )
+
+    @staticmethod
+    def _canonical_employment_status(raw: Optional[str]) -> Optional[str]:
+        """Interpret recognized questionnaire status values without editing evidence."""
+        if raw is None:
+            return None
+        from backend.agents.conversation_manager import ConversationManager
+
+        canonical = ConversationManager._canonicalize_correction_value("employment_status", raw)
+        if canonical in OPTION_VALUE_ALIASES["employment_status"].values():
+            return canonical
+        # Unsupported values must remain visible, including their original text.
+        return raw
+
+    def _needs_employment_rerouting(self, record: SurveyReportRecord) -> bool:
+        """Identify legacy alias artifacts whose stored narratives need rebuilding."""
+        try:
+            raw = json.loads(record.profile_json).get("employment_status")
+        except (ValueError, TypeError, AttributeError):
+            return False
+        return isinstance(raw, str) and self._canonical_employment_status(raw) != raw
 
     def _load_quality_review(
         self, db: Session, session_id: int
@@ -650,7 +682,7 @@ class ReportGenerator:
 
         return EmploymentProfile(
             # All paths
-            employment_status=_pick("employment_status"),
+            employment_status=self._canonical_employment_status(_pick("employment_status")),
             education_level=_pick("education_level"),
             field_of_study=_pick("field_of_study"),
             ai_preference=_pick("ai_preference"),
@@ -699,16 +731,13 @@ class ReportGenerator:
         else:
             status_key = "fail"
 
-        # Determine best occupation title (employed=job_title, unemployed=last_job_title)
-        occ_title = profile.job_title or profile.last_job_title
-
         prompt = _REPORT_PROMPT.format(
-            employment_status=_fmt(profile.employment_status),
+            employment_status=_fmt(self._canonical_employment_status(profile.employment_status)),
             education_level=_fmt(profile.education_level),
             field_of_study=_fmt(profile.field_of_study),
             employment_nature=_fmt(profile.employment_nature),
             employment_sector=_fmt(profile.employment_sector),
-            job_title=_fmt(occ_title),
+            job_title=_fmt(profile.job_title),
             industry=_fmt(profile.industry),
             isco_code=_fmt(profile.isco_code, "Not classified"),
             isco_confidence=_fmt(profile.isco_confidence, "N/A"),
@@ -837,7 +866,7 @@ class ReportGenerator:
             "employed": "موظف", "unemployed": "عاطل عن العمل",
             "not_in_labour_force": "خارج سوق العمل",
         }
-        emp_status = profile.employment_status or ""
+        emp_status = self._canonical_employment_status(profile.employment_status) or ""
 
         # ── English report ────────────────────────────────────────────────────
         lines_en = [f"The respondent is currently {_v(emp_status)}."]
@@ -1024,7 +1053,19 @@ class ReportGenerator:
                 json.dumps(isced_classification) if isced_classification is not None else None
             ),
         )
+        # Keep the original profile/narrative as history. Retire only affected
+        # alias artifacts in the replacement's transaction, after the optional
+        # SRE phase (which can commit independently). Do not invalidate early.
+        obsolete = [
+            previous for previous in db.query(SurveyReportRecord).filter(
+                SurveyReportRecord.session_id == session_id,
+                SurveyReportRecord.invalidated_at.is_(None),
+            ).all()
+            if self._needs_employment_rerouting(previous)
+        ]
         db.add(record)
+        for previous in obsolete:
+            previous.invalidated_at = record.generated_at
         if write_guard is not None:
             write_guard()
         db.commit()

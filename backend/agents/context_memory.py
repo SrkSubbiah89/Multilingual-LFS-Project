@@ -59,21 +59,110 @@ print(summary.missing_fields)
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from threading import Event, Thread
 from typing import Optional
+from urllib.error import HTTPError, URLError
 
+import h11
+import httpcore
+import httpx
 import redis as redis_lib
+from anthropic import APIConnectionError as AnthropicAPIConnectionError
+from anthropic import APIError as AnthropicAPIError
 from crewai import Agent, Crew, Task
 from dotenv import load_dotenv
+from google.genai.errors import APIError as GeminiAPIError
+from openai import APIConnectionError, APIError
 from pydantic import BaseModel, Field
 
 from backend.llm import TaskType, get_llm
+from backend.llm.llm_client import OllamaUnavailableError, _is_ollama_transport_outage
 
 load_dotenv()
+
+_logger = logging.getLogger(__name__)
+
+
+def _is_provider_outage(error: BaseException | None) -> bool:
+    """Recognise typed outages without hiding SDK lifecycle/programming errors.
+
+    SDK connection errors can wrap arbitrary failures. Validate their explicit
+    cause, or unsuppressed context, before trusting the outer category. Generic
+    CrewAI wrappers follow explicit causes only: incidental network context
+    must not turn a new programming error into an outage. Unknown, malformed,
+    cyclic or excessively deep chains stay visible to the caller.
+    """
+    transport_wrappers = (
+        OllamaUnavailableError, URLError,
+        httpx.NetworkError, httpx.TimeoutException, httpx.RemoteProtocolError,
+        httpcore.NetworkError, httpcore.TimeoutException, httpcore.RemoteProtocolError,
+        h11.RemoteProtocolError,
+        APIConnectionError, AnthropicAPIConnectionError,
+    )
+    seen: set[int] = set()
+    for _ in range(64):
+        if not isinstance(error, BaseException) or id(error) in seen:
+            return False
+        seen.add(id(error))
+        try:
+            generic_wrapper = type(error) in (Exception, RuntimeError)
+            if isinstance(error, HTTPError):
+                status = error.code
+                recoverable = isinstance(status, int) and (
+                    status in (408, 429) or 500 <= status < 600
+                )
+            elif isinstance(error, transport_wrappers + (ConnectionError, TimeoutError)):
+                recoverable = True
+            elif isinstance(error, OSError):
+                recoverable = _is_ollama_transport_outage(error)
+            elif isinstance(error, (APIError, AnthropicAPIError, GeminiAPIError, httpx.HTTPStatusError)):
+                status = (
+                    error.code if isinstance(error, GeminiAPIError)
+                    else error.response.status_code if isinstance(error, httpx.HTTPStatusError)
+                    else getattr(error, "status_code", None)
+                )
+                recoverable = isinstance(status, int) and (
+                    status in (408, 429) or 500 <= status < 600
+                )
+            elif generic_wrapper:
+                recoverable = False  # Only an explicit typed cause can justify it.
+            else:
+                return False
+            if not recoverable and not generic_wrapper:
+                return False
+            cause = error.__cause__
+            if cause is None and isinstance(error, URLError) and not isinstance(error, HTTPError):
+                cause = error.reason
+                if not isinstance(cause, BaseException):
+                    return False
+            if (cause is None and isinstance(error, transport_wrappers + (OSError,))
+                    and not isinstance(error, HTTPError) and not error.__suppress_context__):
+                cause = error.__context__
+        except Exception:
+            # Broken exception metadata must preserve the original failure,
+            # not substitute an introspection error or trigger degradation.
+            return False
+        if cause is None:
+            return recoverable
+        error = cause
+    return False
+
+
+def _is_llm_selection_outage(error: RuntimeError) -> bool:
+    """Accept only typed temporary failures, including the local-only wrapper.
+
+    Untyped errors and the cloud-permitted factory's aggregate error remain
+    visible. Missing models, credentials and invalid endpoints are not outages.
+    """
+    return isinstance(error, OllamaUnavailableError) or (
+        type(error) is RuntimeError
+        and isinstance(error.__cause__, OllamaUnavailableError)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +171,11 @@ load_dotenv()
 
 _KEY_PREFIX   = "lfs:session:"
 _TTL_SECONDS  = 86_400      # 24 hours; override via ContextMemory(ttl=...)
+
+# How long a session write-lock lives. Named so the user-facing 503 message
+# in survey_routes cannot drift from the real worst-case wait: if a worker
+# dies mid-turn its lock can only lapse by this TTL.
+SESSION_LOCK_TIMEOUT_SECONDS = 600
 
 # The five LFS fields the ConversationManager must collect.
 _ALL_FIELDS: frozenset[str] = frozenset({
@@ -192,6 +286,7 @@ class SessionMemory(BaseModel):
     correction_rejected_field: Optional[str] = None
     correction_no_target: bool = False
     prefilled_fields: list[str] = Field(default_factory=list)
+    response_revisions: Optional[dict[str, int]] = None
 
 
 class ContextSummary(BaseModel):
@@ -279,7 +374,26 @@ class ContextMemory:
             )
         self._ttl = ttl
 
-        self._llm = get_llm(TaskType.GENERAL)   # GPT-4o-mini, temp 0.3
+        # Summarisation is optional; Redis persistence must remain available
+        # when the configured provider is down. Keep provider selection's
+        # policy unchanged, including its local-only refusal of cloud fallback.
+        # An initialization outage remains degraded until this instance is
+        # recreated. Inference outages retain the agent and retry on the next
+        # summary request; neither path changes persistence error handling.
+        self._agent_available = False
+        self._llm = None
+        self._agent = None
+        try:
+            self._llm = get_llm(TaskType.GENERAL)
+        except RuntimeError as exc:
+            if not _is_llm_selection_outage(exc):
+                raise
+            _logger.warning(
+                "ContextMemory summariser unavailable; using deterministic summaries."
+            )
+            return
+
+        # Construction/validation errors are programming failures, not outages.
         self._agent = Agent(
             role="LFS Survey Context Summariser",
             goal=(
@@ -299,6 +413,7 @@ class ContextMemory:
             verbose=False,
             allow_delegation=False,
         )
+        self._agent_available = True
 
     # ------------------------------------------------------------------
     # Core storage
@@ -312,7 +427,8 @@ class ContextMemory:
         without ownership would permit one worker to overwrite another turn.
         """
         lock = self._redis.lock(
-            f"lfs:session-lock:{session_id}", timeout=600, blocking_timeout=5,
+            f"lfs:session-lock:{session_id}", timeout=SESSION_LOCK_TIMEOUT_SECONDS,
+            blocking_timeout=5,
             thread_local=False,
         )
         if not lock.acquire(blocking=True):
@@ -325,7 +441,7 @@ class ContextMemory:
             # alive while this worker is healthy; crashes still expire the lock.
             while not stop.wait(200):
                 try:
-                    lock.extend(600, replace_ttl=True)
+                    lock.extend(SESSION_LOCK_TIMEOUT_SECONDS, replace_ttl=True)
                 except Exception as exc:
                     renewal_errors.append(exc)
                     stop.set()
@@ -364,6 +480,7 @@ class ContextMemory:
         correction_rejected_field: Optional[str] = None,
         correction_no_target: bool = False,
         prefilled_fields: Optional[list[str]] = None,
+        response_revisions: Optional[dict[str, int]] = None,
     ) -> SessionMemory:
         """
         Persist (or overwrite) the full session state in Redis.
@@ -416,6 +533,7 @@ class ContextMemory:
             correction_rejected_field=correction_rejected_field,
             correction_no_target=correction_no_target,
             prefilled_fields=prefilled_fields or [],
+            response_revisions=response_revisions,
         )
         self._set(session_id, mem)
         return mem
@@ -641,6 +759,9 @@ class ContextMemory:
         """
         Ask GPT-4o-mini to summarise the session; fall back to rule-based text.
         """
+        if not self._agent_available:
+            return self._build_fallback_summary(mem, missing)
+
         fields_block = (
             "\n".join(f"  {k}: {v}" for k, v in sorted(mem.collected_fields.items()))
             or "  (none)"
@@ -668,7 +789,17 @@ class ContextMemory:
         )
 
         crew = Crew(agents=[self._agent], tasks=[task], verbose=False)
-        raw  = str(crew.kickoff()).strip()
+        try:
+            result = crew.kickoff()
+        except Exception as exc:
+            if not _is_provider_outage(exc):
+                raise
+            _logger.warning(
+                "ContextMemory summariser request unavailable (%s); "
+                "using a deterministic summary.", type(exc).__name__,
+            )
+            return self._build_fallback_summary(mem, missing)
+        raw = str(result).strip()
         return self._parse_summary_response(raw, mem, missing)
 
     def _parse_summary_response(

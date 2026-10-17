@@ -13,6 +13,7 @@ from backend.agents.conversation_manager import (
     ConversationState,
     StructuredAnswerError,
 )
+from backend.tests.survey_completion_fixtures import required_answers
 
 
 @pytest.fixture
@@ -193,7 +194,12 @@ def test_confirmation_with_correction_applies_change_before_completion(manager):
     ("ur", "ہاں، یہ درست ہے"), ("hi", "हाँ, यह सही है"), ("tl", "Oo, tama iyan"),
 ])
 def test_positive_confirmations_still_complete(manager, language, answer):
-    ctx = ConversationContext(1, language=language, state=ConversationState.VALIDATING)
+    ctx = ConversationContext(
+        1,
+        language=language,
+        state=ConversationState.VALIDATING,
+        collected_data=required_answers(),
+    )
     manager._transition(ctx, answer, "")
     assert ctx.state == ConversationState.COMPLETING
 

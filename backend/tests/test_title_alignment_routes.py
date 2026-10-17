@@ -9,6 +9,7 @@ from backend.api import survey_routes as routes
 from backend.agents.conversation_manager import ConversationContext, ConversationState
 from backend.agents.survey_classification_crew import SurveyClassificationResult
 from backend.database.models import HITLQueue, SurveyResponse, SurveySession
+from backend.tests.survey_completion_fixtures import required_answers
 
 
 @pytest.fixture
@@ -193,6 +194,7 @@ def test_cached_zero_confidence_does_not_become_confident(turn, db, user):
 @pytest.mark.parametrize("attainment_level", [0, 6])
 def test_completion_forwards_classified_industry_and_attainment_to_register(turn, db, user, monkeypatch, attainment_level):
     session, context, manager, _, classifiers, values = turn
+    context.collected_data = required_answers(education_level="bachelor")
     context.collected_data["industry"] = "software company"
     values[2].level = attainment_level
     def complete(ctx, message, **kwargs):

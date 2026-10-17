@@ -12,6 +12,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from backend.database.response_revisions import save_response_revision
+from backend.tests.survey_completion_fixtures import required_answers
+
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -166,7 +169,11 @@ class TestAllEndpointsCovered:
         resp = client.get("/health")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "ok"
+        assert set(data["required"]) == {"database", "redis"}
+        assert set(data["diagnostics"]) == {"qdrant", "ollama"}
+        assert data["status"] == (
+            "ok" if all(value == "ok" for value in data["required"].values()) else "degraded"
+        )
 
     def test_docs_accessible(self, client):
         resp = client.get("/docs")
@@ -200,20 +207,31 @@ class TestAllEndpointsCovered:
                                          headers={"Authorization": f"Bearer {token2}"})
                 assert del_resp.status_code == 404
 
-    def test_send_message_to_completed_session_rejected(self, client):
-        token = create_user_and_get_token(client, "completed@test.com")
-        if token:
-            resp = client.post("/survey/sessions",
-                               json={"language": "en"},
-                               headers={"Authorization": f"Bearer {token}"})
-            if resp.status_code == 201:
-                session_id = resp.json()["id"]
-                client.patch(f"/survey/sessions/{session_id}/complete",
-                             headers={"Authorization": f"Bearer {token}"})
-                msg_resp = client.post(f"/survey/sessions/{session_id}/message",
-                                       json={"message": "another message"},
-                                       headers={"Authorization": f"Bearer {token}"})
-                assert msg_resp.status_code in (409, 400)
+    def test_send_message_to_completed_session_rejected(self, client, db):
+        from uuid import uuid4
+
+        from backend.auth.jwt_handler import create_access_token
+        from backend.database.models import User
+
+        user = User(email=f"completion-{uuid4().hex}@test.invalid", is_active=True)
+        db.add(user)
+        db.commit()
+        token = create_access_token(user.id)
+        resp = client.post("/survey/sessions",
+                           json={"language": "en"},
+                           headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 201
+        session_id = resp.json()["id"]
+        for field, answer in required_answers().items():
+            save_response_revision(db, session_id, field, answer)
+        db.commit()
+        completed = client.patch(f"/survey/sessions/{session_id}/complete",
+                                 headers={"Authorization": f"Bearer {token}"})
+        assert completed.status_code == 200
+        msg_resp = client.post(f"/survey/sessions/{session_id}/message",
+                              json={"message": "another message"},
+                              headers={"Authorization": f"Bearer {token}"})
+        assert msg_resp.status_code == 409
 
     def test_hitl_queue_requires_auth(self, client):
         resp = client.get("/survey/hitl/queue")

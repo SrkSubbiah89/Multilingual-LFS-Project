@@ -113,7 +113,11 @@ class ConversationContext:
     corrected_fields: set = field(default_factory=set)   # field keys changed by the correction just applied (one turn)
     correction_rejected_field: Optional[str] = None      # field key whose parsed correction failed the sanity check (one turn)
     correction_no_target: bool = False                    # True for one turn when the respondent said "no"/wants a correction but named no field at all
+    validation_block_messages: list[str] = field(default_factory=list)  # mandatory rule errors that blocked confirmation this turn
     prefilled_fields: list[str] = field(default_factory=list)  # original keys reused from a completed survey
+    response_revisions: Optional[dict[str, int]] = None  # SQL revisions represented by the cached answers
+    answers_reconciled: bool = False  # transient: render current answers after cache recovery
+    routing_change: dict = field(default_factory=dict)  # current-turn dependent retirements; audited with SQL
 
 
 # ---------------------------------------------------------------------------
@@ -904,9 +908,44 @@ class ConversationManager:
             ctx.corrected_fields.clear()
             ctx.correction_rejected_field = None
             ctx.correction_no_target = False
+            ctx.validation_block_messages = []
             changed = True
         ctx.prefilled_fields = [field for field in ctx.prefilled_fields if field in ctx.collected_data]
         return changed
+
+    @classmethod
+    def completion_errors(cls, collected_data: dict) -> list:
+        """Check completion using the questionnaire's requirements and rules.
+
+        Work on a copy: rejected completion must retain the respondent's answers,
+        including contradictory fields needed to explain a blocking error.
+        """
+        from backend.agents.validation_agent import _RuleResult, mandatory_rule_errors
+
+        data = {key: str(value).strip() if value is not None else ""
+                for key, value in collected_data.items()}
+        checked = ConversationContext(
+            session_id=0, state=ConversationState.COLLECTING_INFO,
+            collected_data=data.copy(),
+        )
+        cls.sanitize_context(checked)
+        errors = mandatory_rule_errors(checked.collected_data)
+        for field in sorted(data.keys() - checked.collected_data.keys()):
+            if data[field]:
+                errors.append(_RuleResult(
+                    rule_id="Q_INVALID", field=field, severity="error",
+                    message_en=f"'{field}' has an unsupported questionnaire value.",
+                    message_ar=f"قيمة الحقل '{field}' غير مدعومة في الاستبيان.",
+                ))
+        required_errors = {error.field for error in errors if error.rule_id == "R01"}
+        for field in sorted(cls._get_required_fields(checked.collected_data)):
+            if not checked.collected_data.get(field) and field not in required_errors:
+                errors.append(_RuleResult(
+                    rule_id="Q_REQUIRED", field=field, severity="error",
+                    message_en=f"Required questionnaire field '{field}' is missing or empty.",
+                    message_ar=f"الحقل المطلوب '{field}' مفقود أو فارغ.",
+                ))
+        return errors
 
     def process_message(
         self,
@@ -940,6 +979,13 @@ class ConversationManager:
         self._transition(ctx, user_message, agent_response="", structured_correction=structured_correction,
                          structured_answer=structured_answer)
 
+        # A blocked confirmation must say why, without asking a model to improvise it.
+        if ctx.validation_block_messages:
+            response = self._dev_stub_response(ctx)
+            response = self._with_routing_notice(ctx, response)
+            ctx.history.append({"role": "assistant", "content": response})
+            return response
+
         # ── Step 2: generate the response based on the UPDATED state ─────────
         # GREETING turn always uses the fixed intro so respondents get a warm,
         # structured welcome + first question regardless of LLM availability.
@@ -957,6 +1003,7 @@ class ConversationManager:
                 _logger.warning("LLM call failed: %s. Using dev stub response.", exc)
                 response = self._dev_stub_response(ctx)
 
+        response = self._with_routing_notice(ctx, response)
         ctx.history.append({"role": "assistant", "content": response})
 
         # When we just transitioned to COMPLETING, generate the farewell in the
@@ -3156,6 +3203,7 @@ class ConversationManager:
             "correction_rejected": "عذرًا، لم أفهم القيمة الجديدة بوضوح. هل يمكنك إعادة ذكر: {label}؟",
             "correction_applied": "تم التحديث! إليك الملخص المحدّث:\n{summary}\n\nهل جميع المعلومات صحيحة الآن؟ (نعم / لا، أريد تصحيح شيء)",
             "correction_no_target": "لا مشكلة — ما الذي تريد تصحيحه؟ اذكر الحقل والقيمة الصحيحة، مثال: \"مستوى التعليم يجب أن يكون بكالوريوس\".",
+            "validation_blocked": "لا يمكن إكمال المسح بعد. ما زالت هذه الفحوصات غير ناجحة:\n{issues}\n\nيرجى تصحيح الإجابة، مثال: \"ساعات العمل الأسبوعية يجب أن تكون 40\".",
             "validating_summary": "إليك ملخص ما جمعناه:\n{summary}\n\nهل جميع المعلومات صحيحة؟ (نعم / لا، أريد تصحيح شيء)",
             "completing": "شكرًا جزيلًا على وقتك ومشاركتك في مسح القوى العاملة! إجاباتك ستساهم في أبحاث سوق العمل وصنع القرار. نتمنى لك يومًا سعيدًا!",
             "fallback": "شكرًا على إجابتك.",
@@ -3168,6 +3216,7 @@ class ConversationManager:
             "correction_rejected": "معذرت، مجھے نئی قیمت واضح طور پر سمجھ نہیں آئی۔ کیا آپ دوبارہ بتا سکتے ہیں: {label}؟",
             "correction_applied": "ٹھیک ہے، میں نے اسے اپ ڈیٹ کر دیا۔ یہ رہا آپ کا اپ ڈیٹ شدہ خلاصہ:\n{summary}\n\nکیا اب سب کچھ درست ہے؟ (ہاں / نہیں، میں کچھ درست کرنا چاہتا ہوں)",
             "correction_no_target": "کوئی مسئلہ نہیں — آپ کیا درست کرنا چاہتے ہیں؟ فیلڈ اور درست قیمت بتائیں، مثلاً: \"تعلیم کی سطح بیچلر ہونی چاہیے\"۔",
+            "validation_blocked": "سروے ابھی مکمل نہیں ہو سکتا۔ یہ جانچیں اب بھی ناکام ہیں:\n{issues}\n\nبراہ کرم جواب درست کریں، مثلاً: \"ہفتہ وار گھنٹے 40 ہونے چاہئیں\"۔",
             "validating_summary": "یہ رہا ہمارا جمع کردہ خلاصہ:\n{summary}\n\nکیا سب معلومات درست ہیں؟ (ہاں / نہیں، میں کچھ درست کرنا چاہتا ہوں)",
             "completing": "لیبر فورس سروے میں آپ کے وقت اور شرکت کے لیے بہت شکریہ! آپ کے جوابات لیبر مارکیٹ کی تحقیق اور پالیسی فیصلوں میں مددگار ثابت ہوں گے۔ آپ کا دن اچھا گزرے!",
             "fallback": "آپ کے جواب کا شکریہ۔",
@@ -3180,6 +3229,7 @@ class ConversationManager:
             "correction_rejected": "क्षमा करें, मुझे नया मान स्पष्ट रूप से समझ नहीं आया। क्या आप फिर से बता सकते हैं: {label}?",
             "correction_applied": "ठीक है, मैंने इसे अपडेट कर दिया है। यह रहा आपका अपडेटेड सारांश:\n{summary}\n\nक्या अब सब कुछ सही है? (हाँ / नहीं, मैं कुछ ठीक करना चाहता/चाहती हूँ)",
             "correction_no_target": "कोई बात नहीं — आप क्या ठीक करना चाहते हैं? फ़ील्ड और सही मान बताएं, जैसे: \"शिक्षा स्तर स्नातक होना चाहिए\"।",
+            "validation_blocked": "सर्वेक्षण अभी पूरा नहीं हो सकता। ये जाँचें अभी भी विफल हैं:\n{issues}\n\nकृपया उत्तर सुधारें, जैसे: \"साप्ताहिक घंटे 40 होने चाहिए\"।",
             "validating_summary": "यह रहा हमारा एकत्रित सारांश:\n{summary}\n\nक्या सारी जानकारी सही है? (हाँ / नहीं, मैं कुछ ठीक करना चाहता/चाहती हूँ)",
             "completing": "श्रम बल सर्वेक्षण में आपके समय और भागीदारी के लिए बहुत धन्यवाद! आपके उत्तर महत्वपूर्ण श्रम बाजार अनुसंधान और नीति निर्णयों में योगदान देंगे। आपका दिन शुभ हो!",
             "fallback": "आपके उत्तर के लिए धन्यवाद।",
@@ -3192,6 +3242,7 @@ class ConversationManager:
             "correction_rejected": "Paumanhin, hindi ko naunawaan nang malinaw ang bagong value. Maaari mo bang ulitin: {label}?",
             "correction_applied": "Sige, na-update ko na iyon para sa iyo. Narito ang iyong na-update na buod:\n{summary}\n\nTama na ba ang lahat ngayon? (oo / hindi, gusto kong itama ang isang bagay)",
             "correction_no_target": "Walang problema — ano ang gusto mong itama? Sabihin ang field at ang tamang value, hal. \"dapat bachelor ang antas ng edukasyon\".",
+            "validation_blocked": "Hindi pa matatapos ang survey. Nabigo pa rin ang mga pagsusuring ito:\n{issues}\n\nPakitama ang sagot, halimbawa: \"dapat 40 ang oras bawat linggo\".",
             "validating_summary": "Narito ang buod ng nakolekta natin:\n{summary}\n\nTama ba ang lahat? (oo / hindi, gusto kong itama ang isang bagay)",
             "completing": "Maraming salamat sa iyong oras at pakikilahok sa Labour Force Survey! Ang iyong mga sagot ay makakatulong sa mahahalagang pananaliksik sa labor market at mga desisyon sa patakaran. Magandang araw sa iyo!",
             "fallback": "Salamat sa iyong sagot.",
@@ -3204,13 +3255,15 @@ class ConversationManager:
             "correction_rejected": "Sorry, I didn't quite catch that clearly. Could you give me your {label} again?",
             "correction_applied": "Got it, I've updated that for you. Here's your updated summary:\n{summary}\n\nIs everything correct now? (yes / no, I'd like to correct something)",
             "correction_no_target": "No problem — what would you like to correct? Tell me the field and the correct value, e.g. \"education level should be bachelor\".",
+            "validation_blocked": "I can't complete the survey yet. These checks still fail:\n{issues}\n\nPlease correct the answer, for example: \"hours per week should be 40\".",
             "validating_summary": "Here's a summary of what I've collected:\n{summary}\n\nIs everything correct? (yes / no, I'd like to correct something)",
             "completing": "Thank you so much for your time and participation in the Labour Force Survey! Your responses will contribute to important labour market research and policy decisions. Have a wonderful day!",
             "fallback": "Thank you for your response.",
         },
     }
 
-    def _lang_key(self, lang: str) -> str:
+    @staticmethod
+    def _lang_key(lang: str) -> str:
         """Normalise a raw language code to one of the 5 supported UI keys."""
         if lang in ("ar", "ar-gulf"):
             return "ar"
@@ -3218,14 +3271,15 @@ class ConversationManager:
             return lang
         return "en"
 
-    def _field_labels_for_lang(self, lang: str) -> dict[str, str]:
-        lk = self._lang_key(lang)
+    @classmethod
+    def _field_labels_for_lang(cls, lang: str) -> dict[str, str]:
+        lk = cls._lang_key(lang)
         return {
-            "ar": self._FIELD_LABELS_AR,
-            "ur": self._FIELD_LABELS_UR,
-            "hi": self._FIELD_LABELS_HI,
-            "tl": self._FIELD_LABELS_TL,
-            "en": self._FIELD_LABELS_EN,
+            "ar": cls._FIELD_LABELS_AR,
+            "ur": cls._FIELD_LABELS_UR,
+            "hi": cls._FIELD_LABELS_HI,
+            "tl": cls._FIELD_LABELS_TL,
+            "en": cls._FIELD_LABELS_EN,
         }[lk]
 
     def _dev_stub_response(self, ctx: ConversationContext) -> str:
@@ -3267,29 +3321,13 @@ class ConversationManager:
             return ui["clarify_first"].format(guidance=guidance)
 
         if state == ConversationState.VALIDATING:
-            # Self-healing stray-field purge, added 2026-09-02: a real, live
-            # session reported by a user was still showing a bogus "Job
-            # Title" field (job_title) alongside the real "Most Recent Job
-            # Title" (last_job_title) for an UNEMPLOYED respondent, even
-            # after the underlying wrong-field-injection bug in
-            # _llm_extract_correction had already been fixed and deployed.
-            # Root cause: that session was corrupted by the OLD, buggy code
-            # in an earlier turn, before the fix existed -- the fix stops
-            # NEW corruption, but nothing ever cleaned up data already sitting
-            # in ctx.collected_data from before the fix. This purge is
-            # deliberately unconditional and defensive: it runs every time
-            # the VALIDATING summary is built and drops any key that isn't
-            # part of _get_field_order()'s current output for this
-            # respondent's data, regardless of how it got there (this exact
-            # historical bug, a future bug, or a legitimate employment_status
-            # change mid-session leaving the old path's fields behind) --
-            # rather than only fixing the one known cause.
-            _real_fields = set(self._get_field_order(ctx.collected_data))
-            _stray = set(ctx.collected_data.keys()) - _real_fields
-            for _k in _stray:
-                _logger.info("Purging stray field from collected_data (not in respondent's real path): %s", _k)
-                del ctx.collected_data[_k]
-
+            # Explain rejection before summary cleanup can discard its evidence.
+            if ctx.validation_block_messages:
+                issues = "\n".join(f"• {message}" for message in ctx.validation_block_messages)
+                ctx.validation_block_messages = []
+                return ui["validation_blocked"].format(issues=issues)
+            # Rendering must retain accepted answers, including contradictory
+            # evidence. Only an accepted routing change can retire dependents.
             labels = self._field_labels_for_lang(lang)
             # Fixed 2026-09-02: this previously printed the raw stored value
             # verbatim for every language except Arabic -- confirmed live,
@@ -3512,6 +3550,8 @@ class ConversationManager:
         _wants_correction / _extract_correction / _llm_extract_correction
         entirely -- see the VALIDATING branch below.
         """
+        before = dict(ctx.collected_data)
+        ctx.routing_change = {}
         if structured_answer is not None:
             self.validate_structured_answer(ctx, structured_answer)
         state = ctx.state
@@ -3669,8 +3709,24 @@ class ConversationManager:
                 # field WAS identified but its value failed the sanity check;
                 # that already has its own dedicated reply branch.
             elif self._is_confirmed(user_message, ctx.language):
-                ctx.state = ConversationState.COMPLETING
+                # Mandatory stage-1 errors keep the interview in VALIDATING.
+                # Warnings do not block. The language-model stage is not used
+                # for this decision.
+                errors = self.completion_errors(ctx.collected_data)
+                if errors:
+                    use_ar = ctx.language in ("ar", "ar-gulf")
+                    ctx.validation_block_messages = [
+                        item.message_ar if use_ar else item.message_en
+                        for item in errors
+                    ]
+                else:
+                    ctx.validation_block_messages = []
+                    ctx.state = ConversationState.COMPLETING
 
+        explicit_fields = ctx.corrected_fields if state == ConversationState.VALIDATING else (
+            {structured_answer[0]} if structured_answer else set()
+        )
+        self.apply_routing_change(ctx, before, explicit_fields=explicit_fields)
         # COMPLETING is terminal
 
     # ------------------------------------------------------------------
@@ -3949,7 +4005,15 @@ class ConversationManager:
                 data["job_duties"] = raw
 
         # ── Industry / sector (C6) ────────────────────────────────────────────
-        if "industry" not in data and status in ("employed", ""):
+        # A sector word in education, occupation or duties is not an answer
+        # to the employer's economic-activity question. Collect it only when
+        # that question (or its clarification) is active.
+        if (
+            "industry" not in data
+            and status == "employed"
+            and answer_field == "industry"
+            and ctx.state in (ConversationState.COLLECTING_INFO, ConversationState.CLARIFYING)
+        ):
             sector_map: dict[str, list[str]] = {
                 "technology": ["software", "tech", "it ", "information technology", "تقنية", "برمجة", "معلومات"],
                 "healthcare": ["hospital", "clinic", "health", "medical", "pharmaceutical", "صحة", "مستشفى", "عيادة", "دواء"],
@@ -3972,7 +4036,7 @@ class ConversationManager:
                 if any(kw in lower for kw in keywords):
                     data["industry"] = sector
                     break
-            if "industry" not in data and next_field_before == "industry":
+            if "industry" not in data:
                 raw = text.strip()
                 if (
                     len(raw) >= 3
@@ -5378,3 +5442,66 @@ class ConversationManager:
         if not data:
             return "Nothing collected yet." if lang == "en" else "لم يتم جمع أي بيانات بعد."
         return "\n".join(f"  {k}: {v}" for k, v in data.items())
+
+    @classmethod
+    def apply_routing_change(cls, ctx, before, *, explicit_fields=()):
+        """Retire only answers that an accepted gate change makes inapplicable.
+
+        Existing out-of-path evidence is not a dependent of this change. Compare
+        canonical views, retaining the stored raw values/history. Unsupported
+        gate values cannot authorize retirement, and explicitly corrected
+        answers in the same request are retained for validation.
+        """
+        old_view, new_view = dict(before), dict(ctx.collected_data)
+        changes = {}
+        gates = ("employment_status", "education_level", "employment_nature",
+                 "secondary_job", "job_search_active", "available_for_work",
+                 "ever_worked", "platform_work", "nationality")
+        for gate in gates:
+            spec = _CORRECTION_FIELD_SCHEMA[gate]
+            accepted = spec.get("answer_values") or [v.strip() for v in spec["values"].split("|")]
+            old = cls._canonicalize_correction_value(gate, str(before.get(gate, "")))
+            new = cls._canonicalize_correction_value(gate, str(ctx.collected_data.get(gate, "")))
+            free_text = gate == "nationality"
+            if old in accepted or (free_text and _sanity_check_correction_value(gate, old) is not None):
+                old_view[gate] = old
+            if new in accepted or (free_text and _sanity_check_correction_value(gate, new) is not None):
+                new_view[gate] = new
+            else:
+                # Freeze this gate's interpretation; an invalid correction must
+                # not delete evidence even if other valid gates also changed.
+                if gate in old_view:
+                    new_view[gate] = old_view[gate]
+                else:
+                    new_view.pop(gate, None)
+                continue
+            if old != new:
+                changes[gate] = {"before": before.get(gate), "after": ctx.collected_data.get(gate)}
+        obsolete = (set(cls._get_field_order(old_view)) - set(cls._get_field_order(new_view)))
+        obsolete -= set(explicit_fields)
+        retired = sorted(obsolete & set(ctx.collected_data)) if changes else []
+        for field_name in retired:
+            del ctx.collected_data[field_name]
+        ctx.routing_change = {"changes": changes, "retired_fields": retired} if retired else {}
+
+    @classmethod
+    def routing_notice(cls, ctx):
+        if not ctx.routing_change:
+            return ""
+        labels = cls._field_labels_for_lang(ctx.language)
+        changed = ", ".join(labels.get(f, f) for f in ctx.routing_change["changes"])
+        retired = ", ".join(labels.get(f, f) for f in ctx.routing_change["retired_fields"])
+        templates = {
+            "en": "Because you changed {changed}, these answers no longer apply: {retired}. Their earlier values remain in your survey history.",
+            "ar": "بسبب تغيير {changed}، لم تعد هذه الإجابات تنطبق: {retired}. تبقى القيم السابقة محفوظة في سجل الاستبيان.",
+            "ur": "آپ نے {changed} تبدیل کیا ہے، اس لیے یہ جوابات اب لاگو نہیں ہوتے: {retired}۔ پچھلی قدریں آپ کی سروے کی تاریخ میں محفوظ ہیں۔",
+            "hi": "आपने {changed} बदला है, इसलिए ये उत्तर अब लागू नहीं होते: {retired}। पुराने मान आपके सर्वेक्षण इतिहास में सुरक्षित हैं।",
+            "tl": "Dahil binago mo ang {changed}, hindi na naaangkop ang mga sagot na ito: {retired}. Nananatili ang mga dating halaga sa kasaysayan ng iyong survey.",
+        }
+        language = "ar" if ctx.language == "ar-gulf" else ctx.language
+        return templates.get(language, templates["en"]).format(changed=changed, retired=retired)
+
+    @classmethod
+    def _with_routing_notice(cls, ctx, response):
+        notice = cls.routing_notice(ctx)
+        return f"{notice}\n\n{response}" if notice else response

@@ -57,6 +57,17 @@ def isolated_agents(monkeypatch):
     routes._contexts.clear()
 
 
+def seed_context(db, context):
+    """Persist accepted answers while retaining any matching classified row."""
+    existing = {row.question_id: row for row in active_responses(db, context.session_id)}
+    for field, answer in context.collected_data.items():
+        row = existing.get(field)
+        if row is None or row.answer != str(answer):
+            save_response_revision(db, context.session_id, field, answer)
+    db.commit()
+    routes._save_context(context)
+
+
 def session_at_previous_occupation(db, user, manager, employment_status):
     session = SurveySession(user_id=user.id, language="en")
     db.add(session)
@@ -70,7 +81,7 @@ def session_at_previous_occupation(db, user, manager, employment_status):
         collected.setdefault(field, "provided")
     # Keep only fields that belong to this respondent's path.
     collected = {field: value for field, value in collected.items() if field in fields}
-    routes._save_context(ConversationContext(
+    seed_context(db, ConversationContext(
         session_id=session.id, state=ConversationState.COLLECTING_INFO, collected_data=collected,
     ))
     return session
@@ -129,7 +140,7 @@ def test_semantic_occupation_review_badge_tracks_pending_and_completed_review(
         db.commit()
         context = context_for_question(isolated_agents, field)
         context.session_id = session.id
-        routes._save_context(context)
+        seed_context(db, context)
     else:
         session = session_at_previous_occupation(db, user, isolated_agents, employment_status)
     monkeypatch.setattr(routes, "_get_isco_classifier", lambda: SimpleNamespace(
@@ -177,7 +188,6 @@ def test_cached_occupation_badge_uses_matching_review_instead_of_confidence(
     context.session_id = session.id
     context.collected_data["employment_status"] = employment_status
     context.collected_data[field] = "Office clerk"
-    routes._save_context(context)
     occupation = save_response_revision(
         db, session.id, field, "Office clerk", isco_code="4110", confidence_score=0.4,
     )
@@ -193,6 +203,7 @@ def test_cached_occupation_badge_uses_matching_review_instead_of_confidence(
     )
     db.add_all([review, unrelated])
     db.commit()
+    seed_context(db, context)
     semantic = SemanticRelationEngine(use_llm=False)
     monkeypatch.setattr("backend.agents.semantic_relation.get_semantic_relation_engine", lambda **kwargs: semantic)
 
@@ -216,7 +227,7 @@ def test_clarification_exposes_current_question_for_next_canonical_answer(
     session = SurveySession(user_id=user.id, language=language)
     db.add(session)
     db.commit()
-    routes._save_context(ConversationContext(
+    seed_context(db, ConversationContext(
         session_id=session.id, language=language, state=ConversationState.COLLECTING_INFO,
         collected_data={"employment_status": "employed"},
     ))
@@ -260,11 +271,11 @@ def test_failed_changed_occupation_does_not_replay_previous_answers_code(
         context = saved
     context.state = ConversationState.VALIDATING
     context.collected_data[field] = "Engineer"
-    routes._save_context(context)
     original = save_response_revision(
         db, session.id, field, "Engineer", isco_code="2512", confidence_score=0.8,
     )
     db.commit()
+    seed_context(db, context)
     failing = MagicMock(side_effect=RuntimeError("synthetic classifier unavailable"))
     monkeypatch.setattr(routes, "_get_isco_classifier", lambda: SimpleNamespace(classify=failing))
 

@@ -6,8 +6,11 @@ Two-stage LFS survey response validator.
 Stage 1 — Rule-based checks (pure Python, no LLM)
     Fast, deterministic consistency checks applied in order:
 
-    R01  Required fields — employment_status and industry always required;
-         job_title / hours_per_week / employment_type required only when employed.
+    R01  Required fields — employment_status always required;
+         industry / job_title / hours_per_week / employment_type required
+         only when employed. Unemployed and outside-labour-force paths
+         do not ask current industry, so a missing industry value is not
+         an R01 error on those paths.
     R02  hours_per_week must be a parseable number.
     R03  hours_per_week must be in [1, 168].
     R04  hours_per_week > 80 → warning (extreme outlier).
@@ -34,7 +37,7 @@ ValidationResult
     semantic_issues   Plain-text list from stage 2 (empty if stage 2 skipped).
     explanation_en    Human-readable verdict in English.
     explanation_ar    Human-readable verdict in Arabic.
-    validated_data    Normalised copy of the input (hours cast to int, etc.).
+    validated_data    Normalised copy of the input (whole hours rendered as integers, etc.).
 
 Confidence penalties
     error violation    −0.25 each
@@ -63,6 +66,7 @@ print(result.explanation_ar)
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Optional
@@ -77,12 +81,15 @@ from backend.llm import TaskType, get_llm
 # Constants
 # ---------------------------------------------------------------------------
 
-# Always required regardless of employment status
-_ALWAYS_REQUIRED: frozenset[str] = frozenset({"employment_status", "industry"})
+# Always required regardless of employment status.
+# Current industry is not in this set: only the employed questionnaire
+# asks it (conversation_manager._get_field_order). Unemployed and
+# outside-labour-force paths collect previous-job sector separately.
+_ALWAYS_REQUIRED: frozenset[str] = frozenset({"employment_status"})
 
 # Required only when the respondent is employed
 _EMPLOYMENT_REQUIRED: frozenset[str] = frozenset({
-    "job_title", "hours_per_week", "employment_type"
+    "industry", "job_title", "hours_per_week", "employment_type"
 })
 
 # Statuses that indicate active employment
@@ -310,7 +317,7 @@ class ValidationAgent:
         Return a cleaned copy of the input:
         - Strip whitespace from all string values.
         - Lowercase employment_status and employment_type for consistent matching.
-        - Cast hours_per_week to int where possible (keep original string on fail).
+        - Render whole hours as integers; preserve fractions for range checks.
         """
         out = {}
         for k, v in responses.items():
@@ -323,8 +330,10 @@ class ValidationAgent:
 
         if "hours_per_week" in out:
             try:
-                out["hours_per_week"] = str(int(float(out["hours_per_week"])))
-            except (ValueError, TypeError):
+                hours = float(out["hours_per_week"])
+                if math.isfinite(hours) and hours.is_integer():
+                    out["hours_per_week"] = str(int(hours))
+            except (ValueError, TypeError, OverflowError):
                 pass   # leave as-is; R02 will flag it
 
         return out
@@ -375,7 +384,8 @@ class ValidationAgent:
         if not raw:
             return []
         try:
-            float(raw)
+            if not math.isfinite(float(raw)):
+                raise ValueError("Hours must be finite")
             return []
         except ValueError:
             return [_RuleResult(
@@ -405,11 +415,11 @@ class ValidationAgent:
                 field="hours_per_week",
                 severity="error",
                 message_en=(
-                    f"'hours_per_week' ({hours:.0f}) must be between "
+                    f"'hours_per_week' ({hours:g}) must be between "
                     f"{_HOURS_MIN} and {_HOURS_MAX}."
                 ),
                 message_ar=(
-                    f"ساعات العمل الأسبوعية ({hours:.0f}) يجب أن تكون بين "
+                    f"ساعات العمل الأسبوعية ({hours:g}) يجب أن تكون بين "
                     f"{_HOURS_MIN} و{_HOURS_MAX}."
                 ),
             )]
@@ -430,11 +440,11 @@ class ValidationAgent:
                 field="hours_per_week",
                 severity="warning",
                 message_en=(
-                    f"'hours_per_week' ({hours:.0f}) is unusually high "
+                    f"'hours_per_week' ({hours:g}) is unusually high "
                     f"(> {_HOURS_EXTREME}). Please verify with the respondent."
                 ),
                 message_ar=(
-                    f"ساعات العمل الأسبوعية ({hours:.0f}) مرتفعة بشكل غير معتاد "
+                    f"ساعات العمل الأسبوعية ({hours:g}) مرتفعة بشكل غير معتاد "
                     f"(أكثر من {_HOURS_EXTREME}). يرجى التحقق مع المشارك."
                 ),
             )]
@@ -471,11 +481,11 @@ class ValidationAgent:
                         severity="error",
                         message_en=(
                             f"Respondent is unemployed but 'hours_per_week' "
-                            f"is {float(raw_hours):.0f}."
+                            f"is {float(raw_hours):g}."
                         ),
                         message_ar=(
                             f"المشارك عاطل عن العمل لكن ساعات العمل الأسبوعية "
-                            f"هي {float(raw_hours):.0f}."
+                            f"هي {float(raw_hours):g}."
                         ),
                     ))
             except ValueError:
@@ -544,11 +554,11 @@ class ValidationAgent:
                 field="hours_per_week",
                 severity="warning",
                 message_en=(
-                    f"Full-time employment with only {hours:.0f} hours/week "
+                    f"Full-time employment with only {hours:g} hours/week "
                     f"is unusual (expected ≥ {_FULL_TIME_MIN})."
                 ),
                 message_ar=(
-                    f"العمل بدوام كامل مع {hours:.0f} ساعات أسبوعيًا فقط "
+                    f"العمل بدوام كامل مع {hours:g} ساعات أسبوعيًا فقط "
                     f"أمر غير معتاد (المتوقع ≥ {_FULL_TIME_MIN} ساعة)."
                 ),
             ))
@@ -559,11 +569,11 @@ class ValidationAgent:
                 field="hours_per_week",
                 severity="warning",
                 message_en=(
-                    f"Part-time employment with {hours:.0f} hours/week may "
+                    f"Part-time employment with {hours:g} hours/week may "
                     f"actually be full-time (threshold: {_PART_TIME_MAX} h)."
                 ),
                 message_ar=(
-                    f"العمل بدوام جزئي مع {hours:.0f} ساعات أسبوعيًا قد يكون "
+                    f"العمل بدوام جزئي مع {hours:g} ساعات أسبوعيًا قد يكون "
                     f"في الواقع دوامًا كاملًا (الحد: {_PART_TIME_MAX} ساعة)."
                 ),
             ))
@@ -717,3 +727,15 @@ class ValidationAgent:
             verdict_en + " ".join(parts_en),
             verdict_ar + " ".join(parts_ar),
         )
+
+
+def mandatory_rule_errors(responses: dict) -> list[_RuleResult]:
+    """Return error-severity stage-1 findings without constructing an agent.
+
+    Confirmation uses this gate so a mandatory rule failure cannot advance
+    the interview. Warnings stay non-blocking, and the language-model stage
+    is not called.
+    """
+    checker = ValidationAgent.__new__(ValidationAgent)
+    normalised = checker._normalise(responses or {})
+    return [item for item in checker._run_rules(normalised) if item.severity == "error"]

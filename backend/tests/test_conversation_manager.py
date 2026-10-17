@@ -16,6 +16,7 @@ from backend.agents.conversation_manager import (
     ConversationManager,
     ConversationState,
 )
+from backend.tests.survey_completion_fixtures import required_answers
 
 
 # ---------------------------------------------------------------------------
@@ -23,6 +24,9 @@ from backend.agents.conversation_manager import (
 # ---------------------------------------------------------------------------
 
 _MOCK_REPLY = "Thank you! Can you tell me how many hours you work per week?"
+
+# Complete canonical questionnaire record with no R01–R10 errors.
+_RULE_CLEAN_EMPLOYED = required_answers()
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +262,16 @@ class TestExtractFieldsJobTitle:
 # ---------------------------------------------------------------------------
 
 class TestExtractFieldsIndustry:
+    @pytest.fixture(autouse=True)
+    def ask_industry(self, ctx):
+        # Exercise decoding at the real question, rather than inferring an
+        # employer's industry from a keyword during the greeting.
+        ctx.state = ConversationState.COLLECTING_INFO
+        ctx.collected_data = dict(_PRE_JOB_TITLE_DATA,
+            job_title="Analyst", job_duties="Analyse records")
+        order = ConversationManager._get_field_order(ctx.collected_data)
+        assert next(field for field in order if field not in ctx.collected_data) == "industry"
+
     def test_technology_sector(self, mgr, ctx):
         mgr._extract_fields(ctx, "I work in software and tech")
         assert ctx.collected_data.get("industry") == "technology"
@@ -396,8 +410,57 @@ class TestTransition:
 
     def test_validating_moves_to_completing_on_confirmation(self, mgr, ctx):
         ctx.state = ConversationState.VALIDATING
+        ctx.collected_data = _RULE_CLEAN_EMPLOYED
         mgr._transition(ctx, "yes, that's correct", "")
         assert ctx.state == ConversationState.COMPLETING
+        assert ctx.validation_block_messages == []
+
+    def test_confirmation_with_mandatory_error_stays_validating(self, mgr, ctx):
+        ctx.state = ConversationState.VALIDATING
+        ctx.collected_data = {
+            **_RULE_CLEAN_EMPLOYED,
+            "hours_per_week": "forty",
+        }
+        mgr._transition(ctx, "yes, that's correct", "")
+        assert ctx.state == ConversationState.VALIDATING
+        assert any("hours_per_week" in message for message in ctx.validation_block_messages)
+
+    def test_employed_confirmation_without_industry_stays_validating(self, mgr, ctx):
+        ctx.state = ConversationState.VALIDATING
+        ctx.collected_data = {
+            key: value for key, value in _RULE_CLEAN_EMPLOYED.items() if key != "industry"
+        }
+        mgr._transition(ctx, "yes", "")
+        assert ctx.state == ConversationState.VALIDATING
+        assert any("industry" in message for message in ctx.validation_block_messages)
+
+    def test_unemployed_confirmation_without_industry_completes(self, mgr, ctx):
+        ctx.state = ConversationState.VALIDATING
+        ctx.collected_data = required_answers("unemployed")
+        mgr._transition(ctx, "yes, that's correct", "")
+        assert ctx.state == ConversationState.COMPLETING
+
+    def test_outside_labour_force_confirmation_without_industry_completes(self, mgr, ctx):
+        ctx.state = ConversationState.VALIDATING
+        ctx.collected_data = required_answers("not_in_labour_force")
+        mgr._transition(ctx, "yes, that's correct", "")
+        assert ctx.state == ConversationState.COMPLETING
+
+    def test_hours_warning_does_not_block_confirmation(self, mgr, ctx):
+        ctx.state = ConversationState.VALIDATING
+        ctx.collected_data = {**_RULE_CLEAN_EMPLOYED, "hours_per_week": "15"}
+        mgr._transition(ctx, "yes, that's correct", "")
+        assert ctx.state == ConversationState.COMPLETING
+
+    def test_blocked_confirmation_reply_names_the_failure(self, mgr, ctx, mock_crew):
+        ctx.state = ConversationState.VALIDATING
+        ctx.collected_data = {**_RULE_CLEAN_EMPLOYED, "hours_per_week": "forty"}
+        reply = mgr.process_message(ctx, "yes, that's correct")
+        assert ctx.state == ConversationState.VALIDATING
+        assert "hours_per_week" in reply
+        assert "forty" in reply
+        assert ctx.validation_block_messages == []
+        mock_crew.kickoff.assert_not_called()
 
     def test_validating_correction_opening_new_field_path_returns_to_collecting(self, mgr, ctx):
         # A correction that changes employment_status opens a whole new set of

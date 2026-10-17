@@ -42,6 +42,7 @@ to the real engine (`use_llm=False`, fully deterministic, no network).
 from __future__ import annotations
 
 import pytest
+from collections import defaultdict
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -72,12 +73,22 @@ def db(engine):
     session.close()
 
 
-def _recording(call_order, name, retval):
+def _recording(call_order, name, retval, inputs):
     """side_effect callable: records `name` into call_order, then returns retval."""
     def _fn(*args, **kwargs):
         call_order.append(name)
+        if args:
+            inputs[name].append(args[0])
         return retval
     return _fn
+
+
+def _requirements_met(collected):
+    from backend.agents.conversation_manager import ConversationManager
+    required = ConversationManager._get_required_fields(collected)
+    return required.issubset(collected) and all(
+        str(collected.get(field) or "").strip() for field in required
+    )
 
 
 def _make_client(
@@ -93,6 +104,8 @@ def _make_client(
     isic_section="C",
     isced_level=3,
     message="I assemble electronic components daily",
+    persisted=None,
+    cache_fields=None,
 ):
     """Builds a TestClient wired so every agent call is both realistic
     (well-formed return values, matching test_sre_hitl_enforcement.py's
@@ -102,35 +115,51 @@ def _make_client(
     """
     from backend.main import app
     from backend.database.connection import get_db
-    from backend.agents.conversation_manager import ConversationContext, ConversationState
+    from backend.agents.conversation_manager import ConversationContext, ConversationManager, ConversationState
     from backend.api import survey_routes as _sr_module
     from backend.agents.semantic_relation import SemanticRelationEngine
+    from backend.tests.survey_completion_fixtures import required_answers
 
     app.dependency_overrides[get_db] = lambda: db
     _sr_module._contexts.clear()
 
     call_order: list[str] = []
-
-    state_enum = getattr(ConversationState, state)
+    inputs = defaultdict(list)
+    if persisted is None:
+        persisted = {}
+        if industry is not None:
+            persisted["industry"] = industry
+        if education_level is not None:
+            persisted["education_level"] = education_level
+        if nationality is not None:
+            persisted["nationality"] = nationality
+    else:
+        persisted = dict(persisted)
+    if cache_fields is None:
+        cache_fields = dict(persisted)
+    else:
+        cache_fields = dict(cache_fields)
+    complete_session = state == "COMPLETING"
 
     mock_cm = MagicMock()
     mock_lp = MagicMock()
+    mock_cm._get_required_fields = ConversationManager._get_required_fields
+    mock_cm._get_field_order = ConversationManager._get_field_order
 
     def _new_context(sid, lang="en"):
         ctx = ConversationContext(session_id=sid, language=lang)
-        if industry is not None:
-            ctx.collected_data["industry"] = industry
-        if education_level is not None:
-            ctx.collected_data["education_level"] = education_level
-        if nationality is not None:
-            ctx.collected_data["nationality"] = nationality
-        ctx.state = state_enum
+        ctx.collected_data.update(cache_fields)
+        ctx.state = ConversationState.COLLECTING_INFO
         return ctx
 
-    def _process_message(ctx, msg, structured_correction=None):
+    def _process_message(ctx, msg, structured_correction=None, **kwargs):
         call_order.append("ConversationManager")
         if job_title is not None:
             ctx.collected_data["job_title"] = job_title
+        if complete_session:
+            ctx.state = ConversationState.COMPLETING
+        elif _requirements_met(ctx.collected_data):
+            ctx.state = ConversationState.VALIDATING
         return "Thanks, noted."
 
     mock_cm.new_context.side_effect = _new_context
@@ -140,11 +169,18 @@ def _make_client(
     mock_lp_result.detected_language = "en"
     mock_lp_result.is_code_switched = False
     mock_lp_result.entities = []
-    mock_lp.process.side_effect = _recording(call_order, "LanguageProcessor", mock_lp_result)
+    mock_lp.process.side_effect = _recording(call_order, "LanguageProcessor", mock_lp_result, inputs)
 
     isco_conf = 0.40 if low_isco_confidence else 0.95
-    isco_result_obj = MagicMock(
-        primary=MagicMock(code=isco_code, title_en="Test Title", title_ar="test", confidence=isco_conf),
+
+    class _OccupationResult:
+        """Plain result: MagicMock.model_copy() cannot survive a duties query."""
+
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    isco_result_obj = _OccupationResult(
+        primary=_OccupationResult(code=isco_code, title_en="Test Title", title_ar="test", confidence=isco_conf),
         method="flat_semantic",
         hitl_required=low_isco_confidence,
         reasoning="test reasoning",
@@ -183,22 +219,26 @@ def _make_client(
      mock_nat, mock_hitl, mock_ei, mock_val, mock_audit) = started
 
     from backend.agents.context_memory import SessionMemory
+    cache_by_session = {}
+
     def restored_memory(session_id):
         context = _new_context(session_id)
+        if session_id in cache_by_session:
+            context.collected_data = dict(cache_by_session[session_id])
         return SessionMemory(session_id=session_id, language="en", state=context.state.value,
-            collected_fields=context.collected_data, history=[], turn_count=0,
+            collected_fields=dict(context.collected_data), history=[], turn_count=0,
             created_at="2026-10-05T00:00:00", last_updated="2026-10-05T00:00:00")
     mock_ctx_mem.return_value.load_session.side_effect = restored_memory
-    mock_ctx_mem.return_value.save_session.side_effect = _recording(call_order, "ContextMemory", None)
-    mock_isco.return_value.classify.side_effect = _recording(call_order, "ISCOClassifier", isco_result_obj)
-    mock_isic.return_value.classify.side_effect = _recording(call_order, "ISICClassifier", isic_result_obj)
-    mock_isced.return_value.classify.side_effect = _recording(call_order, "ISCEDClassifier", isced_result_obj)
-    mock_nat.return_value.classify.side_effect = _recording(call_order, "NationalityClassifier", MagicMock(method="unknown"))
-    mock_hitl.return_value.review_session.side_effect = _recording(call_order, "HITLQualityManager", MagicMock(status=MagicMock(value="pass")))
-    mock_ei.return_value.analyze.side_effect = _recording(call_order, "EmotionalIntelligence", MagicMock(state="neutral"))
-    mock_val.return_value.validate.side_effect = _recording(call_order, "ValidationAgent", val_result_obj)
-    mock_audit.return_value.log_interaction.side_effect = _recording(call_order, "AuditLogger", None)
-    mock_audit.return_value.log_agent_decision.side_effect = _recording(call_order, "AuditLogger", None)
+    mock_ctx_mem.return_value.save_session.side_effect = _recording(call_order, "ContextMemory", None, inputs)
+    mock_isco.return_value.classify.side_effect = _recording(call_order, "ISCOClassifier", isco_result_obj, inputs)
+    mock_isic.return_value.classify.side_effect = _recording(call_order, "ISICClassifier", isic_result_obj, inputs)
+    mock_isced.return_value.classify.side_effect = _recording(call_order, "ISCEDClassifier", isced_result_obj, inputs)
+    mock_nat.return_value.classify.side_effect = _recording(call_order, "NationalityClassifier", MagicMock(method="unknown"), inputs)
+    mock_hitl.return_value.review_session.side_effect = _recording(call_order, "HITLQualityManager", MagicMock(status=MagicMock(value="pass")), inputs)
+    mock_ei.return_value.analyze.side_effect = _recording(call_order, "EmotionalIntelligence", MagicMock(state="neutral"), inputs)
+    mock_val.return_value.validate.side_effect = _recording(call_order, "ValidationAgent", val_result_obj, inputs)
+    mock_audit.return_value.log_interaction.side_effect = _recording(call_order, "AuditLogger", None, inputs)
+    mock_audit.return_value.log_agent_decision.side_effect = _recording(call_order, "AuditLogger", None, inputs)
 
     # SemanticRelationEngine: not behind a survey_routes-local getter (it's
     # imported and called inline), and its result feeds dataclasses.asdict()
@@ -261,28 +301,43 @@ def _make_client(
     ensure_patcher.start()
     trigger_patcher.start()
 
-    return TestClient(app), patchers, call_order, message
+    client = TestClient(app)
+    client.app.dependency_overrides[get_db] = lambda: db
+    client._orch_persisted = persisted
+    client._orch_inputs = inputs
+    client._orch_cache_by_session = cache_by_session
+    client._orch_profile = required_answers
+    return client, patchers, call_order, message
 
 
-def _create_session_and_send(client, msg):
+def _insert_session(client, persisted=None, *, cache=None, email=None):
     from backend.database.models import User, SurveySession
     from backend.database.connection import get_db
+    from backend.database.response_revisions import save_response_revision
+    from backend.auth.jwt_handler import create_access_token
 
-    db_gen = client.app.dependency_overrides[get_db]
-    db = db_gen()
-    user = User(email=f"orch-test-{id(client)}@test.invalid")
+    db = client.app.dependency_overrides[get_db]()
+    user = User(email=email or f"orch-test-{id(client)}-{id(persisted)}@test.invalid")
     db.add(user)
     db.commit()
     db.refresh(user)
-
-    from backend.auth.jwt_handler import create_access_token
-    token = create_access_token(user.id)
-
     session = SurveySession(user_id=user.id, language="en", status="active")
     db.add(session)
     db.commit()
     db.refresh(session)
+    for field, value in (client._orch_persisted if persisted is None else persisted).items():
+        save_response_revision(db, session.id, field, value)
+    if cache is not None:
+        client._orch_cache_by_session[session.id] = dict(cache)
+    db.commit()
+    return create_access_token(user.id), session, db
 
+
+def _create_session_and_send(client, msg, persisted=None, before_send=None):
+    token, session, db = _insert_session(client, persisted)
+    if before_send is not None:
+        before_send(db, session)
+        db.commit()
     resp = client.post(
         f"/survey/sessions/{session.id}/message",
         json={"message": msg},
@@ -299,7 +354,14 @@ class TestFullTurnOrchestrationOrder:
     unconditional per-turn ContextMemory/AuditLogger writes)."""
 
     def test_stage_order_matches_documented_pipeline(self, db):
-        client, patchers, call_order, message = _make_client(db, state="VALIDATING")
+        from backend.tests.survey_completion_fixtures import required_answers
+        persisted = required_answers(industry="manufacturing", education_level="secondary", nationality="indian")
+        persisted.pop("job_title")
+        client, patchers, call_order, message = _make_client(
+            db, state="VALIDATING", persisted=persisted, job_title="Assembler",
+            industry="manufacturing", education_level="secondary", nationality="indian",
+        )
+        client_profile = persisted
         try:
             resp, session_id, db2 = _create_session_and_send(client, message)
             assert resp.status_code == 200
@@ -329,6 +391,15 @@ class TestFullTurnOrchestrationOrder:
                 f"real orchestration order diverged from survey_routes.py's "
                 f"own documented Stage sequence.\nexpected: {expected}\nactual:   {call_order}"
             )
+            assert resp.json()["state"] == "validating"
+            assert client._orch_inputs["ISICClassifier"] == ["manufacturing"]
+            assert client._orch_inputs["ISCEDClassifier"] == ["secondary"]
+            assert client._orch_inputs["NationalityClassifier"] == ["indian"]
+            from backend.database.response_revisions import active_responses
+            active = {row.question_id: row.answer for row in active_responses(db2, session_id)}
+            assert active["job_title"] == "Assembler"
+            assert active["industry"] == "manufacturing"
+            assert set(client_profile).issubset(active)
         finally:
             for p in patchers:
                 p.stop()
@@ -377,12 +448,23 @@ class TestConditionalGating:
 
     def test_validation_agent_only_fires_in_validating_state(self, db):
         """Guards Stage 4g's strict gate: `ctx.state == ConversationState.VALIDATING`
-        -- must NOT fire mid-collection."""
-        client, patchers, call_order, message = _make_client(db, state="COLLECTING_INFO")
+        -- must NOT fire while required answers are still missing."""
+        from backend.tests.survey_completion_fixtures import required_answers
+        incomplete = required_answers(industry="manufacturing")
+        for field in ("job_duties", "hours_per_week", "job_satisfaction"):
+            incomplete.pop(field)
+        client, patchers, call_order, message = _make_client(
+            db, state="COLLECTING_INFO", persisted=incomplete, job_title=None,
+        )
         try:
-            resp, _sid, _db2 = _create_session_and_send(client, message)
+            resp, session_id, db2 = _create_session_and_send(client, message)
             assert resp.status_code == 200
+            assert resp.json()["state"] == "collecting_info"
             assert "ValidationAgent" not in call_order
+            from backend.database.response_revisions import active_responses
+            active = {row.question_id: row.answer for row in active_responses(db2, session_id)}
+            assert "job_duties" not in active
+            assert "hours_per_week" not in active
         finally:
             for p in patchers:
                 p.stop()
@@ -435,10 +517,16 @@ class TestSessionCompletionOrder:
     would not catch, but an order-sensitive test does."""
 
     def test_ensure_isco_classification_runs_before_quality_review(self, db):
-        client, patchers, call_order, message = _make_client(db, state="COMPLETING")
+        from backend.tests.survey_completion_fixtures import required_answers
+        client, patchers, call_order, message = _make_client(
+            db, state="COMPLETING", persisted=required_answers(job_title="Assembler"),
+            job_title="Assembler",
+        )
         try:
             resp, _sid, _db2 = _create_session_and_send(client, message)
-            assert resp.status_code == 200
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["state"] == "completing"
+            assert resp.json()["session_completed"] is True
 
             assert "_ensure_isco_classification" in call_order
             assert "_trigger_quality_review" in call_order
@@ -515,6 +603,114 @@ class TestCoordinatedClassification:
                 f"CrossStandardCoordinator ran after SemanticRelationEngine "
                 f"(order: {call_order}) -- SRE must score the post-revision code"
             )
+        finally:
+            for p in patchers:
+                p.stop()
+
+
+class TestSqlAuthoritativeOrchestration:
+    """Active SQL revisions are the classification input.
+
+    A stale cache, a superseded revision, or another session's answers must
+    not change the text the classifiers see. An answer accepted on this turn
+    is still persisted after reconciliation.
+    """
+
+    def test_persisted_answer_overrides_stale_cache(self, db):
+        persisted = {
+            "employment_status": "employed",
+            "education_level": "secondary",
+            "industry": "technology",
+        }
+        cache = {**persisted, "industry": "stale-cache-industry", "job_duties": "only in cache"}
+        client, patchers, call_order, message = _make_client(
+            db, persisted=persisted, cache_fields=cache, job_title="Assembler", nationality=None,
+        )
+        try:
+            resp, session_id, db2 = _create_session_and_send(client, message)
+            assert resp.status_code == 200, resp.text
+            assert client._orch_inputs["ISICClassifier"] == ["technology"]
+            assert "ISCEDClassifier" in call_order
+            from backend.database.response_revisions import active_responses
+            active = {row.question_id: row.answer for row in active_responses(db2, session_id)}
+            assert active["industry"] == "technology"
+            assert active["job_title"] == "Assembler"
+            assert "job_duties" not in active
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_superseded_response_is_not_classified(self, db):
+        from backend.database.response_revisions import active_responses, save_response_revision
+        from backend.database.models import SurveyResponse
+
+        persisted = {
+            "employment_status": "employed",
+            "education_level": "secondary",
+            "industry": "obsolete manufacturing",
+        }
+        client, patchers, _call_order, message = _make_client(
+            db, persisted=persisted, job_title=None, nationality=None,
+        )
+
+        def revise(database, session):
+            save_response_revision(database, session.id, "industry", "technology")
+
+        try:
+            resp, session_id, db2 = _create_session_and_send(client, message, before_send=revise)
+            assert resp.status_code == 200, resp.text
+            assert client._orch_inputs["ISICClassifier"] == ["technology"]
+            active = [row for row in active_responses(db2, session_id) if row.question_id == "industry"]
+            assert [row.answer for row in active] == ["technology"]
+            retired = db2.query(SurveyResponse).filter(
+                SurveyResponse.session_id == session_id,
+                SurveyResponse.question_id == "industry",
+                SurveyResponse.deleted_at.isnot(None),
+            ).one()
+            assert retired.answer == "obsolete manufacturing"
+            assert active[0].supersedes_id == retired.id
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_other_session_answers_do_not_leak(self, db):
+        from backend.database.response_revisions import active_responses
+
+        client, patchers, _call_order, message = _make_client(
+            db, persisted={}, cache_fields={}, job_title=None, nationality=None,
+            industry=None, education_level=None,
+        )
+        other_persisted = {
+            "employment_status": "employed",
+            "education_level": "primary",
+            "industry": "hospital",
+        }
+        current_persisted = {
+            "employment_status": "employed",
+            "education_level": "secondary",
+            "industry": "technology",
+        }
+        try:
+            _other_token, other, db2 = _insert_session(
+                client, other_persisted, email="orch-other@test.invalid",
+            )
+            token, current, db2 = _insert_session(
+                client, current_persisted,
+                cache={**current_persisted, "industry": "hospital", "education_level": "primary"},
+                email="orch-current@test.invalid",
+            )
+            resp = client.post(
+                f"/survey/sessions/{current.id}/message",
+                json={"message": message},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200, resp.text
+            assert client._orch_inputs["ISICClassifier"] == ["technology"]
+            assert client._orch_inputs["ISCEDClassifier"] == ["secondary"]
+            assert {row.question_id: row.answer for row in active_responses(db2, other.id)} == other_persisted
+            current_active = {row.question_id: row.answer for row in active_responses(db2, current.id)}
+            assert current_active["industry"] == "technology"
+            assert current_active["education_level"] == "secondary"
         finally:
             for p in patchers:
                 p.stop()

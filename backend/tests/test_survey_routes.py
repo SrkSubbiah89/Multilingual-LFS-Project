@@ -10,9 +10,25 @@ Fixtures from conftest.py:
   survey_response - response submitted to survey_session (dict)
 """
 
+import logging
+
 import pytest
+from sqlalchemy.orm import sessionmaker
+
+from backend.agents.audit_logger import AuditLogger
+from backend.api import survey_routes as routes
 from backend.api.survey_routes import get_current_user
-from backend.database.models import SurveyResponse, SurveySession
+from backend.database.models import DataAccessLog, SurveyResponse, SurveySession, AuditLog
+from backend.database.response_revisions import save_response_revision
+from backend.tests.survey_completion_fixtures import required_answers
+
+
+@pytest.fixture
+def completion_ready_session(db, survey_session):
+    for field, answer in required_answers().items():
+        save_response_revision(db, survey_session["id"], field, answer)
+    db.commit()
+    return survey_session
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +71,49 @@ class TestCreateSession:
             app.dependency_overrides.clear()
             app.dependency_overrides.update(saved)
         assert resp.status_code in (401, 403)  # HTTPBearer raises 401/403 when no token provided
+
+    def test_persists_session_audit_when_the_model_is_unavailable(self, auth_client, db, user, monkeypatch):
+        def unavailable(*_args, **_kwargs):
+            raise RuntimeError("local model is not reachable")
+
+        factory = sessionmaker(bind=db.get_bind())
+        monkeypatch.setattr("backend.agents.audit_logger.get_llm", unavailable)
+        monkeypatch.setattr(routes, "_get_audit_logger", lambda: AuditLogger(session_factory=factory))
+        response = auth_client.post("/survey/sessions", json={"language": "en"})
+        assert response.status_code == 201
+        session_id = response.json()["id"]
+        assert response.json()["user_id"] == user.id
+        db.expire_all()
+        audit = db.query(AuditLog).filter_by(session_id=session_id, event_type="session_started").one()
+        access = db.query(DataAccessLog).filter_by(
+            resource_type="survey_session", resource_id=session_id,
+        ).one()
+        assert audit.user_id == user.id
+        assert access.user_id == user.id
+        assert access.access_type == "write"
+
+    def test_audit_write_failure_is_diagnosed_without_changing_the_response(
+        self, auth_client, monkeypatch, caplog,
+    ):
+        class BrokenLogger:
+            def log_interaction(self, **_kwargs):
+                raise RuntimeError("database password=secret token=abc")
+
+            def log_data_access(self, **_kwargs):
+                raise AssertionError("data access must not run after the first write fails")
+
+        monkeypatch.setattr(routes, "_get_audit_logger", lambda: BrokenLogger())
+        with caplog.at_level(logging.WARNING, logger="lfs.survey"):
+            response = auth_client.post("/survey/sessions", json={"language": "en"})
+        assert response.status_code == 201
+        assert "password" not in response.text
+        assert "secret" not in response.text
+        diagnostic = " ".join(record.getMessage() for record in caplog.records)
+        assert "audit_persistence_failed" in diagnostic
+        assert "error_type=RuntimeError" in diagnostic
+        assert "secret" not in diagnostic
+        assert "token=abc" not in diagnostic
+        assert all(record.exc_info is None for record in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -119,16 +178,17 @@ class TestGetSession:
 # ---------------------------------------------------------------------------
 
 class TestCompleteSession:
-    def test_marks_session_completed(self, auth_client, survey_session):
-        resp = auth_client.patch(f"/survey/sessions/{survey_session['id']}/complete")
+    def test_marks_session_completed(self, auth_client, completion_ready_session):
+        resp = auth_client.patch(f"/survey/sessions/{completion_ready_session['id']}/complete")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "completed"
         assert data["completed_at"] is not None
 
-    def test_already_completed_returns_409(self, auth_client, survey_session):
-        sid = survey_session["id"]
-        auth_client.patch(f"/survey/sessions/{sid}/complete")
+    def test_already_completed_returns_409(self, auth_client, completion_ready_session):
+        sid = completion_ready_session["id"]
+        completed = auth_client.patch(f"/survey/sessions/{sid}/complete")
+        assert completed.status_code == 200
         resp = auth_client.patch(f"/survey/sessions/{sid}/complete")
         assert resp.status_code == 409
         assert "already completed" in resp.json()["detail"]
@@ -204,9 +264,10 @@ class TestSubmitResponse:
         assert data["isco_code"] is None
         assert data["confidence_score"] is None
 
-    def test_completed_session_returns_409(self, auth_client, survey_session):
-        sid = survey_session["id"]
-        auth_client.patch(f"/survey/sessions/{sid}/complete")
+    def test_completed_session_returns_409(self, auth_client, completion_ready_session):
+        sid = completion_ready_session["id"]
+        completed = auth_client.patch(f"/survey/sessions/{sid}/complete")
+        assert completed.status_code == 200
         resp = auth_client.post(
             f"/survey/sessions/{sid}/responses",
             json={"question_id": "q1", "answer": "Should fail"},

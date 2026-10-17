@@ -5,6 +5,8 @@ Strategy
 --------
 - SQLite in-memory database (module scope) replaces PostgreSQL.
 - CrewAI components (get_llm, Agent, Task, Crew) are monkeypatched.
+- ISIC provider selection is stubbed; real keyword classification and
+  semantic enrichment run without allowing accidental inference.
 - ContextMemory is replaced with a no-op fake.
 - All DB helper functions (_make_user, _make_session, etc.) mirror the
   pattern used in test_hitl_quality_manager.py.
@@ -169,6 +171,15 @@ def _mock_crew(monkeypatch, response: str) -> None:
 @pytest.fixture()
 def mgr(monkeypatch, session_factory):
     monkeypatch.setattr(_rg_mod, "get_llm", lambda *a, **kw: object())
+    monkeypatch.setattr("backend.agents.isic_classifier.get_llm", lambda *a, **kw: object())
+
+    def unexpected_isic_inference(*args, **kwargs):
+        pytest.fail("Report unit fixtures must use deterministic ISIC classification")
+
+    monkeypatch.setattr(
+        "backend.agents.isic_classifier.ISICClassifier._llm_rerank",
+        unexpected_isic_inference,
+    )
 
     class FakeAgent:
         def __init__(self, **kwargs): pass
@@ -550,6 +561,34 @@ class TestEnrichmentPersistence:
         assert r.isic_classification is None
         assert r.isced_classification is None
         assert r.semantic_coherence is None
+
+    def test_unavailable_isic_provider_keeps_enrichment_absent_and_report_persisted(
+        self, monkeypatch, session_factory, mgr
+    ):
+        from backend.llm.llm_client import OllamaUnavailableError
+
+        def unavailable_provider(*args, **kwargs):
+            raise OllamaUnavailableError("Synthetic temporary provider outage")
+
+        monkeypatch.setattr("backend.agents.isic_classifier.get_llm", unavailable_provider)
+        _mock_crew(monkeypatch, json.dumps({
+            "report_en": "EN.", "report_ar": "AR.",
+            "recommendations_en": "R.", "recommendations_ar": "R.",
+        }))
+        s = self._make_classifiable_session(session_factory)
+        report = mgr.generate(session_id=s.id)
+        cached = mgr.generate(session_id=s.id)
+
+        assert report.isic_classification is None
+        assert cached.isic_classification is None
+        assert report.isced_classification["level"] == 6
+        assert cached.isced_classification == report.isced_classification
+        assert report.semantic_coherence is not None
+        with session_factory() as db:
+            record = db.query(SurveyReportRecord).filter_by(session_id=s.id).one()
+            assert record.isic_classification_json is None
+            assert record.isced_classification_json is not None
+            assert record.report_en == "EN."
 
 
 class TestGenerateWithQuality:

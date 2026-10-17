@@ -13,7 +13,9 @@ from dotenv import load_dotenv
 
 from backend.database.models import OTPCode, User
 
-load_dotenv(override=True)
+# Load startup defaults without replacing process-provided configuration.
+# OTP operations only read this environment; .env edits require a restart.
+load_dotenv(override=False)
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +164,22 @@ def _clear_otp_attempts(otp_id: int) -> None:
 # Delivery channel flags
 _USE_SMS_OTP = os.getenv("USE_SMS_OTP", "false").lower() == "true"
 _DEV_MODE = os.getenv("APP_ENV", "development").lower() == "development"
+_SYNTHETIC_OTP_SUFFIXES = ("@stage5b.example.com", "@lfs-sms.local")
+
+
+def expose_dev_otp(recipient: str) -> bool:
+    """Return an OTP only for an isolated local run and a synthetic recipient.
+
+    ``APP_ENV=development`` is not sufficient. The disposable runner sets
+    ``LFS_ISOLATED_RUNTIME=true``. Ordinary addresses never receive the code
+    in an API response or a server log.
+    """
+    if os.getenv("APP_ENV", "development").lower() != "development":
+        return False
+    if os.getenv("LFS_ISOLATED_RUNTIME", "").strip().lower() != "true":
+        return False
+    identity = (recipient or "").strip().lower()
+    return any(identity.endswith(suffix) for suffix in _SYNTHETIC_OTP_SUFFIXES)
 
 # Gmail SMTP (preferred — set GMAIL_APP_PASSWORD in .env)
 _GMAIL_USER     = os.getenv("GMAIL_USER")       # your Gmail address
@@ -218,8 +236,7 @@ def _html_body(code: str) -> str:
 
 def _send_via_gmail(recipient_email: str, code: str) -> bool:
     """Send OTP using Gmail SMTP + App Password."""
-    # Read credentials fresh on every call so .env changes take effect without restart
-    load_dotenv(override=True)
+    # Read current process credentials without reloading application settings.
     gmail_user = os.getenv("GMAIL_USER")
     gmail_pass = (os.getenv("GMAIL_APP_PASSWORD") or "").replace(" ", "") or None
 
@@ -274,23 +291,20 @@ def _send_via_sendgrid(recipient_email: str, code: str) -> bool:
 
 
 def send_otp_email(recipient_email: str, code: str) -> bool:
-    """Send OTP email. Priority: Gmail SMTP → SendGrid → dev-console fallback.
+    """Send OTP email. Priority: Gmail SMTP, then SendGrid.
 
-    In development mode (APP_ENV=development) the OTP is always printed to
-    the server console so the auth flow works even without email credentials.
+    Development mode still returns success when delivery is not configured.
+    The code is printed only when expose_dev_otp accepts the recipient.
     """
-    # Always print to console in dev — usable even if email delivery fails
-    if _DEV_MODE:
+    if expose_dev_otp(recipient_email):
         print(
             f"\n{'='*52}\n"
-            f"  [DEV MODE] OTP for {recipient_email}: {code}\n"
+            f"  [ISOLATED TEST] OTP for {recipient_email}: {code}\n"
             f"  (expires in {OTP_EXPIRY_MINUTES} min)\n"
             f"{'='*52}\n"
         )
 
-    # Re-read credentials fresh so the gate reflects the current .env state
-    # (avoids stale None values if the module was imported before .env was loaded)
-    load_dotenv(override=True)
+    # Read current process credentials without reloading application settings.
     gmail_user = os.getenv("GMAIL_USER")
     gmail_pass = (os.getenv("GMAIL_APP_PASSWORD") or "").replace(" ", "") or None
 
@@ -376,20 +390,20 @@ def generate_and_send_otp(db: Session, user: User) -> tuple[bool, str]:
 # SMS sender (Twilio)
 # ---------------------------------------------------------------------------
 
-def send_sms_otp(phone: str, code: str) -> bool:
+def send_sms_otp(phone: str, code: str, *, reveal: bool = False) -> bool:
     """Send OTP via Twilio SMS.
 
-    Falls back to dev-console in development mode if Twilio is not configured.
+    Development mode still returns success when Twilio is not configured.
+    The code is printed only when the caller passes reveal=True.
     """
-    load_dotenv(override=True)
     sid    = os.getenv("TWILIO_ACCOUNT_SID")
     token  = os.getenv("TWILIO_AUTH_TOKEN")
     from_  = os.getenv("TWILIO_PHONE_NUMBER")
 
-    if _DEV_MODE:
+    if reveal:
         print(
             f"\n{'='*52}\n"
-            f"  [DEV MODE] SMS OTP for {phone}: {code}\n"
+            f"  [ISOLATED TEST] SMS OTP for {phone}: {code}\n"
             f"  (expires in {OTP_EXPIRY_MINUTES} min)\n"
             f"{'='*52}\n"
         )
@@ -424,4 +438,4 @@ def generate_and_send_sms_otp(db: Session, user: User) -> tuple[bool, str]:
     """Generate, store, and deliver an OTP via SMS."""
     code = generate_otp()
     store_otp(db, user.id, code)
-    return send_sms_otp(user.phone, code), code
+    return send_sms_otp(user.phone, code, reveal=expose_dev_otp(user.email or "")), code
