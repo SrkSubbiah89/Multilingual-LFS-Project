@@ -1,21 +1,22 @@
-# Stage 5C browser validation on a GitHub-hosted runner.
-# Pushing this file does not start the job. workflow_dispatch works only after
-# this file is on the default branch, and the confirmation input must match.
+# One-time Stage 5C browser validation on a GitHub-hosted runner.
+# A push starts this job only on ci/stage5c-answer-correction-v3, and only when
+# this workflow file changes. The execution guard then requires that commit
+# to have exactly one parent, the reviewed application revision, and exactly
+# the workflow plus the three approved correction scripts.
 name: Stage 5C browser
 
 on:
-  workflow_dispatch:
-    inputs:
-      confirmation:
-        description: Type RUN-STAGE5C-CI. A branch push does not start this workflow.
-        required: true
-        type: string
+  push:
+    branches:
+      - ci/stage5c-answer-correction-v3
+    paths:
+      - .github/workflows/stage5c-browser.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: stage5c-browser
+  group: ci-stage5c-answer-correction-v3
   cancel-in-progress: false
 
 jobs:
@@ -41,18 +42,46 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 2
 
-      - name: Require the execution confirmation
+      - name: Require the isolated push guard
         env:
-          STAGE5C_CONFIRMATION: ${{ github.event.inputs.confirmation }}
+          REVIEWED_PARENT: 60ad9f39b034a280c02595c2b0b77c2d3fcd29a8
         run: |
           set -euo pipefail
           set +x
-          if [ "$STAGE5C_CONFIRMATION" != "RUN-STAGE5C-CI" ]; then
-            echo "BLOCKED: confirmation was not accepted"
+          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
+            echo "BLOCKED: event was not accepted"
             exit 1
           fi
-          echo "CONFIRMATION_OK"
+          if [ "$GITHUB_REF" != "refs/heads/ci/stage5c-answer-correction-v3" ]; then
+            echo "BLOCKED: ref was not accepted"
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "BLOCKED: checkout did not match the push"
+            exit 1
+          fi
+          if git rev-parse --verify --quiet HEAD^2 >/dev/null; then
+            echo "BLOCKED: parent commit was not accepted"
+            exit 1
+          fi
+          parent=$(git rev-parse --verify HEAD^)
+          if [ "$parent" != "$REVIEWED_PARENT" ]; then
+            echo "BLOCKED: parent commit was not accepted"
+            exit 1
+          fi
+          changed=$(git diff --name-only "$REVIEWED_PARENT" HEAD | LC_ALL=C sort)
+          expected=$(printf '%s\n' \
+            .github/workflows/stage5c-browser.yml \
+            scripts/stage5c_browser_e2e.cjs \
+            scripts/stage5c_browser_policy.cjs \
+            scripts/stage5c_browser_policy.test.cjs | LC_ALL=C sort)
+          if [ "$changed" != "$expected" ]; then
+            echo "BLOCKED: changed files were not accepted"
+            exit 1
+          fi
+          echo "EXECUTION_GUARD_OK"
 
       - name: Run the browser policy unit tests
         run: |
@@ -114,15 +143,103 @@ jobs:
           # postgres:15 and redis:7 remain mutable tags. Their registry
           # digests were not pinned because this machine must not pull or
           # retag the shared Docker images. The image id is printed after start.
+          # bind 0.0.0.0 is the container interface. The host port below stays on 127.0.0.1.
           docker run -d --name stage5c-postgres \
             -p 127.0.0.1:5432:5432 \
             --env-file /tmp/stage5c-postgres.env \
             postgres:15
+          if ! redis_gid=$(docker run --rm --network none --entrypoint awk redis:7 -F: '$1=="redis" {print $3; count++} END {if (count!=1) exit 1}' /etc/group); then
+            echo "INFRASTRUCTURE_FAILURE redis-gid"
+            echo "INFRASTRUCTURE_CLASS permissions"
+            exit 1
+          fi
+          case "$redis_gid" in
+            ''|*[!0-9]*)
+              echo "INFRASTRUCTURE_FAILURE redis-gid"
+              echo "INFRASTRUCTURE_CLASS permissions"
+              exit 1
+              ;;
+          esac
+          echo "REDIS_GID=${redis_gid}"
+          # The runner is not a member of the image group, so a one-shot root
+          # chgrp is used only to label the file. The server itself is not root.
+          docker run --rm --network none --user 0 \
+            -v /tmp:/cfg \
+            --entrypoint chgrp \
+            redis:7 "$redis_gid" /cfg/stage5c-redis.conf
+          docker run --rm --network none --user 0 \
+            -v /tmp:/cfg \
+            --entrypoint chmod \
+            redis:7 0640 /cfg/stage5c-redis.conf
+          host_gid=$(stat -c '%g' /tmp/stage5c-redis.conf)
+          host_mode=$(stat -c '%a' /tmp/stage5c-redis.conf)
+          if [ "$host_gid" != "$redis_gid" ] || [ "$host_mode" != "640" ]; then
+            echo "INFRASTRUCTURE_FAILURE redis-config-mode"
+            echo "INFRASTRUCTURE_CLASS permissions"
+            exit 1
+          fi
+          echo "REDIS_CONFIG_MODE=${host_mode}"
+          if ! docker run --rm --network none --user redis \
+            -v /tmp/stage5c-redis.conf:/usr/local/etc/redis/redis.conf:ro \
+            --entrypoint sh \
+            redis:7 \
+            -c 'test -r /usr/local/etc/redis/redis.conf'; then
+            echo "INFRASTRUCTURE_FAILURE redis-config-unreadable"
+            echo "INFRASTRUCTURE_CLASS permissions"
+            exit 1
+          fi
+          echo "REDIS_CONFIG_READABLE"
           docker run -d --name stage5c-redis \
             -p 127.0.0.1:6379:6379 \
             -v /tmp/stage5c-redis.conf:/usr/local/etc/redis/redis.conf:ro \
             redis:7 \
             redis-server /usr/local/etc/redis/redis.conf
+          printf 'REDISCLI_AUTH=%s\n' "$REDIS_PASSWORD" > /tmp/stage5c-redis-auth.env
+          redis_ready=0
+          for _ in $(seq 1 20); do
+            running=$(docker inspect -f '{{.State.Running}}' stage5c-redis 2>/dev/null || echo false)
+            if [ "$running" != "true" ]; then
+              break
+            fi
+            if docker exec --env-file /tmp/stage5c-redis-auth.env stage5c-redis redis-cli --no-auth-warning ping 2>/dev/null | grep -qx PONG; then
+              redis_ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$redis_ready" != "1" ]; then
+            echo "INFRASTRUCTURE_FAILURE redis"
+            docker inspect stage5c-redis --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' || true
+            redacted_logs=$(docker logs --tail 40 stage5c-redis 2>&1 || true)
+            for secret in "$REDIS_PASSWORD" "$PGPASSWORD" "$JWT_SECRET"; do
+              if [ -n "$secret" ]; then
+                redacted_logs=${redacted_logs//$secret/<redacted>}
+              fi
+            done
+            printf '%s\n' "$redacted_logs" | sed -E \
+              -e 's/(requirepass[[:space:]]+).*/\1<redacted>/Ig' \
+              -e 's/(REDISCLI_AUTH=).*/\1<redacted>/g' \
+              -e 's/(password[=:][[:space:]]*).*/\1<redacted>/Ig'
+            if printf '%s\n' "$redacted_logs" | grep -Eiq 'permission denied|can.t open|failed opening'; then
+              echo "INFRASTRUCTURE_CLASS permissions"
+            elif printf '%s\n' "$redacted_logs" | grep -Eiq 'bad directive|fatal config|wrong number|unrecognized'; then
+              echo "INFRASTRUCTURE_CLASS configuration"
+            elif [ "$running" = "true" ]; then
+              echo "INFRASTRUCTURE_CLASS connectivity"
+            else
+              echo "INFRASTRUCTURE_CLASS startup"
+            fi
+            exit 1
+          fi
+          redis_uid=$(docker exec stage5c-redis awk '/^Uid:/ {print $3; exit}' /proc/1/status)
+          case "$redis_uid" in
+            ''|*[!0-9]*|0)
+              echo "INFRASTRUCTURE_FAILURE redis-running-as-root"
+              exit 1
+              ;;
+          esac
+          echo "REDIS_PROCESS_UID=${redis_uid}"
+          echo "REDIS_PONG_OK"
           ready=0
           for _ in $(seq 1 40); do
             if docker exec stage5c-postgres pg_isready -U lfs_stage5c_ci -d lfs_stage5c_ci >/dev/null 2>&1; then
@@ -131,9 +248,20 @@ jobs:
             fi
             sleep 2
           done
-          test "$ready" = "1"
-          printf 'REDISCLI_AUTH=%s\n' "$REDIS_PASSWORD" > /tmp/stage5c-redis-auth.env
-          docker exec --env-file /tmp/stage5c-redis-auth.env stage5c-redis redis-cli --no-auth-warning ping | grep -qx PONG
+          if [ "$ready" != "1" ]; then
+            echo "INFRASTRUCTURE_FAILURE postgres"
+            docker inspect stage5c-postgres --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' || true
+            redacted_logs=$(docker logs --tail 40 stage5c-postgres 2>&1 || true)
+            for secret in "$REDIS_PASSWORD" "$PGPASSWORD" "$JWT_SECRET"; do
+              if [ -n "$secret" ]; then
+                redacted_logs=${redacted_logs//$secret/<redacted>}
+              fi
+            done
+            printf '%s\n' "$redacted_logs"
+            echo "INFRASTRUCTURE_CLASS startup"
+            exit 1
+          fi
+          echo "POSTGRES_READY"
           echo "POSTGRES_IMAGE_ID=$(docker image inspect postgres:15 --format '{{.Id}}')"
           echo "REDIS_IMAGE_ID=$(docker image inspect redis:7 --format '{{.Id}}')"
           python scripts/stage5c_ci_server.py listeners
@@ -256,7 +384,7 @@ jobs:
           else
             echo "No sanitized report was produced." >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "A green check accepts only the non-AI checks that ran. Classification, answer correction, and model-generated reports were not accepted." >> "$GITHUB_STEP_SUMMARY"
+          echo "Answer correction is accepted only if the real browser and PostgreSQL revision checks passed. Classification and AI-generated reports remain untested. The overall stage remains PARTIAL. The sanitized report contains the detailed PASS, FAIL, SKIP, and NOT_RUN boundaries." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish the sanitized report
         if: always()
