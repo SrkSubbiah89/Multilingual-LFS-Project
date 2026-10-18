@@ -140,6 +140,142 @@ async function visibleText(page) {
   return page.locator("body").innerText();
 }
 
+function messageResponse(page) {
+  return page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.origin === API && url.pathname.endsWith("/message") && response.request().method() === "POST";
+  }, { timeout: 60000 });
+}
+
+function monotonicMs() {
+  return Number(process.hrtime.bigint() / 1000000n);
+}
+
+function installMessagePacer() {
+  let previous = null;
+  return async function paceBeforeMessage() {
+    const wait = policy.messageSpacingMs(previous, monotonicMs());
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    previous = monotonicMs();
+  };
+}
+
+let paceBeforeMessage = async function paceBeforeMessage() {};
+
+function attachExceptionType(diagnostic) {
+  const reference = / reference=([0-9a-f]{12})$/.exec(String(diagnostic || ""));
+  const logPath = policy.disposableApiLog(process.env.STAGE5C_API_LOG || "");
+  if (!reference || !logPath) return diagnostic;
+  let text = "";
+  try {
+    text = fs.readFileSync(logPath, "utf8");
+  } catch (_error) {
+    return diagnostic;
+  }
+  const type = policy.exceptionTypeForReference(text, reference[1]);
+  return type ? diagnostic + " exception=" + type : diagnostic;
+}
+
+async function rejectHttp(response, stepIndex, field) {
+  let detail = "";
+  try {
+    const body = await response.json();
+    if (body && typeof body.detail === "string" && body.detail.length <= 200) detail = body.detail;
+  } catch (_error) {
+    detail = "";
+  }
+  const error = policy.coded("answer-http");
+  error.diagnostic = attachExceptionType(policy.answerHttpDetail(stepIndex, field, response.status(), detail));
+  throw error;
+}
+
+async function assistantBubbles(page) {
+  return page.locator("main > div").evaluateAll((nodes) => nodes.filter((node) => {
+    return (node.getAttribute("style") || "").includes("flex-start");
+  }).map((node) => {
+    const bubble = node.querySelector("div");
+    return bubble ? bubble.innerText : "";
+  }));
+}
+
+async function waitForActiveQuestion(page, prompt) {
+  try {
+    await page.waitForFunction((expected) => {
+      const assistants = [...document.querySelectorAll("main > div")].filter((node) => {
+        return (node.getAttribute("style") || "").includes("flex-start");
+      });
+      const last = assistants[assistants.length - 1];
+      const bubble = last && last.querySelector("div");
+      return !!(bubble && bubble.innerText.includes(expected));
+    }, prompt, { timeout: 60000 });
+  } catch (_error) {
+    throw policy.coded("questionnaire-order");
+  }
+}
+
+async function submitJourneyStep(page, step, nextStep, stepIndex) {
+  await waitForActiveQuestion(page, step.prompt);
+  if (!policy.activeQuestion(await assistantBubbles(page), step.prompt)) throw policy.coded("questionnaire-order");
+  const beforeCount = (await assistantBubbles(page)).length;
+  const pending = messageResponse(page);
+  if (step.kind === "text") {
+    await page.locator("textarea").fill(step.payload.message);
+  }
+  await paceBeforeMessage();
+  if (step.kind === "text") {
+    await page.locator("footer form button[type=submit]").click();
+  } else {
+    await page.getByRole("button", { name: step.name, exact: true }).click();
+  }
+  const response = await pending;
+  if (response.status() >= 400) await rejectHttp(response, stepIndex, step.field);
+  const sent = response.request().postDataJSON();
+  if (!policy.sameRequestPayload(sent, step.payload)) throw policy.coded("answer-payload");
+  let body;
+  try {
+    body = await response.json();
+  } catch (_error) {
+    throw policy.coded("questionnaire-order");
+  }
+  if (!policy.serverProgress(body, nextStep ? nextStep.field : "validating")) throw policy.coded("questionnaire-order");
+  try {
+    await page.waitForFunction((count) => {
+      const assistants = [...document.querySelectorAll("main > div")].filter((node) => {
+        return (node.getAttribute("style") || "").includes("flex-start");
+      });
+      return assistants.length > count;
+    }, beforeCount, { timeout: 60000 });
+  } catch (_error) {
+    throw policy.coded("questionnaire-order");
+  }
+  if (nextStep) {
+    await waitForActiveQuestion(page, nextStep.prompt);
+    if (nextStep.kind === "choice") {
+      await page.getByRole("button", { name: nextStep.name, exact: true }).waitFor({ timeout: 60000 });
+    } else {
+      await page.locator("textarea:not([disabled])").waitFor({ timeout: 60000 });
+    }
+  }
+  return response;
+}
+
+function runCompletedAnswerRegression() {
+  const command = policy.immutabilityCommand();
+  const env = { ...process.env };
+  for (const key of [
+    "DATABASE_URL", "STAGE5C_DATABASE_URL", "PGPASSWORD", "PGHOST", "PGPORT", "PGUSER", "PGDATABASE",
+    "QDRANT_URL", "QDRANT_API_KEY",
+  ]) {
+    delete env[key];
+  }
+  return spawnSync(process.env.STAGE5C_PYTHON || "python3", [command.script, ...command.args], {
+    encoding: "utf8",
+    cwd: path.resolve(__dirname, ".."),
+    env: env,
+    timeout: 300000,
+  });
+}
+
 async function main() {
   assertTargets();
   const freeMb = freeMemoryMb();
@@ -155,17 +291,21 @@ async function main() {
   const record = (name, status, detail) => {
     let safe = detail;
     if (status === "FAIL") {
-      const code = policy.publicDetail({ code: detail });
-      safe = code === detail || /^network-blocked [a-z-]+ [a-z0-9.-]+$/i.test(String(detail))
-        ? detail
-        : "unexpected-failure";
+      if (policy.isSafeAnswerHttpDetail(detail)) {
+        safe = detail;
+      } else {
+        const code = policy.publicDetail({ code: detail });
+        safe = code === detail || /^network-blocked [a-z-]+ [a-z0-9.-]+$/i.test(String(detail))
+          ? detail
+          : "unexpected-failure";
+      }
     }
     results.push({ name, status, detail: safe });
   };
-  record("classification-and-report", modelsDown ? "SKIP" : "NOT_RUN",
-    modelsDown
-      ? "Qdrant or Ollama is unavailable; this skip is not a classification or report pass"
-      : "models responded, but this scenario does not submit an occupation or open a report");
+  record("classification-and-report", "SKIP",
+    "Qdrant, Ollama, and the classification crew stay unused; this skip is not a classification or report pass");
+  record("live-model-execution", "NOT_RUN", "no model was downloaded or executed");
+  if (!modelsDown) record("model-health", "FAIL", "models-present");
 
   const run = crypto.randomBytes(4).toString("hex");
   const email = (label) => `stage5c-${label}-${run}@stage5b.example.com`;
@@ -219,24 +359,75 @@ async function main() {
         journeyFailed = true;
       }
     }
-    if (englishSession) {
+    if (englishSession && modelsDown) {
+      paceBeforeMessage = installMessagePacer();
       try {
-        await page.getByRole("button", { name: policy.EMPLOYMENT_CONTROL, exact: true }).waitFor({ state: "visible", timeout: 20000 });
-        const message = page.waitForResponse((response) => {
-          const url = new URL(response.url());
-          return url.origin === API && url.pathname.endsWith("/message") && response.request().method() === "POST";
-        }, { timeout: 30000 });
-        await page.getByRole("button", { name: policy.EMPLOYMENT_CONTROL, exact: true }).click();
-        const response = await message;
-        if (response.status() >= 400) throw policy.coded("answer-http");
-        const sent = response.request().postDataJSON();
-        if (!policy.sameRequestPayload(sent, policy.employmentQuickReplyPayload())) {
-          throw policy.coded("answer-payload");
+        const steps = policy.employedJourney();
+        for (let index = 0; index < steps.length; index += 1) {
+          await submitJourneyStep(page, steps[index], steps[index + 1] || null, index);
+          if (index === 0) {
+            evidence.answerSubmitted = true;
+            record("answer-submission", "PASS", "employment status control returned a non-error response");
+          }
         }
-        evidence.answerSubmitted = true;
-        record("answer-submission", "PASS", "employment status control returned a non-error response");
+        record("questionnaire-completion", "PASS", "required employed questions were answered through the displayed controls");
       } catch (error) {
-        record("answer-submission", "FAIL", policy.publicDetail(error));
+        if (!evidence.answerSubmitted) record("answer-submission", "FAIL", policy.publicDetail(error));
+        record("questionnaire-completion", "FAIL", error.diagnostic || policy.publicDetail(error));
+      }
+      let validating = false;
+      if (evidence.answerSubmitted && results.some((result) => result.name === "questionnaire-completion" && result.status === "PASS")) {
+        try {
+          await page.getByRole("button", { name: policy.CORRECTION_CONTROL }).waitFor({ timeout: 20000 });
+          const header = await page.locator("header").innerText();
+          if (!header.toLowerCase().includes("validating")) throw policy.coded("validating-screen");
+          validating = true;
+          record("validating-screen", "PASS", "the interview reached the validating screen");
+        } catch (error) {
+          record("validating-screen", "FAIL", policy.publicDetail(error));
+        }
+      } else {
+        record("validating-screen", "FAIL", "questionnaire-order");
+      }
+      if (validating) {
+        try {
+          evidence.activeBefore = sql(policy.activeAnswerQuery(englishSession));
+          evidence.wageBefore = sql(policy.wageRevisionQuery(englishSession));
+          if (!policy.canonicalRequiredSnapshot(evidence.activeBefore)) throw policy.coded("answer-preserved");
+          if (!policy.assessOriginalWage(evidence.wageBefore)) throw policy.coded("wage-revision");
+          await page.getByRole("button", { name: policy.CORRECTION_CONTROL }).click();
+          record("correction-control", "PASS", "the displayed correction control was used");
+          await page.getByRole("button", { name: new RegExp("^" + policy.WAGE_FIELD_LABEL + "\\b") }).click();
+          const revised = page.getByRole("button", { name: policy.WAGE_REVISED_LABEL, exact: true });
+          await revised.waitFor({ timeout: 20000 });
+          const pending = messageResponse(page);
+          await paceBeforeMessage();
+          await revised.click();
+          const response = await pending;
+          if (response.status() >= 400) {
+            await rejectHttp(response, policy.employedJourney().length, policy.wageCorrectionPayload().correction_field);
+          }
+          if (!policy.sameRequestPayload(response.request().postDataJSON(), policy.wageCorrectionPayload())) {
+            throw policy.coded("correction-payload");
+          }
+          record("correction-payload", "PASS", "the structured correction named monthly_wage_range and 20001_50000");
+          await page.getByRole("button", { name: policy.CORRECTION_CONTROL }).waitFor({ timeout: 20000 });
+          const afterHeader = await page.locator("header").innerText();
+          if (!afterHeader.toLowerCase().includes("validating")) throw policy.coded("validating-screen");
+          evidence.correctionSubmitted = true;
+          evidence.activeAfter = sql(policy.activeAnswerQuery(englishSession));
+          evidence.wageAfter = sql(policy.wageRevisionQuery(englishSession));
+        } catch (error) {
+          if (!results.some((result) => result.name === "correction-control")) {
+            record("correction-control", "FAIL", error.diagnostic || policy.publicDetail(error));
+          }
+          if (!results.some((result) => result.name === "correction-payload")) {
+            record("correction-payload", "FAIL", error.diagnostic || policy.publicDetail(error));
+          }
+        }
+      } else {
+        record("correction-control", "FAIL", "validating-screen");
+        record("correction-payload", "FAIL", "validating-screen");
       }
       try {
         await page.getByRole("button", { name: "AR", exact: true }).click({ timeout: 15000 });
@@ -245,7 +436,20 @@ async function main() {
       } catch (_error) {
         record("language-switch-display", "FAIL", "login-direction");
       }
-      record("answer-correction", "NOT_RUN", "the correction control is not used; this is not a pass");
+    } else if (englishSession) {
+      record("answer-submission", "FAIL", "models-present");
+      record("questionnaire-completion", "FAIL", "models-present");
+      record("validating-screen", "FAIL", "models-present");
+      record("correction-control", "FAIL", "models-present");
+      record("correction-payload", "FAIL", "models-present");
+      record("language-switch-display", "FAIL", "models-present");
+    } else {
+      record("answer-submission", "FAIL", "session-id");
+      record("questionnaire-completion", "FAIL", "session-id");
+      record("validating-screen", "FAIL", "session-id");
+      record("correction-control", "FAIL", "session-id");
+      record("correction-payload", "FAIL", "session-id");
+      record("language-switch-display", "FAIL", "session-id");
     }
 
     if (!journeyFailed) {
@@ -328,7 +532,9 @@ async function main() {
   const summary = [
     "SUMMARY passed=" + count("PASS") + " failed=" + failed + " skipped=" + count("SKIP") + " not_run=" + count("NOT_RUN"),
     "SKIP is not a pass. NOT_RUN is not a pass.",
-    "Classification, answer correction, and model-generated reports were not accepted.",
+    "Answer correction is accepted only when its own checks passed.",
+    "The isolated SQLite 409 regression is not a live PostgreSQL HTTP check.",
+    "Classification and model-generated reports were not accepted.",
     "A green check accepts only the non-AI checks that ran.",
     "STAGE_RESULT=" + stage,
     "REQUIRED_RESULT=" + (failed > 0 ? "FAIL" : "PASS"),
@@ -381,11 +587,29 @@ function verifyCommitted(evidence, record) {
     if (!evidence.answerSubmitted || !evidence.sessions.en) {
       record("answer-persistence", "FAIL", "answer-missing");
     } else {
-      const active = sql(policy.activeAnswerQuery(evidence.sessions.en.id));
+      const active = evidence.activeAfter || sql(policy.activeAnswerQuery(evidence.sessions.en.id));
       const retired = sql(policy.retiredAnswerQuery(evidence.sessions.en.id));
-      const matched = active === policy.expectedActiveAnswer() && retired === "0";
+      const matched = policy.employmentStillActive(active, retired);
       record("answer-persistence", matched ? "PASS" : "FAIL",
         matched ? "active employment_status revision is employed and has no superseded row" : "answer-missing");
+    }
+    if (!evidence.correctionSubmitted || !evidence.sessions.en || !owners.en) {
+      record("sql-superseded-revision", "FAIL", "wage-revision");
+      record("active-answer-uniqueness", "FAIL", "wage-revision");
+      record("required-answers-preserved", "FAIL", "answer-preserved");
+    } else {
+      const revised = policy.assessWageRevision(evidence.wageBefore, evidence.wageAfter);
+      const owned = sql(policy.wageOwnerQuery(evidence.sessions.en.id, owners.en));
+      record("sql-superseded-revision", revised && owned === "2" ? "PASS" : "FAIL",
+        revised && owned === "2" ? "the original wage row is retired and the new row supersedes it" : "wage-revision");
+      record("active-answer-uniqueness",
+        policy.uniqueActiveWage(evidence.activeAfter) ? "PASS" : "FAIL",
+        policy.uniqueActiveWage(evidence.activeAfter)
+          ? "one active monthly_wage_range revision remains" : "wage-revision");
+      record("required-answers-preserved",
+        policy.preservedRequiredAnswers(evidence.activeBefore, evidence.activeAfter) ? "PASS" : "FAIL",
+        policy.preservedRequiredAnswers(evidence.activeBefore, evidence.activeAfter)
+          ? "required answers matched their canonical values and kept their original ids" : "answer-preserved");
     }
     if (evidence.sessions.intruder) {
       const intruderRows = sql(policy.activeAnswerQuery(evidence.sessions.intruder.id));
@@ -395,11 +619,23 @@ function verifyCommitted(evidence, record) {
   } catch (error) {
     record("committed-sql", "FAIL", policy.publicDetail(error));
   }
+  record("completed-session-cloud-http-immutability", "NOT_RUN",
+    "the disposable cloud API was not asked to change a completed session");
+  try {
+    const immutability = runCompletedAnswerRegression();
+    const immutabilityPassed = immutability.status === 0 && /1 passed/.test(immutability.stdout || "");
+    record("completed-session-sqlite-regression", immutabilityPassed ? "PASS" : "FAIL",
+      immutabilityPassed
+        ? "isolated sqlite regression returned 409; this is not a live PostgreSQL HTTP check"
+        : "immutability");
+  } catch (error) {
+    record("completed-session-sqlite-regression", "FAIL", policy.publicDetail(error));
+  }
 }
 
 main().catch((error) => {
   console.log("FAIL browser-runner — " + policy.publicDetail(error));
   console.log("STAGE_RESULT=FAIL");
-  console.log("Classification, answer correction, and model-generated reports were not accepted.");
+  console.log("Classification and model-generated reports were not accepted.");
   process.exit(1);
 });
